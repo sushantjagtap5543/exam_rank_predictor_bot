@@ -64,6 +64,10 @@ from .ai_analysis import (
     format_swot_telegram_message,
     generate_oneliner_question_bank_pdf,
 )
+from .mindmap_engine import (
+    get_next_dynamic_mindmap,
+    record_mindmap_posted,
+)
 from .monetization import (
     init_monetization_db,
     get_active_ad,
@@ -2782,7 +2786,7 @@ async def question_bank_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text(f"❌ PDF तयार करताना त्रुटी आली: {e}")
 
 async def post_mindmap_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin command: posts daily trending topic mindmap in Marathi to channel."""
+    """Admin command: posts daily trending topic mindmap in Marathi to channel with rotating fresh topics."""
     user = update.effective_user
     if user.id not in ADMIN_IDS:
         if update.callback_query:
@@ -2797,32 +2801,23 @@ async def post_mindmap_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     target_chat = int(channel) if channel.lstrip("-").isdigit() else channel
-    mindmap_path = Path(__file__).resolve().parent.parent / "assets" / "trending_mindmap_samas_prayog.jpg"
 
-    mindmap_caption = (
-        "🎯 <b>आजचा ट्रेंडिंग घटक: मराठी व्याकरण — 'समास व प्रयोग' (TCS / IBPS स्पेशल माइंडमॅप)</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "नुकत्याच झालेल्या सर्व शिफ्ट्समध्ये या घटकांवर हमखास २ ते ४ प्रश्न विचारले जात आहेत. हे महत्त्वाचे नियम लक्षात ठेवा:\n\n"
-        "📌 <b>१. समास व त्याचे मुख्य प्रकार:</b>\n"
-        "• <b>अव्ययीभाव समास:</b> पहिले पद प्रमुख असते व सामासिक शब्द क्रियाविशेषणासारखा वापरला जातो. (उदा. यथाशक्ती, प्रतिक्षण, आजन्म)\n"
-        "• <b>तत्पुरुष समास:</b> दुसरे पद प्रमुख असते. दोन्ही पदे प्रथमेत असल्यास 'कर्मधारय समास' (उदा. नीलकमल, रक्तचंदन).\n"
-        "• <b>द्वंद्व समास:</b> दोन्ही पदे समान दर्जाची असतात (उदा. बहिण-भाऊ, पाप-पुण्य).\n"
-        "• <b>बहुव्रीही समास:</b> दोन्ही पदांशिवाय तिसऱ्याच घटकाचा बोध होतो (उदा. गजानन, नीलकंठ, लंबोदर).\n\n"
-        "📌 <b>२. प्रयोग ओळखण्याची सोपी ट्रिक:</b>\n"
-        "• <b>कर्तरी प्रयोग:</b> कर्त्याला प्रत्यय नसतो. क्रियापद कर्त्यानुसार बदलते (उदा. तो आंबा खातो).\n"
-        "• <b>कर्मणी प्रयोग:</b> कर्त्याला प्रत्यय असतो, कर्माला नसतो (उदा. त्याने आंबा खाल्ला).\n"
-        "• <b>भावे प्रयोग:</b> कर्ता व कर्म दोघांनाही प्रत्यय असतो (उदा. रामाने रावणास मारले).\n\n"
-        "💡 <i>वरील माइंडमॅप सेव्ह करा आणि मित्रांसोबत शेअर करा!</i>"
-    )
-
-    kb = [
-        [InlineKeyboardButton("✍️ या घटकावरील सराव प्रश्न सोडवा", url="https://t.me/ExamRankersIndiaBot?start=quiz")],
-        [InlineKeyboardButton("📢 अधिकृत VIP चॅनेल जॉइन करा", url=PAID_CHANNEL_LINK)]
-    ]
+    status_reply = None
+    if update.callback_query:
+        await update.callback_query.answer("⏳ नवीन ट्रेंडिंग माइंडमॅप तयार करत आहे...")
+    else:
+        status_reply = await update.message.reply_text("⏳ <i>नवीन ट्रेंडिंग घटकाचा माइंडमॅप व इन्फोग्राफिक तयार करत आहे...</i>", parse_mode="HTML")
 
     try:
-        if mindmap_path.exists():
-            with open(mindmap_path, "rb") as photo_f:
+        topic, img_path, mindmap_caption = get_next_dynamic_mindmap(DB_PATH)
+
+        kb = [
+            [InlineKeyboardButton(f"✍️ '{topic.get('subject', '')}' सराव प्रश्न सोडवा", url="https://t.me/ExamRankersIndiaBot?start=quiz")],
+            [InlineKeyboardButton("📢 अधिकृत VIP चॅनेल जॉइन करा", url=PAID_CHANNEL_LINK)]
+        ]
+
+        if img_path and img_path.exists():
+            with open(img_path, "rb") as photo_f:
                 await context.bot.send_photo(
                     chat_id=target_chat,
                     photo=photo_f,
@@ -2838,16 +2833,30 @@ async def post_mindmap_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup(kb),
                 disable_web_page_preview=True
             )
-        msg_text = f"✅ <b>ट्रेंडिंग माइंडमॅप चॅनेलवर (<code>{target_chat}</code>) यशस्वीरित्या पोस्ट केला!</b>"
+
+        record_mindmap_posted(topic["id"], topic["title"], DB_PATH)
+
+        msg_text = (
+            f"✅ <b>नवीन अपडेटेड माइंडमॅप यशस्वीरित्या चॅनेलवर पोस्ट केला!</b>\n\n"
+            f"📌 <b>घटक:</b> {topic.get('title', '')}\n"
+            f"📚 <b>विषय:</b> {topic.get('subject', '')}\n"
+            f"📢 <b>चॅनेल:</b> <code>{target_chat}</code>\n"
+            f"🔄 <i>(पुढील वेळी आपोआप पुढील नवीन विषयाचा माइंडमॅप पोस्ट होईल)</i>"
+        )
         if update.callback_query:
             await update.callback_query.message.reply_text(msg_text, parse_mode="HTML")
+        elif status_reply:
+            await status_reply.edit_text(msg_text, parse_mode="HTML")
         else:
             await update.message.reply_text(msg_text, parse_mode="HTML")
+
     except Exception as e:
-        logger.error(f"Error posting mindmap: {e}")
+        logger.error(f"Error posting mindmap: {e}", exc_info=True)
         err_text = f"❌ माइंडमॅप पोस्ट करताना त्रुटी आली: {e}"
         if update.callback_query:
             await update.callback_query.message.reply_text(err_text)
+        elif status_reply:
+            await status_reply.edit_text(err_text)
         else:
             await update.message.reply_text(err_text)
 
@@ -2994,8 +3003,8 @@ async def daily_mindmap_scheduler_loop(application: Application):
     """
     Automated Daily Mindmap Scheduler:
     - Runs every 24 hours (86400 seconds).
-    - Posts the trending topic mindmap in Marathi (assets/trending_mindmap_samas_prayog.jpg).
-    - Provides a comprehensive, single-page explanation of high-yield trending topics asked in latest exams.
+    - Always selects an updated, non-repeated topic from 10+ high-yield exam areas.
+    - Generates dynamic 1200x800 visual card and comprehensive Marathi explanation.
     """
     await asyncio.sleep(180)  # Wait 3 minutes after startup
     while True:
@@ -3003,31 +3012,15 @@ async def daily_mindmap_scheduler_loop(application: Application):
             channel = os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID
             if channel and not channel.startswith("http"):
                 target_chat = int(channel) if channel.lstrip("-").isdigit() else channel
-                mindmap_path = Path(__file__).resolve().parent.parent / "assets" / "trending_mindmap_samas_prayog.jpg"
-
-                mindmap_caption = (
-                    "🎯 <b>आजचा ट्रेंडिंग घटक: मराठी व्याकरण — 'समास व प्रयोग' (TCS / IBPS स्पेशल माइंडमॅप)</b>\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━\n"
-                    "नुकत्याच झालेल्या सर्व शिफ्ट्समध्ये या घटकांवर हमखास २ ते ४ प्रश्न विचारले जात आहेत. हे महत्त्वाचे नियम लक्षात ठेवा:\n\n"
-                    "📌 <b>१. समास व त्याचे मुख्य प्रकार:</b>\n"
-                    "• <b>अव्ययीभाव समास:</b> पहिले पद प्रमुख असते व सामासिक शब्द क्रियाविशेषणासारखा वापरला जातो. (उदा. यथाशक्ती, प्रतिक्षण, आजन्म)\n"
-                    "• <b>तत्पुरुष समास:</b> दुसरे पद प्रमुख असते. दोन्ही पदे प्रथमेत असल्यास 'कर्मधारय समास' (उदा. नीलकमल, रक्तचंदन).\n"
-                    "• <b>द्वंद्व समास:</b> दोन्ही पदे समान दर्जाची असतात (उदा. बहिण-भाऊ, पाप-पुण्य).\n"
-                    "• <b>बहुव्रीही समास:</b> दोन्ही पदांशिवाय तिसऱ्याच घटकाचा बोध होतो (उदा. गजानन, नीलकंठ, लंबोदर).\n\n"
-                    "📌 <b>२. प्रयोग ओळखण्याची सोपी ट्रिक:</b>\n"
-                    "• <b>कर्तरी प्रयोग:</b> कर्त्याला प्रत्यय नसतो. क्रियापद कर्त्यानुसार बदलते (उदा. तो आंबा खातो).\n"
-                    "• <b>कर्मणी प्रयोग:</b> कर्त्याला प्रत्यय असतो, कर्माला नसतो (उदा. त्याने आंबा खाल्ला).\n"
-                    "• <b>भावे प्रयोग:</b> कर्ता व कर्म दोघांनाही प्रत्यय असतो (उदा. रामाने रावणास मारले).\n\n"
-                    "💡 <i>वरील माइंडमॅप सेव्ह करा आणि मित्रांसोबत शेअर करा!</i>"
-                )
+                topic, img_path, mindmap_caption = get_next_dynamic_mindmap(DB_PATH)
 
                 kb = [
-                    [InlineKeyboardButton("✍️ या घटकावरील सराव प्रश्न सोडवा", url="https://t.me/ExamRankersIndiaBot?start=quiz")],
+                    [InlineKeyboardButton(f"✍️ '{topic.get('subject', '')}' सराव प्रश्न सोडवा", url="https://t.me/ExamRankersIndiaBot?start=quiz")],
                     [InlineKeyboardButton("📢 अधिकृत VIP चॅनेल जॉइन करा", url=PAID_CHANNEL_LINK)]
                 ]
 
-                if mindmap_path.exists():
-                    with open(mindmap_path, "rb") as photo_f:
+                if img_path and img_path.exists():
+                    with open(img_path, "rb") as photo_f:
                         await application.bot.send_photo(
                             chat_id=target_chat,
                             photo=photo_f,
@@ -3043,7 +3036,9 @@ async def daily_mindmap_scheduler_loop(application: Application):
                         reply_markup=InlineKeyboardMarkup(kb),
                         disable_web_page_preview=True
                     )
-                logger.info(f"Daily mindmap successfully posted to {target_chat}")
+
+                record_mindmap_posted(topic["id"], topic["title"], DB_PATH)
+                logger.info(f"Daily updated mindmap '{topic['title']}' successfully posted to {target_chat}")
         except Exception as e:
             logger.error(f"Error in daily_mindmap_scheduler_loop: {e}")
 
