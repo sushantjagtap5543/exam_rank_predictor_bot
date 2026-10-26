@@ -1,0 +1,11 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+bot.db
+admin_storage/
+reports/
+response_sheets/
+*.session
+*.session-journal
+test_peon_full.pdf

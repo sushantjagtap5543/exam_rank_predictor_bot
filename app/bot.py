@@ -1,0 +1,3211 @@
+import os
+import json
+import sqlite3
+import tempfile
+import logging
+import shutil
+import re
+import asyncio
+import zipfile
+import http.server
+import threading
+from datetime import datetime
+from pathlib import Path
+from dotenv import load_dotenv
+
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+    BotCommand,
+    BotCommandScopeDefault,
+    BotCommandScopeAllPrivateChats,
+    BotCommandScopeChat,
+    MenuButtonCommands,
+)
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    ChatMemberHandler,
+    ContextTypes,
+    filters,
+)
+
+from .parser import (
+    extract_pdf_text,
+    detect_exam,
+    parse_answers,
+    score_answers,
+    extract_post_and_metadata,
+    parse_html_response_sheet,
+)
+from .rank import estimate_cohort_rank
+from .quiz_generator import (
+    extract_quizzes_with_ai,
+    send_quizzes_to_channel,
+    extract_quizzes_from_records,
+    extract_quizzes_locally,
+    init_quiz_db,
+    get_top_priority_topics_text,
+)
+from .ai_analysis import (
+    explain_wrong_answers_and_objections,
+    generate_topic_weightage_analysis,
+    get_daily_latest_exam_questions,
+    generate_html_full_report,
+    generate_incorrect_answers_report,
+    generate_smart_explanation,
+    generate_master_analytics_report_html,
+    generate_swot_analysis,
+    format_swot_telegram_message,
+    generate_oneliner_question_bank_pdf,
+)
+from .mindmap_engine import (
+    get_next_dynamic_mindmap,
+    record_mindmap_posted,
+)
+from .monetization import (
+    init_monetization_db,
+    get_active_ad,
+    build_ad_markup,
+    get_deals_keyboard,
+    get_upi_payment_details,
+    record_payment_request,
+    approve_and_generate_invite,
+    get_paid_channel_link,
+)
+
+load_dotenv()
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+DB_PATH = os.getenv("DATABASE_PATH", "bot.db")
+STORAGE_DIR = Path(os.getenv("ADMIN_STORAGE_DIR", "admin_storage")).resolve()
+RESPONSE_DIR = STORAGE_DIR / "response_sheets"
+REPORT_DIR = STORAGE_DIR / "reports"
+ADMIN_IDS = {int(x.strip()) for x in os.getenv("ADMIN_TELEGRAM_IDS", "").split(",") if x.strip().isdigit()}
+PAID_CHANNEL_ID = os.getenv("PAID_CHANNEL_ID", "").strip()
+PAID_CHANNEL_LINK = get_paid_channel_link()
+
+def update_env_channel_id(channel_id: str):
+    """Updates PAID_CHANNEL_ID in .env file, environment variables, and in-memory global."""
+    global PAID_CHANNEL_ID
+    clean_id = str(channel_id).strip()
+    PAID_CHANNEL_ID = clean_id
+    os.environ["PAID_CHANNEL_ID"] = clean_id
+    try:
+        env_file = Path(__file__).resolve().parent.parent / ".env"
+        if env_file.exists():
+            content = env_file.read_text(encoding="utf-8")
+            if re.search(r"^PAID_CHANNEL_ID=.*$", content, re.MULTILINE):
+                content = re.sub(r"^PAID_CHANNEL_ID=.*$", f"PAID_CHANNEL_ID={clean_id}", content, flags=re.MULTILINE)
+            else:
+                content += f"\nPAID_CHANNEL_ID={clean_id}\n"
+            env_file.write_text(content, encoding="utf-8")
+            logger.info(f"Updated .env with PAID_CHANNEL_ID={clean_id}")
+    except Exception as e:
+        logger.warning(f"Could not persist PAID_CHANNEL_ID to .env: {e}")
+
+async def on_chat_member_updated(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Detects when the bot is added as an administrator to a channel or group."""
+    my_member = update.my_chat_member
+    chat = update.effective_chat
+    if not my_member or not chat:
+        return
+    new_status = my_member.new_chat_member.status
+    if new_status in ("administrator", "creator"):
+        channel_id = str(chat.id)
+        channel_title = chat.title or "Channel"
+        update_env_channel_id(channel_id)
+        logger.info(f"Bot added as administrator to {channel_title} ({channel_id})")
+        for admin_id in ADMIN_IDS:
+            try:
+                await context.bot.send_message(
+                    chat_id=admin_id,
+                    text=(
+                        f"🎉 <b>Bot Successfully Added to Channel!</b>\n\n"
+                        f"📢 <b>{channel_title}</b>\n"
+                        f"🆔 ID: <code>{channel_id}</code>\n\n"
+                        f"चॅनेल आयडी आपोआप सेव्ह झाला आहे. रिस्पॉन्स शीटमधील प्रश्न क्विझ स्वरूपात पाठवण्यासाठी:\n"
+                        f"👉 <code>/postquizzes</code>"
+                    ),
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.warning(f"Could not notify admin {admin_id}: {e}")
+
+EXAMS_PATH = Path(__file__).with_name("exams.json")
+try:
+    EXAMS = json.loads(EXAMS_PATH.read_text(encoding="utf-8"))
+except Exception as e:
+    logger.error(f"Failed to load exams.json: {e}")
+    EXAMS = {}
+
+CATEGORIES = [
+    "Open (खुला)",
+    "OBC (इतर मागास वर्ग)",
+    "EWS (आर्थिक दुर्बल घटक)",
+    "SC (अनुसूचित जाती)",
+    "ST (अनुसूचित जमाती)",
+    "VJ / NT (विमुक्त व भटक्या जमाती)",
+    "SBC / SEBC (मराठा आरक्षण)"
+]
+
+CATEGORY_MAP = {
+    "open": "Open (खुला)",
+    "obc": "OBC (इतर मागास वर्ग)",
+    "ews": "EWS (आर्थिक दुर्बल घटक)",
+    "sc": "SC (अनुसूचित जाती)",
+    "st": "ST (अनुसूचित जमाती)",
+    "nt": "VJ / NT (विमुक्त व भटक्या जमाती)",
+    "sebc": "SBC / SEBC (मराठा आरक्षण)"
+}
+
+def get_category_keyboard(prefix="cat"):
+    """Builds a clean 2-column inline keyboard with short callback_data (strictly under Telegram's 64-byte cap)."""
+    return [
+        [InlineKeyboardButton("🚀 रिस्पॉन्स शीट लिंक पेस्ट करा किंवा PDF पाठवा (START)", callback_data="prompt_upload")],
+        [InlineKeyboardButton("Open (खुला)", callback_data=f"{prefix}:open"), InlineKeyboardButton("OBC (इतर मागास)", callback_data=f"{prefix}:obc")],
+        [InlineKeyboardButton("EWS (आर्थिक दुर्बल)", callback_data=f"{prefix}:ews"), InlineKeyboardButton("SC (अनुसूचित जाती)", callback_data=f"{prefix}:sc")],
+        [InlineKeyboardButton("ST (अनुसूचित जमाती)", callback_data=f"{prefix}:st"), InlineKeyboardButton("VJ / NT (भटक्या जमाती)", callback_data=f"{prefix}:nt")],
+        [InlineKeyboardButton("SBC / SEBC (मराठा आरक्षण)", callback_data=f"{prefix}:sebc")],
+        [InlineKeyboardButton("✍️ Quick Score Calculator", callback_data="manual_calc"), InlineKeyboardButton("ℹ️ How it Works / FAQ", callback_data="help")]
+    ]
+
+def get_persistent_menu_keyboard():
+    """Builds a persistent bottom menu keyboard."""
+    return ReplyKeyboardMarkup(
+        [
+            [KeyboardButton("🚀 सुरू करा (Start)"), KeyboardButton("✍️ रँक कॅल्क्युलेटर")],
+            [KeyboardButton("📋 मुख्य मेनू (Main Menu)"), KeyboardButton("ℹ️ मदत (Help)")]
+        ],
+        resize_keyboard=True,
+        is_persistent=True,
+        input_field_placeholder="🔗 रिस्पॉन्स शीट लिंक पेस्ट करा किंवा PDF पाठवा 📎"
+    )
+
+def get_connection():
+    """Returns SQLite connection with WAL journal mode and 30s timeout to prevent locking."""
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    return conn
+
+def init_db():
+    """Initializes tables and performs automated schema migrations."""
+    RESPONSE_DIR.mkdir(parents=True, exist_ok=True)
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    with get_connection() as db:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                telegram_id INTEGER PRIMARY KEY,
+                username TEXT,
+                first_name TEXT,
+                category TEXT,
+                total_uploads INTEGER DEFAULT 0,
+                joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_active DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS uploads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_user_id INTEGER,
+                filename TEXT,
+                storage_path TEXT,
+                exam_key TEXT,
+                category TEXT,
+                score REAL DEFAULT 0.0,
+                correct_count INTEGER DEFAULT 0,
+                incorrect_count INTEGER DEFAULT 0,
+                unanswered_count INTEGER DEFAULT 0,
+                rank INTEGER DEFAULT 0,
+                percentile REAL DEFAULT 0.0,
+                post_name TEXT DEFAULT 'General',
+                status TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        # Automated column migration for backwards compatibility
+        existing_cols = [c[1] for c in db.execute("PRAGMA table_info(uploads)").fetchall()]
+        cols_to_add = {
+            "post_name": "TEXT DEFAULT 'General'",
+            "score": "REAL DEFAULT 0.0",
+            "correct_count": "INTEGER DEFAULT 0",
+            "incorrect_count": "INTEGER DEFAULT 0",
+            "unanswered_count": "INTEGER DEFAULT 0",
+            "rank": "INTEGER DEFAULT 0",
+            "percentile": "REAL DEFAULT 0.0",
+            "roll_number": "TEXT DEFAULT ''",
+            "candidate_name": "TEXT DEFAULT ''",
+            "district": "TEXT DEFAULT 'महाराष्ट्र (सर्वसाधारण)'",
+            "test_date": "TEXT DEFAULT ''"
+        }
+        for col_name, col_type in cols_to_add.items():
+            if col_name not in existing_cols:
+                try:
+                    db.execute(f"ALTER TABLE uploads ADD COLUMN {col_name} {col_type}")
+                except Exception as e:
+                    logger.warning(f"Column migration warning for {col_name}: {e}")
+
+    try:
+        init_monetization_db()
+    except Exception as e:
+        logger.warning(f"Could not initialize monetization tables: {e}")
+
+async def safe_send_message(bot, chat_id, text: str, parse_mode="HTML", reply_markup=None, disable_web_page_preview=True):
+    """
+    Safely sends messages without exceeding Telegram's 4096-character limit.
+    Splits long messages at natural newlines.
+    """
+    if len(text) <= 3900:
+        return await bot.send_message(
+            chat_id=chat_id,
+            text=text,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+            disable_web_page_preview=disable_web_page_preview
+        )
+
+    chunks = []
+    current = []
+    current_len = 0
+    for line in text.split("\n"):
+        if current_len + len(line) + 1 > 3800:
+            chunks.append("\n".join(current))
+            current = [line]
+            current_len = len(line)
+        else:
+            current.append(line)
+            current_len += len(line) + 1
+    if current:
+        chunks.append("\n".join(current))
+
+    last_msg = None
+    for i, chunk in enumerate(chunks):
+        markup = reply_markup if i == len(chunks) - 1 else None
+        last_msg = await bot.send_message(
+            chat_id=chat_id,
+            text=chunk,
+            parse_mode=parse_mode,
+            reply_markup=markup,
+            disable_web_page_preview=disable_web_page_preview
+        )
+    return last_msg
+
+def track_user(user, category: str = None):
+    """Registers or updates active user in the database."""
+    if not user:
+        return
+    with get_connection() as db:
+        existing = db.execute("SELECT telegram_id, category FROM users WHERE telegram_id = ?", (user.id,)).fetchone()
+        if existing:
+            cat = category if category else existing[1]
+            db.execute("""
+                UPDATE users SET username = ?, first_name = ?, category = ?, last_active = CURRENT_TIMESTAMP
+                WHERE telegram_id = ?
+            """, (user.username, user.first_name, cat, user.id))
+        else:
+            db.execute("""
+                INSERT INTO users (telegram_id, username, first_name, category)
+                VALUES (?, ?, ?, ?)
+            """, (user.id, user.username, user.first_name, category))
+
+def get_candidate_scores(exam_key: str, category: str = None, post_name: str = None):
+    """
+    Returns multi-dimensional score distributions:
+    (overall_scores, exam_scores, post_scores, cat_scores, post_cat_scores)
+    """
+    with get_connection() as db:
+        # 1. Overall State/Platform scores
+        overall_rows = db.execute("SELECT score FROM uploads WHERE score IS NOT NULL").fetchall()
+        overall_scores = [r[0] for r in overall_rows]
+
+        # 2. Exam cohort scores
+        exam_rows = db.execute("SELECT score FROM uploads WHERE exam_key = ? AND score IS NOT NULL", (exam_key,)).fetchall()
+        exam_scores = [r[0] for r in exam_rows]
+
+        # 3. Post-wise cohort scores
+        post_scores = []
+        if post_name and post_name != "General":
+            post_rows = db.execute("SELECT score FROM uploads WHERE post_name = ? AND score IS NOT NULL", (post_name,)).fetchall()
+            post_scores = [r[0] for r in post_rows]
+
+        # 4. Category cohort scores within exam
+        cat_scores = []
+        if category:
+            cat_rows = db.execute("SELECT score FROM uploads WHERE exam_key = ? AND category = ? AND score IS NOT NULL", (exam_key, category)).fetchall()
+            cat_scores = [r[0] for r in cat_rows]
+
+        # 5. Post Category scores
+        post_cat_scores = []
+        if category and post_name and post_name != "General":
+            pc_rows = db.execute("SELECT score FROM uploads WHERE post_name = ? AND category = ? AND score IS NOT NULL", (post_name, category)).fetchall()
+            post_cat_scores = [r[0] for r in pc_rows]
+
+        return overall_scores, exam_scores, post_scores, cat_scores, post_cat_scores
+
+def format_score_card(exam_name: str, category: str, result: dict, rank_data: dict) -> str:
+    """Creates a 100% free, complete, detailed scorecard message with 4-tier rank breakdown."""
+    pos = result.get("positive_marks", 1.0)
+    neg = result.get("negative_marks", 0.0)
+    correct_pts = round(result["correct"] * pos, 2)
+    incorrect_pts = round(result["incorrect"] * neg, 2)
+    post_name = rank_data.get("post_name", "General (सर्वसाधारण)")
+
+    lines = [
+        "🎯 <b>FREE EXAM SCORE & 4-TIER RANK REPORT</b>",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        f"📋 <b>Exam:</b> {exam_name}",
+        f"🎖️ <b>Applied Post (पद):</b> <code>{post_name}</code>",
+        f"👤 <b>Reservation Category:</b> {category}",
+        "",
+        "📊 <b>Full Performance Breakdown:</b>",
+        f"• Total Questions: <b>{result.get('total_parsed', 0)}</b>",
+        f"• Attempted Questions: <b>{result.get('attempted', 0)}</b>",
+        f"• ✅ Correct Answers: <b>{result.get('correct', 0)}</b> (+{correct_pts} marks)",
+        f"• ❌ Incorrect Answers: <b>{result.get('incorrect', 0)}</b> (-{incorrect_pts} marks)",
+        f"• ⚪ Unanswered / Skipped: <b>{result.get('unanswered', 0)}</b>",
+        f"• 🎯 Accuracy Rate: <b>{result.get('accuracy', 0)}%</b>",
+        "",
+        f"🏆 <b>Total Calculated Score:</b> <code>{result.get('score', 0)} marks</code>",
+        "",
+        "📈 <b>Live 4-Tier Rank & Cutoff Prediction:</b>",
+        f"🌐 <b>1. Overall State Rank (राज्यस्तरीय रँक):</b> <b>#{rank_data.get('overall_rank', 1)}</b> of <b>{rank_data.get('overall_total', 1)}</b> (Percentile: <b>{rank_data.get('overall_percentile', 0)}%</b>)",
+        f"📋 <b>2. Exam Cohort Rank (परीक्षा रँक):</b> <b>#{rank_data.get('exam_rank', 1)}</b> of <b>{rank_data.get('exam_total', 1)}</b> (Percentile: <b>{rank_data.get('exam_percentile', 0)}%</b>)",
+        f"🎖️ <b>3. Post-wise Rank (पद निहाय रँक — {post_name}):</b> <b>#{rank_data.get('post_rank', 1)}</b> of <b>{rank_data.get('post_total', 1)}</b> (Percentile: <b>{rank_data.get('post_percentile', 0)}%</b>)",
+    ]
+
+    if rank_data.get("category_rank"):
+        lines.append(f"👤 <b>4. Category Rank (प्रवर्ग रँक — {category}):</b> <b>#{rank_data['category_rank']}</b> of <b>{rank_data['category_total']}</b> (Percentile: <b>{rank_data.get('category_percentile', 0)}%</b>)")
+        if rank_data.get("post_category_rank") and rank_data.get("post_category_total", 0) > 1:
+            lines.append(f"   ↳ <i>Post Category Rank ({post_name} - {category}):</i> <b>#{rank_data['post_category_rank']}</b> of <b>{rank_data['post_category_total']}</b>")
+
+    lines.extend([
+        "",
+        f"• Cohort Average Score: <b>{rank_data.get('avg_score', 0)}</b>",
+        f"• Cohort Highest Score: <b>{rank_data.get('top_score', 0)}</b>",
+        f"• Cutoff Prediction Zone: {rank_data.get('zone', 'N/A')}",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        "<i>Tap buttons below to view Subject-wise Stats or AI Wrong Answer Explanations & Objections!</i>"
+    ])
+    return "\n".join(lines)
+
+def format_subjectwise_dashboard(sections: dict) -> str:
+    """Formats a detailed subject-wise / section-wise dashboard."""
+    if not sections:
+        return "No specific section headers were detected in this sheet."
+
+    lines = [
+        "📚 <b>FULL SUBJECT-WISE PERFORMANCE DASHBOARD</b>",
+        "━━━━━━━━━━━━━━━━━━━━━━"
+    ]
+    for sec_name, data in sections.items():
+        lines.extend([
+            f"🔹 <b>{sec_name}:</b>",
+            f"• Total: <b>{data['total']}</b> | Attempted: <b>{data['attempted']}</b>",
+            f"• ✅ Correct: <b>{data['correct']}</b> | ❌ Incorrect: <b>{data['incorrect']}</b> | ⚪ Skipped: <b>{data['unanswered']}</b>",
+            f"• 🎯 Accuracy: <b>{data['accuracy']}%</b> | 🏆 Section Score: <b>{data['score']} marks</b>",
+            ""
+        ])
+    lines.append("━━━━━━━━━━━━━━━━━━━━━━")
+    return "\n".join(lines)
+
+async def auto_post_quizzes_background(bot, text: str, exam_name: str, records: list = None):
+    """
+    Background Task triggered on every new response sheet:
+    1. Extracts all unposted questions from records or text.
+    2. Publishes questions 1-by-1 continuously to the channel with instant explanations & passages.
+    3. Generates and posts Daily Topic Weightage Breakdown to the channel.
+    4. Deduplicates via SQLite posted_quizzes table so no question is ever repeated.
+    5. Fully anonymized (zero student details).
+    """
+    channel = os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID
+    if not channel or channel.startswith("http"):
+        return
+
+    try:
+        # Step 1: Extract all unposted quizzes from records or text
+        quizzes = []
+        if records:
+            quizzes = extract_quizzes_from_records(records, max_questions=500, filter_unposted=True, db_path=DB_PATH)
+        elif text:
+            from .parser import parse_answers, parse_html_response_sheet
+            parsed_text = text
+            if "<html" in text.lower() or "<table" in text.lower():
+                parsed_text = parse_html_response_sheet(text)
+            parsed_recs = parse_answers(parsed_text)
+            if parsed_recs:
+                quizzes = extract_quizzes_from_records(parsed_recs, max_questions=500, filter_unposted=True, db_path=DB_PATH)
+            if not quizzes:
+                quizzes = extract_quizzes_locally(parsed_text, max_questions=50, db_path=DB_PATH)
+
+        if not quizzes:
+            logger.info("No unposted quizzes found for this response sheet (all already published).")
+            return
+
+        header = (
+            f"🎯 <b>नवीन अधिकृत परीक्षा प्रश्न (NEW EXAM QUESTIONS)</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📋 <b>परीक्षा:</b> {exam_name}\n"
+            f"⚡ <i>TCS / IBPS अधिकृत रिस्पॉन्स शीटमधील प्रश्न १-बाय-१ खालीलप्रमाणे:</i>"
+        )
+        count = await send_quizzes_to_channel(
+            bot=bot,
+            channel_id=channel,
+            quizzes=quizzes,
+            header_text=header,
+            send_priority_topics=True,
+            db_path=DB_PATH
+        )
+
+        # Step 2: Post Daily Topic & Weightage Analysis if text available
+        if text and count > 0:
+            try:
+                topic_analysis = await generate_topic_weightage_analysis(text, exam_name)
+                if topic_analysis:
+                    await safe_send_message(bot, channel, topic_analysis, parse_mode="HTML")
+            except Exception as e:
+                logger.warning(f"Topic weightage analysis error in auto_post: {e}")
+
+        # Notify admins
+        for admin_id in ADMIN_IDS:
+            try:
+                await bot.send_message(
+                    chat_id=admin_id,
+                    text=(
+                        f"🤖 <b>Auto-Channel Engine:</b>\n"
+                        f"नवीन रिस्पॉन्स शीट आल्यानंतर <b>{count} प्रश्न 1-by-1</b> चॅनेलवर (<code>{channel}</code>) यशस्वीरित्या पोस्ट केले!\n"
+                        f"परीक्षेचे नाव: <b>{exam_name}</b>"
+                    ),
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
+    except Exception as e:
+        logger.error(f"Error in auto_post_quizzes_background: {e}", exc_info=True)
+
+# ----------------- TELEGRAM BOT HANDLERS ----------------- #
+
+async def check_channel_membership(bot, user_id: int) -> bool:
+    """Checks whether the user is an active member or administrator of the official ExamRankers Telegram channel."""
+    if user_id in ADMIN_IDS:
+        return True
+    channel_id_str = os.getenv("PAID_CHANNEL_ID", "-1004381339759").strip()
+    if not channel_id_str:
+        return True
+    try:
+        channel_id = int(channel_id_str)
+        member = await bot.get_chat_member(chat_id=channel_id, user_id=user_id)
+        return member.status in ("member", "administrator", "creator")
+    except Exception as e:
+        logger.warning(f"Channel membership check for {user_id} in {channel_id_str}: {e}")
+        return True
+
+async def prompt_force_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Sends prompt requiring user to join the official ExamRankers channel before continuing."""
+    channel_link = os.getenv("PAID_CHANNEL_LINK", "https://t.me/+EjtGp-pH4hMxZDM1").strip() or "https://t.me/+EjtGp-pH4hMxZDM1"
+    msg_text = (
+        "📢 <b>कृपया आधी आमच्या अधिकृत टेलिग्राम चॅनेलला जॉईन करा!</b>\n"
+        "<i>(Please join our official Telegram channel to use the bot)</i>\n\n"
+        "🎯 <b>ExamRankers Official Channel</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "✅ रोजचे मोफत TCS/IBPS पॅटर्न सराव प्रश्न व सविस्तर स्पष्टीकरण\n"
+        "✅ सर्व परीक्षांचे निकाल, गुणवत्ता यादी (Merit List) व कट-ऑफ अपडेट्स\n"
+        "✅ चालू घडामोडी व शासकीय नोकरी भरती नोट्स\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "👇 <b>खालील बटणावर क्लिक करून चॅनेल जॉईन करा, त्यानंतर '✅ मी जॉईन केले' बटण दाबा:</b>"
+    )
+    keyboard = [
+        [InlineKeyboardButton("📢 चॅनेल जॉईन करा (Join ExamRankers)", url=channel_link)],
+        [InlineKeyboardButton("✅ मी जॉईन केले (I Have Joined)", callback_data="verify_channel_membership")]
+    ]
+    if update.callback_query:
+        try:
+            await update.callback_query.message.edit_text(
+                msg_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True
+            )
+        except Exception:
+            await update.callback_query.message.reply_text(
+                msg_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True
+            )
+    elif update.message:
+        await update.message.reply_text(
+            msg_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True
+        )
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    track_user(user)
+
+    # Force Join Channel Gate
+    if not await check_channel_membership(context.bot, user.id):
+        await prompt_force_join(update, context)
+        return
+
+    context.user_data.clear()
+
+    welcome_text = (
+        "👋 <b>महाराष्ट्र सरळसेवा भरती रँक व गुण विश्लेषक (ExamRankers Bot)</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "✨ <b>१००% मोफत सेवा (Free for Maharashtra Aspirants):</b>\n"
+        "• तलाठी, जिल्हा परिषद (ZP), पोलीस भरती, वनरक्षक, नगरपरिषद, आरोग्य विभाग, MPSC\n"
+        "• TCS व IBPS पॅटर्न रिस्पॉन्स शीटचे अचूक गुण व 4-Tier रँक कॅल्क्युलेशन\n\n"
+        "📌 <b>पायरी १ (Step 1): कृपया तुमचा आरक्षण प्रवर्ग (Category) निवडा:</b>\n"
+        "<i>(प्रवर्ग निवडल्यानंतर तुमच्या रिस्पॉन्स शीटची वेब लिंक पेस्ट करा किंवा PDF पाठवा)</i>"
+    )
+    if update.message:
+        await update.message.reply_text(
+            welcome_text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(get_category_keyboard()),
+            disable_web_page_preview=True
+        )
+        await update.message.reply_text(
+            "⚡ <b>खालील मेनू बटणे वापरून तुम्ही कधीही बॉट ऑपरेट करू शकता 👇</b>",
+            parse_mode="HTML",
+            reply_markup=get_persistent_menu_keyboard()
+        )
+    elif update.callback_query:
+        try:
+            await update.callback_query.message.edit_text(
+                welcome_text,
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(get_category_keyboard()),
+                disable_web_page_preview=True
+            )
+        except Exception:
+            await update.callback_query.message.reply_text(
+                welcome_text,
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(get_category_keyboard()),
+                disable_web_page_preview=True
+            )
+
+async def send_question_review_page(update: Update, context: ContextTypes.DEFAULT_TYPE, offset: int = 0, only_wrong: bool = False):
+    """Sends 2 questions per message with full question statement, all 4 options, answers, and in-depth explanations."""
+    chat_id = update.effective_chat.id
+    records = context.user_data.get("last_records", [])
+
+    if only_wrong:
+        dataset = [r for r in records if r.get("evaluation") == "incorrect"]
+        title = "❌ <b>चुकीचे प्रश्न सविस्तर स्पष्टीकरण (Wrong Questions Review)</b>"
+        cb_prefix = "review_wrong"
+    else:
+        dataset = records
+        title = "📖 <b>सर्व प्रश्न व अधिकृत उत्तरे (Full Questions Review)</b>"
+        cb_prefix = "review_all"
+
+    total_count = len(dataset)
+    if not dataset:
+        if only_wrong:
+            await safe_send_message(context.bot, chat_id, "🎉 <b>अभिनंदन!</b> या प्रश्नपत्रिकेत तुमचे १ही उत्तर चुकीचे नाही (0 incorrect answers)!", parse_mode="HTML")
+        else:
+            await safe_send_message(context.bot, chat_id, "⚠️ प्रश्न उपलब्ध नाहीत. कृपया लिंक पुन्हा पाठवा.", parse_mode="HTML")
+        return
+
+    limit = 2
+    offset = max(0, min(offset, total_count - 1))
+    sample = dataset[offset: offset + limit]
+    has_next = (offset + limit) < total_count
+    has_prev = offset > 0
+    current_end = min(offset + limit, total_count)
+
+    lines = [
+        title,
+        f"📌 <i>प्रश्न {offset + 1} ते {current_end} (एकूण: {total_count})</i>",
+        "━━━━━━━━━━━━━━━━━━━━━━"
+    ]
+
+    for item in sample:
+        qnum = item.get("question_number", "?")
+        sec = item.get("section", "General")
+        qtext = item.get("question_text", "Question Text")
+        eval_status = item.get("evaluation", "unanswered")
+        chosen_num = str(item.get("chosen_option_number") or "-")
+        chosen_txt = item.get("chosen_option_text", "").strip()
+        correct_num = str(item.get("correct_option_number") or "-")
+        correct_txt = item.get("correct_option_text", "").strip()
+        options = item.get("options", {})
+        explanation = generate_smart_explanation(item)
+
+        status_icon = "✅ बरोबर (Correct)" if eval_status == "correct" else ("❌ चुकीचे (Incorrect)" if eval_status == "incorrect" else "⚪ अनुत्तरित (Unanswered)")
+
+        opts_lines = []
+        for ok in ["1", "2", "3", "4"]:
+            if ok in options:
+                oval = options[ok]
+                if ok == correct_num and ok == chosen_num:
+                    opts_lines.append(f"  <b>{ok})</b> {oval}  ✅ <i>(तुमचे उत्तर - बरोबर)</i>")
+                elif ok == correct_num:
+                    opts_lines.append(f"  <b>{ok})</b> {oval}  ✅ <i>(अधिकृत उत्तर)</i>")
+                elif ok == chosen_num:
+                    opts_lines.append(f"  <b>{ok})</b> {oval}  ❌ <i>(तुमचे उत्तर - चुकीचे)</i>")
+                else:
+                    opts_lines.append(f"  <b>{ok})</b> {oval}")
+
+        chosen_display = f"पर्याय {chosen_num}" + (f" ({chosen_txt})" if chosen_txt else "")
+        correct_display = f"पर्याय {correct_num}" + (f" ({correct_txt})" if correct_txt else "")
+
+        lines.extend([
+            f"❓ <b>प्रश्न क्र. {qnum} / {len(records)}</b> (विभाग: <code>{sec}</code>)",
+            f"<b>मूल्यांकन:</b> <b>{status_icon}</b>",
+            f"<b>प्रश्न:</b> {qtext}\n",
+            "<b>पर्याय:</b>",
+            "\n".join(opts_lines) if opts_lines else "<i>(पर्याय उपलब्ध नाहीत)</i>",
+            "",
+            f"👤 <b>तुमचे उत्तर:</b> <code>{chosen_display}</code>",
+            f"🎯 <b>अधिकृत बरोबर उत्तर:</b> <code>{correct_display}</code>",
+            "",
+            f"💡 <b>सविस्तर स्पष्टीकरण:</b>\n{explanation}",
+            "━━━━━━━━━━━━━━━━━━━━━━"
+        ])
+
+    nav_row = []
+    if has_prev:
+        nav_row.append(InlineKeyboardButton("⬅️ मागील (Prev)", callback_data=f"{cb_prefix}:{max(0, offset - limit)}"))
+    if has_next:
+        nav_row.append(InlineKeyboardButton("पुढील ➡️ (Next)", callback_data=f"{cb_prefix}:{offset + limit}"))
+
+    keyboard = []
+    if nav_row:
+        keyboard.append(nav_row)
+
+    wrong_cnt = len([r for r in records if r.get("evaluation") == "incorrect"])
+    if only_wrong:
+        keyboard.append([InlineKeyboardButton(f"📖 सर्व {len(records)} प्रश्न पहा (Full Review)", callback_data="review_all:0")])
+    else:
+        keyboard.append([InlineKeyboardButton(f"❌ फक्त चुकीचे प्रश्न पहा ({wrong_cnt})", callback_data="review_wrong:0")])
+
+    keyboard.append([InlineKeyboardButton("📑 डाऊनलोड फक्त चुकीचे प्रश्न विश्लेषण (HTML)", callback_data="download_wrong_report")])
+    keyboard.append([InlineKeyboardButton("📥 डाऊनलोड १०० प्रश्न सविस्तर निकाल (HTML)", callback_data="download_html_report")])
+    keyboard.append([InlineKeyboardButton("📊 विषयनिहाय गुण (Subject Stats)", callback_data="show_sections")])
+    keyboard.append([InlineKeyboardButton("🔙 मुख्य स्कोअरकार्ड (Back to Scorecard)", callback_data="back_scorecard")])
+
+    review_full_text = "\n".join(lines)
+    await safe_send_message(
+        context.bot,
+        chat_id,
+        review_full_text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        disable_web_page_preview=True
+    )
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    data = q.data
+
+    if data in ("main_menu", "change_category", "analyze"):
+        context.user_data.clear()
+        welcome_text = (
+            "👋 <b>महाराष्ट्र सरळसेवा भरती रँक व गुण विश्लेषक</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "📌 <b>पायरी १ (Step 1): कृपया तुमचा आरक्षण प्रवर्ग (Category) निवडा:</b>\n"
+            "<i>(प्रवर्ग निवडल्यानंतर तुमच्या रिस्पॉन्स शीटची वेब लिंक पेस्ट करा किंवा PDF पाठवा)</i>"
+        )
+        try:
+            await q.message.edit_text(welcome_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(get_category_keyboard()))
+        except Exception:
+            await q.message.reply_text(welcome_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(get_category_keyboard()))
+
+    elif data == "prompt_upload":
+        cat = context.user_data.get("category")
+        if cat:
+            await q.message.reply_text(
+                f"✅ <b>तुमचा निवडलेला प्रवर्ग: {cat}</b>\n\n"
+                "📌 <b>आता तुमची रिस्पॉन्स शीट पाठवा:</b>\n\n"
+                "🔗 <b>पर्याय १ (सर्वात सोपे व अचूक):</b>\n"
+                "तुमच्या DigiALM / परीक्षा पोर्टलची <b>थेट वेब लिंक</b> येथे पेस्ट करा (उदा. <code>https://cdn.digialm.com/...</code>)\n\n"
+                "📎 <b>पर्याय २:</b>\n"
+                "किंवा तुमची रिस्पॉन्स शीट <b>PDF फाईल</b> येथे अपलोड करा.\n\n"
+                "<i>(तात्काळ ४-टियर रँक, विषयनिहाय गुण व कटऑफ विश्लेषण मिळेल!)</i>",
+                parse_mode="HTML"
+            )
+        else:
+            await q.message.reply_text(
+                "📌 <b>कृपया प्रथम खालीलपैकी तुमचा प्रवर्ग निवडा किंवा थेट तुमची रिस्पॉन्स शीट लिंक / PDF फाईल येथे पाठवा:</b>",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(get_category_keyboard())
+            )
+
+    elif data == "help":
+        help_text = (
+            "📖 <b>How ExamRankers Works (100% Free):</b>\n\n"
+            "1. <b>Paste Link or Send PDF:</b> Select your category and simply paste your official DigiALM response sheet URL (e.g. <code>https://cdn.digialm.com/...</code>) or upload your response sheet PDF.\n"
+            "2. <b>Score & Rank:</b> Bot instantly calculates overall & category rank, percentile, and cutoff zone.\n"
+            "3. <b>Subject Dashboard:</b> View section-wise marks, accuracy, and questions breakdown.\n"
+            "4. <b>Wrong Answers & Objections:</b> AI explains why your answer was wrong and whether to raise an official objection on ambiguous questions!\n\n"
+            f"💎 <i>Optional:</i> Join our <a href=\"{PAID_CHANNEL_LINK}\">Paid Quiz Channel</a> (₹99) for daily authentic exam polls."
+        )
+        keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
+        await q.message.edit_text(help_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True)
+
+    elif data == "verify_channel_membership":
+        user_id = q.from_user.id
+        is_member = await check_channel_membership(context.bot, user_id)
+        if is_member:
+            await q.answer("✅ धन्यवाद! व्हेरिफिकेशन यशस्वी झाले.", show_alert=True)
+            await q.message.reply_text("🎉 <b>व्हेरिफिकेशन यशस्वी!</b> आता तुम्ही बॉट वापरू शकता.", parse_mode="HTML")
+            await start(update, context)
+        else:
+            await q.answer("⚠️ तुम्ही अजून चॅनेल जॉईन केलेले नाही! कृपया आधी चॅनेल जॉईन करा.", show_alert=True)
+
+    elif data == "daily_questions":
+        daily_data = get_daily_latest_exam_questions()
+        lines = [
+            daily_data["trend_summary"],
+            ""
+        ]
+        for i, q_item in enumerate(daily_data["questions"], 1):
+            lines.extend([
+                f"━━━━━━━━━━━━━━━━━━━━━━",
+                f"<b>Q{i}. [{q_item['subject']}]</b>",
+                f"{q_item['question']}",
+                "",
+                "\n".join([f"  {opt}" for opt in q_item["options"]]),
+                "",
+                f"✅ <b>उत्तर:</b> <code>{q_item['answer']}</code>",
+                f"💡 <b>स्पष्टीकरण:</b> {q_item['explanation']}",
+                ""
+            ])
+        lines.extend([
+            "━━━━━━━━━━━━━━━━━━━━━━",
+            "⚡ <i>टीप: TCS व IBPS दररोज याच पॅटर्नवर आधारित प्रश्न विचारत आहे!</i>\n",
+            "💎 <b>दररोज विचारलेले सर्व प्रश्न क्विझ स्वरूपात सोडवण्यासाठी आजच आमचे VIP चॅनेल जॉईन करा!</b>"
+        ])
+        keyboard = [
+            [InlineKeyboardButton("🎯 Analyze My Response Sheet", callback_data="analyze")],
+            [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]
+        ]
+        full_text = "\n".join(lines)
+        await safe_send_message(
+            context.bot,
+            q.message.chat_id,
+            full_text,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            disable_web_page_preview=True
+        )
+
+    elif data == "show_sections":
+        sections = context.user_data.get("last_sections", {})
+        dashboard_text = format_subjectwise_dashboard(sections)
+        keyboard = [
+            [InlineKeyboardButton("📖 सर्व १०० प्रश्न व उत्तरे पहा (Full Questions)", callback_data="review_all:0")],
+            [InlineKeyboardButton("❌ चुकीचे प्रश्न व सविस्तर स्पष्टीकरण", callback_data="review_wrong:0")],
+            [InlineKeyboardButton("📥 डाऊनलोड १०० प्रश्न निकाल (HTML)", callback_data="download_html_report")],
+            [InlineKeyboardButton("🔙 Back to Scorecard", callback_data="back_scorecard")]
+        ]
+        await q.message.edit_text(dashboard_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data == "back_scorecard":
+        last_card = context.user_data.get("last_scorecard_text", "")
+        last_kb = context.user_data.get("last_scorecard_keyboard", [])
+        if last_card:
+            await q.message.edit_text(last_card, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(last_kb), disable_web_page_preview=True)
+        else:
+            await q.message.reply_text("Send /start to view menu.")
+
+    elif data.startswith("review_wrong"):
+        parts = data.split(":")
+        offset = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+        await send_question_review_page(update, context, offset=offset, only_wrong=True)
+
+    elif data.startswith("review_all"):
+        parts = data.split(":")
+        offset = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+        await send_question_review_page(update, context, offset=offset, only_wrong=False)
+
+    elif data == "download_html_report":
+        records = context.user_data.get("last_records", [])
+        meta = context.user_data.get("candidate_meta", {})
+        result = context.user_data.get("last_result", {})
+        exam_name = context.user_data.get("last_exam_name", "Exam")
+
+        if not records:
+            await q.message.reply_text("⚠️ No active response sheet records found. Please re-paste your URL or upload PDF.")
+            return
+
+        status_msg = await q.message.reply_text("⏳ <i>सर्व १०० प्रश्नांची सविस्तर स्पष्टीकरणासह HTML फाईल तयार करत आहे...</i>", parse_mode="HTML")
+        try:
+            html_code = generate_html_full_report(records, meta, result, exam_name)
+            roll = meta.get("roll_number") or str(update.effective_user.id)
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                file_path = Path(tmp_dir) / f"ExamRankers_Analysis_{roll}.html"
+                file_path.write_text(html_code, encoding="utf-8")
+                with open(file_path, "rb") as doc_f:
+                    await context.bot.send_document(
+                        chat_id=q.message.chat_id,
+                        document=doc_f,
+                        filename=f"ExamRankers_Analysis_{roll}.html",
+                        caption=(
+                            "📄 <b>येथे तुमचे सर्व १०० प्रश्नांचे सविस्तर विश्लेषण, अधिकृत उत्तरे व स्पष्टीकरण फाईल आहे!</b>\n\n"
+                            "💡 <i>ही फाईल कोणत्याही मोबाईल/कॉम्प्युटर ब्राउझरमध्ये उघडून तुम्ही प्रत्येक प्रश्न, तुमचे उत्तर व बरोबर उत्तर पाहू शकता, तसेच PDF म्हणून सेव्ह करू शकता.</i>"
+                        ),
+                        parse_mode="HTML"
+                    )
+            await status_msg.delete()
+        except Exception as e:
+            await status_msg.edit_text(f"❌ Error generating report: {e}")
+
+    elif data == "download_wrong_report":
+        records = context.user_data.get("last_records", [])
+        meta = context.user_data.get("candidate_meta", {})
+        result = context.user_data.get("last_result", {})
+        exam_name = context.user_data.get("last_exam_name", "Exam")
+
+        if not records:
+            await q.message.reply_text("⚠️ No active response sheet records found. Please re-paste your URL or upload PDF.")
+            return
+
+        wrong_records = [r for r in records if r.get("evaluation") == "incorrect"]
+        if not wrong_records:
+            await q.message.reply_text("🎉 अभिनंदन! या प्रश्नपत्रिकेत तुमचे १ही उत्तर चुकीचे नाही (0 incorrect answers)!")
+            return
+
+        status_msg = await q.message.reply_text(f"⏳ <i>सर्व {len(wrong_records)} चुकीच्या प्रश्नांची सविस्तर स्पष्टीकरणासह HTML फाईल तयार करत आहे...</i>", parse_mode="HTML")
+        try:
+            html_code = generate_incorrect_answers_report(records, meta, result, exam_name)
+            roll = meta.get("roll_number") or str(update.effective_user.id)
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                file_path = Path(tmp_dir) / f"ExamRankers_Wrong_Questions_{roll}.html"
+                file_path.write_text(html_code, encoding="utf-8")
+                with open(file_path, "rb") as doc_f:
+                    await context.bot.send_document(
+                        chat_id=q.message.chat_id,
+                        document=doc_f,
+                        filename=f"ExamRankers_Wrong_Questions_{roll}.html",
+                        caption=(
+                            f"❌ <b>येथे तुमचे सर्व {len(wrong_records)} चुकीच्या प्रश्नांचे सविस्तर विश्लेषण आहे!</b>\n\n"
+                            "• <b>गणित व बुद्धिमत्ता:</b> पायरी-पायरीने अचूक सोडवणूक (Step-by-Step Solution)\n"
+                            "• <b>मराठी व इंग्रजी:</b> अचूक व्याकरण नियम व संदर्भ (Grammar Rules)\n"
+                            "• <b>सामान्य ज्ञान:</b> अधिकृत शासकीय संदर्भ व तथ्य\n"
+                            "• <b>आक्षेप तपासणी:</b> अधिकृत हरकतींसाठी आक्षेप मसुदा (Objection Draft)\n\n"
+                            "💡 <i>ही फाईल कोणत्याही ब्राऊझरमध्ये उघडून तुम्ही प्रत्येक चुकीचा प्रश्न, तुमचे उत्तर व बरोबर उत्तर पाहू शकता.</i>"
+                        ),
+                        parse_mode="HTML"
+                    )
+            await status_msg.delete()
+        except Exception as e:
+            await status_msg.edit_text(f"❌ Error generating wrong answers report: {e}")
+
+# join_paid handler removed (monetization disabled)
+
+    elif data == "submit_proof":
+        context.user_data["awaiting_payment_proof"] = True
+        await q.message.reply_text(
+            "📤 <b>Please send your 12-digit UPI UTR number or upload your payment screenshot now:</b>",
+            parse_mode="HTML"
+        )
+
+    elif data.startswith("approve_pay:"):
+        payment_id = int(data.split(":", 1)[1])
+        if update.effective_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Restricted to admin.", show_alert=True)
+            return
+
+        success, res = await approve_and_generate_invite(context.bot, payment_id)
+        if success:
+            await q.message.edit_text(
+                f"✅ <b>Payment #{payment_id} Approved!</b>\n\nChannel invite link delivered to user:\n<code>{res}</code>",
+                parse_mode="HTML"
+            )
+        else:
+            await q.message.reply_text(f"❌ Approval error: {res}")
+
+    elif data.startswith("reject_pay:"):
+        payment_id = int(data.split(":", 1)[1])
+        if update.effective_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Restricted to admin.", show_alert=True)
+            return
+        with get_connection() as db:
+            db.execute("UPDATE payments SET status = 'rejected' WHERE id = ?", (payment_id,))
+        await q.message.edit_text(f"❌ Payment #{payment_id} marked as Rejected.", parse_mode="HTML")
+
+    elif data == "admin_dl_all_zip":
+        if update.effective_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Restricted to admin.", show_alert=True)
+            return
+        await download_all_responses_cmd(update, context)
+
+    elif data == "admin_master_report":
+        if update.effective_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Restricted to admin.", show_alert=True)
+            return
+        await master_report_cmd(update, context)
+
+    elif data == "admin_files_list":
+        if update.effective_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Restricted to admin.", show_alert=True)
+            return
+        await admin_files(update, context)
+
+    elif data == "admin_qbank":
+        if update.effective_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Restricted to admin.", show_alert=True)
+            return
+        await q.answer("वनलायनर प्रश्नसंच तयार करत आहे...", show_alert=False)
+        await question_bank_cmd(update, context)
+
+    elif data == "admin_post_mindmap":
+        if update.effective_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Restricted to admin.", show_alert=True)
+            return
+        await q.answer("माइंडमॅप चॅनेलवर पोस्ट करत आहे...", show_alert=False)
+        await post_mindmap_cmd(update, context)
+
+    elif data == "admin_post_promo":
+        if update.effective_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Restricted to admin.", show_alert=True)
+            return
+        await q.answer("प्रमोशनल ॲड चॅनेलवर पोस्ट करत आहे...", show_alert=False)
+        await post_promo_cmd(update, context)
+
+    elif data.startswith("getfile:"):
+        fid = int(data.split(":", 1)[1])
+        if update.effective_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Restricted to admin.", show_alert=True)
+            return
+        with get_connection() as db:
+            row = db.execute("SELECT filename, storage_path, exam_key, score FROM uploads WHERE id = ?", (fid,)).fetchone()
+        if not row or not Path(row[1]).is_file():
+            await q.message.reply_text(f"❌ File #{fid} not found.")
+            return
+        fpath = Path(row[1])
+        kb = [
+            [InlineKeyboardButton(f"📊 Generate Full HTML Report", callback_data=f"admin_report:{fid}")],
+            [InlineKeyboardButton(f"❌ View Wrong Questions", callback_data=f"admin_wrong:{fid}")]
+        ]
+        with open(fpath, "rb") as doc_f:
+            await context.bot.send_document(
+                chat_id=q.message.chat_id,
+                document=doc_f,
+                filename=fpath.name,
+                caption=f"📄 <b>Stored Response Sheet #{fid}</b>\n• Exam: <code>{row[2]}</code>\n• Score: <b>{row[3]}</b>",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(kb)
+            )
+
+    elif data.startswith("admin_report:") or data.startswith("admin_wrong:"):
+        is_wrong_only = data.startswith("admin_wrong:")
+        fid = int(data.split(":", 1)[1])
+        if update.effective_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Restricted to admin.", show_alert=True)
+            return
+        with get_connection() as db:
+            row = db.execute("SELECT storage_path, exam_key FROM uploads WHERE id = ?", (fid,)).fetchone()
+        if not row or not Path(row[0]).is_file():
+            await q.message.reply_text("❌ File not found.")
+            return
+        tpath = Path(row[0])
+        exam_nm = EXAMS.get(row[1], {}).get("display_name", row[1] or "Exam")
+        if tpath.suffix.lower() in (".html", ".htm"):
+            raw_h = tpath.read_text(encoding="utf-8", errors="ignore")
+            ptext = parse_html_response_sheet(raw_h)
+        else:
+            ptext = extract_pdf_text(str(tpath))
+        recs = parse_answers(ptext)
+        meta_d = extract_post_and_metadata(ptext)
+        cfg_d = EXAMS.get("GMC_SARALSEWA", {"positive_marks": 1.0, "negative_marks": 0.0})
+        res_d = score_answers(recs, cfg_d)
+        context.user_data["last_records"] = recs
+        context.user_data["candidate_meta"] = meta_d
+        context.user_data["last_result"] = res_d
+        context.user_data["last_exam_name"] = exam_nm
+        if is_wrong_only:
+            await send_question_review_page(update, context, offset=0, only_wrong=True)
+        else:
+            await send_question_review_page(update, context, offset=0, only_wrong=False)
+
+    elif data == "check_channel_status":
+        if update.effective_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Restricted to admin.", show_alert=True)
+            return
+        await channel_status_cmd(update, context)
+
+    elif data == "analyze":
+        keyboard = [[InlineKeyboardButton(cat, callback_data=f"cat:{cat}")] for cat in CATEGORIES]
+        keyboard.append([InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")])
+        await q.message.edit_text("<b>Step 1 of 2:</b> Select your exam category:", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data.startswith("cat:"):
+        code = data.split(":", 1)[1]
+        cat = CATEGORY_MAP.get(code.lower(), code)
+        context.user_data["category"] = cat
+        track_user(update.effective_user, category=cat)
+
+        # Check if user had already sent a pending PDF or URL
+        pending_doc = context.user_data.pop("pending_pdf_doc", None)
+        if pending_doc:
+            await q.message.edit_text(f"✅ प्रवर्ग निवडला: <b>{cat}</b>\nतुमची PDF प्रोसेस करत आहे...", parse_mode="HTML")
+            await process_uploaded_pdf(update, context, pending_doc)
+            return
+
+        pending_url = context.user_data.pop("pending_url", None)
+        if pending_url:
+            await q.message.edit_text(f"✅ प्रवर्ग निवडला: <b>{cat}</b>\nवेब लिंकवरील रिस्पॉन्स शीट प्रोसेस करत आहे...", parse_mode="HTML")
+            await handle_url_sheet(update, context, pending_url)
+            return
+
+        context.user_data["awaiting_pdf"] = True
+        text = (
+            f"✅ <b>प्रवर्ग निवडला: {cat}</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "📌 <b>पायरी २ (Step 2): आता तुमची रिस्पॉन्स शीट पाठवा:</b>\n\n"
+            "🔗 <b>पर्याय १ — थेट वेब लिंक पेस्ट करा (Recommended & 100% Accurate):</b>\n"
+            "तुमच्या DigiALM / परीक्षा पोर्टलची संपूर्ण वेब लिंक येथे चॅटमध्ये पेस्ट करा:\n"
+            "👉 <code>https://cdn.digialm.com/...</code>\n"
+            "<i>(कोणतीही फाईल डाऊनलोड न करता १ सेकंदात निकाल मिळेल!)</i>\n\n"
+            "📎 <b>पर्याय २ — किंवा PDF फाईल अपलोड करा:</b>\n"
+            "तुमची अधिकृत Response Sheet PDF फाईल येथे सेंड करा.\n\n"
+            "⚡ <b>बॉट तात्काळ खालील 4-Tier विश्लेषण देईल:</b>\n"
+            "• 🌐 <b>राज्यस्तरीय सर्वसाधारण रँक</b> (Overall State Rank)\n"
+            "• 📋 <b>परीक्षा निहाय रँक</b> (Exam Cohort Rank — ZP/तलाठी)\n"
+            "• 🎖️ <b>पद निहाय रँक</b> (Post-wise Rank — Response Sheet मधील पदाप्रमाणे)\n"
+            "• 👤 <b>प्रवर्ग निहाय रँक</b> (Category Rank)\n"
+            "• 📊 <b>विषयनिहाय डॅशबोर्ड</b> (मराठी, इंग्रजी, GS, बुद्धिमत्ता)\n"
+            "• 🤖 <b>AI चुकीच्या प्रश्नांचे स्पष्टीकरण व हरकत (Objection) सल्ला</b>"
+        )
+        keyboard = [
+            [InlineKeyboardButton("🔄 प्रवर्ग बदला (Change Category)", callback_data="change_category")],
+            [InlineKeyboardButton("✍️ Quick Score Calculator", callback_data="manual_calc")],
+            [InlineKeyboardButton("🔙 मुख्य मेनू", callback_data="main_menu")]
+        ]
+        await q.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data == "manual_calc":
+        keyboard = [[InlineKeyboardButton(c["display_name"], callback_data=f"man_exam:{k}")] for k, c in EXAMS.items()]
+        keyboard.append([InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")])
+        await q.message.edit_text("<b>Quick Rank Predictor:</b>\nSelect which exam you want to predict your rank for:", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data.startswith("man_exam:"):
+        key = data.split(":", 1)[1]
+        context.user_data["manual_exam_key"] = key
+        await q.message.edit_text(
+            f"Selected: <b>{EXAMS[key]['display_name']}</b>\nNow choose your category:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(get_category_keyboard(prefix="man_cat"))
+        )
+
+    elif data.startswith("man_cat:"):
+        code = data.split(":", 1)[1]
+        cat = CATEGORY_MAP.get(code.lower(), code)
+        context.user_data["manual_category"] = cat
+        context.user_data["awaiting_manual_score"] = True
+        await q.message.edit_text(
+            f"Exam: <b>{EXAMS[context.user_data['manual_exam_key']]['display_name']}</b>\n"
+            f"Category: <b>{cat}</b>\n\n"
+            "✍️ <b>Please reply with your score</b> (e.g. <code>135.5</code>):",
+            parse_mode="HTML"
+        )
+
+    elif data.startswith("exam:"):
+        key = data.split(":", 1)[1]
+        context.user_data["exam_key"] = key
+        await q.message.reply_text(
+            f"✅ Exam confirmed: <b>{EXAMS[key]['display_name']}</b>\nProcessing full score & subject analysis...",
+            parse_mode="HTML"
+        )
+        await complete_analysis(update, context, key)
+
+async def handle_url_sheet(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
+    """Downloads response sheet directly from DigiALM/TCS/IBPS/Web URL without any size limit."""
+    user = update.effective_user
+    track_user(user)
+
+    if not await check_channel_membership(context.bot, user.id):
+        await prompt_force_join(update, context)
+        return
+
+    if not context.user_data.get("category"):
+        context.user_data["pending_url"] = url
+        await update.message.reply_text(
+            "📥 <b>Response sheet URL received!</b>\nPlease select your reservation category to calculate score & predicted rank:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(get_category_keyboard(prefix="cat"))
+        )
+        return
+
+    status_msg = await update.effective_chat.send_message(
+        "📥 <i>Downloading response sheet from URL and analyzing questions...</i>",
+        parse_mode="HTML"
+    )
+    import httpx
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    clean_url = re.sub(r"(?<!:)//+", "/", url.strip())
+    try:
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True, headers=headers) as client:
+            resp = await client.get(clean_url)
+            resp.raise_for_status()
+            content = resp.content
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp) / "response_sheet.html"
+            is_pdf = content.startswith(b"%PDF")
+            if is_pdf:
+                tmp_path = Path(tmp) / "response_sheet.pdf"
+
+            with open(tmp_path, "wb") as f:
+                f.write(content)
+
+            if is_pdf:
+                text = await asyncio.to_thread(extract_pdf_text, str(tmp_path))
+            else:
+                html_str = content.decode("utf-8", errors="ignore")
+                text = parse_html_response_sheet(html_str)
+
+            if not text.strip():
+                await status_msg.edit_text("❌ Could not extract text from this URL. Please verify the link.")
+                return
+
+            meta = extract_post_and_metadata(text)
+            roll_raw = meta.get("roll_number") or ""
+            clean_roll = re.sub(r'[^A-Za-z0-9_-]', '', str(roll_raw))
+            ext = 'pdf' if is_pdf else 'html'
+            if clean_roll:
+                safe_fn = f"roll_{clean_roll}_response_sheet.{ext}"
+            else:
+                safe_fn = f"user_{user.id}_response_sheet.{ext}"
+
+            stored_path = RESPONSE_DIR / safe_fn
+            shutil.copy2(tmp_path, stored_path)
+
+            detected = detect_exam(text, EXAMS)
+            records = parse_answers(text)
+            if not records:
+                await status_msg.edit_text("❌ No question-answer pairs detected in the response sheet from this URL.")
+                return
+
+            category = context.user_data.get("category", "Open")
+            post_name = meta.get("post_name", "General")
+            context.user_data["post_name"] = post_name
+            context.user_data["candidate_meta"] = meta
+
+            context.user_data["last_records"] = records
+            context.user_data["last_raw_text"] = text
+            context.user_data["stored_path"] = str(stored_path)
+            context.user_data["doc_name"] = safe_fn
+
+            if detected.get("status") == "detected":
+                context.user_data["exam_key"] = detected["key"]
+                await status_msg.edit_text(
+                    f"✅ <b>Exam Detected: {detected['config']['display_name']}</b>\n"
+                    f"🎖️ Post: <code>{post_name}</code>\n"
+                    "Calculating 4-tier ranks and subject dashboard...",
+                    parse_mode="HTML"
+                )
+                await complete_analysis(update, context, detected["key"])
+            elif detected.get("status") == "ambiguous":
+                keyboard = [[InlineKeyboardButton(m["name"], callback_data=f"exam:{m['key']}")] for m in detected["matches"]]
+                keyboard.append([InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")])
+                await status_msg.edit_text(
+                    f"⚠️ Multiple matching exams detected for post <code>{post_name}</code>.\nPlease select your specific exam:",
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+            else:
+                keyboard = [[InlineKeyboardButton(c["display_name"], callback_data=f"exam:{k}")] for k, c in EXAMS.items()]
+                keyboard.append([InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")])
+                await status_msg.edit_text(
+                    f"🎖️ <b>Post Detected:</b> <code>{post_name}</code>\n"
+                    "कृपया खालीलपैकी नेमकी परीक्षा निवडा:",
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+    except Exception as e:
+        await status_msg.edit_text(f"❌ Error downloading from URL: {e}", parse_mode="HTML")
+
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    track_user(user)
+
+    if not await check_channel_membership(context.bot, user.id):
+        await prompt_force_join(update, context)
+        return
+
+    doc = update.message.document
+    if not doc:
+        return
+
+    safe_name = getattr(doc, "file_name", None) or "response_sheet.pdf"
+    if not safe_name.lower().endswith(".pdf"):
+        await update.message.reply_text("⚠️ कृपया वैध PDF फाईल पाठवा (Please upload a valid PDF document).")
+        return
+
+    # Seamless UX: if user just dropped a PDF without selecting category first
+    if not context.user_data.get("category"):
+        context.user_data["pending_pdf_doc"] = doc
+        context.user_data["pending_msg_id"] = update.message.message_id
+        await update.message.reply_text(
+            "📥 <b>Response sheet received!</b>\nPlease select your reservation category to calculate score & predicted rank:",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(get_category_keyboard(prefix="cat"))
+        )
+        return
+
+    await process_uploaded_pdf(update, context, doc)
+
+async def process_uploaded_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE, doc):
+    """Processes downloaded PDF document without arbitrary size limits (up to 2GB via MTProto)."""
+    status_msg = await update.effective_chat.send_message("📥 <i>Downloading response sheet, analyzing subject performance, and detecting questions...</i>", parse_mode="HTML")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", getattr(doc, "file_name", None) or "response_sheet.pdf")
+        path = str(Path(tmp) / safe_name)
+        file_size = getattr(doc, "file_size", 0) or 0
+        downloaded = False
+
+        # Attempt standard Telegram HTTP Bot API download first if under 20MB
+        if file_size < 20 * 1024 * 1024:
+            try:
+                tg_file = await context.bot.get_file(doc.file_id)
+                await tg_file.download_to_drive(path)
+                downloaded = True
+            except Exception as e:
+                logger.warning(f"Standard get_file failed, falling back to MTProto: {e}")
+
+        # If file is >= 20MB or standard download failed, use MTProto downloader (up to 2GB)
+        if not downloaded:
+            await status_msg.edit_text(
+                "⚡ <b>मोठी फाईल आढळली (> 20 MB):</b>\n"
+                "Telegram हाय-स्पीड MTProto इंजिन वापरून डाऊनलोड करत आहे (कोणतीही साईज मर्यादा नाही)... ⏳",
+                parse_mode="HTML"
+            )
+            from .mtproto_downloader import download_file_mtproto
+            msg_id = (
+                update.message.message_id
+                if update.message
+                else context.user_data.get("pending_msg_id")
+            )
+            chat_id = update.effective_chat.id
+            if msg_id:
+                success = await download_file_mtproto(chat_id, msg_id, path)
+                if success and Path(path).is_file() and Path(path).stat().st_size > 0:
+                    downloaded = True
+
+        if not downloaded or not Path(path).is_file() or Path(path).stat().st_size == 0:
+            await status_msg.edit_text(
+                "❌ <b>Download Error:</b> फाईल डाऊनलोड होऊ शकली नाही. कृपया पुन्हा पाठवा किंवा तुमच्या रिस्पॉन्स शीटची थेट वेब लिंक (DigiALM URL) येथे पेस्ट करा.",
+                parse_mode="HTML"
+            )
+            return
+
+        # Check if the PDF has embedded selectable text or is image-based
+        has_text_layer = False
+        total_pages = 0
+        try:
+            import fitz
+            sample_doc = fitz.open(path)
+            total_pages = len(sample_doc)
+            for p in sample_doc[:min(5, total_pages)]:
+                if len(p.get_text("text").strip()) >= 30:
+                    has_text_layer = True
+                    break
+            sample_doc.close()
+        except Exception:
+            pass
+
+        if not has_text_layer:
+            keyboard = [
+                [InlineKeyboardButton("✍️ Quick Score & Rank Calculator", callback_data="manual_calc")],
+                [InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]
+            ]
+            await status_msg.edit_text(
+                "❌ <b>ही PDF फोटो / इमेज स्वरूपात आहे (Scanned Image PDF).</b>\n\n"
+                f"या फाईलमध्ये <b>{total_pages} पाने</b> आहेत, पण त्यात कॉम्प्युटर मजकूर नसून फक्त चित्रे आहेत (उदा. 'Microsoft Print to PDF' ने सेव्ह केलेली).\n"
+                "त्यामुळे कॉम्प्युटर सिस्टीम थेट उत्तरे तपासू शकत नाही.\n\n"
+                "🚀 <b>तुमचा निकाल लगेच (1 सेकंदात) पाहण्यासाठी खालीलपैकी एक करा:</b>\n\n"
+                "1️⃣ <b>थेट वेब लिंक पाठवा (सर्वात सोपे व 100% अचूक):</b>\n"
+                "तुमच्या DigiALM / परीक्षा पोर्टलची वेब लिंक (उदा. <code>https://cdn.digialm.com/...</code>) येथे थेट चॅटमध्ये पेस्ट करा. बॉट संपूर्ण गुणपत्रिका लगेच 1 सेकंदात तपासेल!\n\n"
+                "2️⃣ <b>Text PDF म्हणून सेव्ह करा:</b>\n"
+                "पोर्टलवर रिस्पॉन्स शीट उघडून Print (Ctrl+P) करताना Destination मध्ये <b>'Save as PDF'</b> निवडा (*'Microsoft Print to PDF' निवडू नका*). त्यानंतर ती PDF येथे पाठवा.\n\n"
+                "3️⃣ <b>मॅन्युअल रँक कॅल्क्युलेटर:</b>\n"
+                "किंवा खालील बटणावर क्लिक करून तुमचे गुण टाईप करा आणि संभाव्य गुणवत्ता यादीतील रँक तपासा 👇",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return
+
+        text = await asyncio.to_thread(extract_pdf_text, path)
+        if not text.strip():
+            keyboard = [
+                [InlineKeyboardButton("✍️ Quick Score & Rank Calculator", callback_data="manual_calc")],
+                [InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]
+            ]
+            await status_msg.edit_text(
+                "❌ <b>Could not extract text from this PDF.</b>\n\n"
+                "दस्तऐवज पासवर्ड प्रोटेक्टेड किंवा एन्क्रिप्टेड असू शकतो.\n\n"
+                "💡 <b>सोपे पर्याय:</b>\n"
+                "1️⃣ तुमच्या DigiALM / परीक्षा पोर्टलची URL येथे थेट पेस्ट करा.\n"
+                "2️⃣ किंवा खालील बटणावर क्लिक करून तुमचे गुण नोंदवा 👇",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return
+
+        detected = detect_exam(text, EXAMS)
+        records = parse_answers(text)
+
+        if not records:
+            keyboard = [
+                [InlineKeyboardButton("✍️ Quick Score & Rank Calculator", callback_data="manual_calc")],
+                [InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]
+            ]
+            await status_msg.edit_text(
+                "⚠️ <b>या PDF मधून प्रश्न-उत्तरे शोधता आली नाहीत (No questions parsed).</b>\n\n"
+                "💡 <b>पर्याय (Options):</b>\n"
+                "1️⃣ तुमच्या DigiALM रिस्पॉन्स शीटची <b>थेट वेब लिंक</b> येथे पेस्ट करा.\n"
+                "2️⃣ किंवा खालील बटणावर क्लिक करून तुमचे एकूण गुण टाईप करा आणि संभाव्य गुणवत्ता यादीतील रँक तपासा:",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return
+
+        # Extract post name and candidate metadata from response sheet
+        meta = extract_post_and_metadata(text)
+        roll_raw = meta.get("roll_number") or ""
+        clean_roll = re.sub(r'[^A-Za-z0-9_-]', '', str(roll_raw))
+        if clean_roll:
+            canonical_name = f"roll_{clean_roll}_response_sheet.pdf"
+        else:
+            canonical_name = f"user_{update.effective_user.id}_response_sheet.pdf"
+        stored_path = RESPONSE_DIR / canonical_name
+        shutil.copy2(path, stored_path)
+
+        post_name = meta.get("post_name", "General")
+        context.user_data["post_name"] = post_name
+        context.user_data["candidate_meta"] = meta
+
+        context.user_data["last_records"] = records
+        context.user_data["last_raw_text"] = text
+        context.user_data["stored_path"] = str(stored_path)
+        context.user_data["doc_name"] = canonical_name
+
+        if detected.get("status") == "detected":
+            key = detected["key"]
+            context.user_data["exam_key"] = key
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
+            await complete_analysis(update, context, key)
+        elif detected.get("status") == "ambiguous":
+            keyboard = [[InlineKeyboardButton(m["name"], callback_data=f"exam:{m['key']}")] for m in detected["matches"]]
+            await status_msg.edit_text("🔍 Several configured exams matched your sheet. Please select your specific exam:", reply_markup=InlineKeyboardMarkup(keyboard))
+        else:
+            keyboard = [[InlineKeyboardButton(c["display_name"], callback_data=f"exam:{k}")] for k, c in EXAMS.items()]
+            await status_msg.edit_text("⚠️ Could not auto-detect the exam title from document text. Please select your exam:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def complete_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE, exam_key: str):
+    """Computes score, ranks candidate, and generates subject-wise dashboard & objection options."""
+    config = EXAMS.get(exam_key, {})
+    records = context.user_data.get("last_records", [])
+    raw_text = context.user_data.get("last_raw_text", "")
+    category = context.user_data.get("category", "Open")
+    post_name = context.user_data.get("post_name", "General")
+    user_id = update.effective_user.id
+    stored_path = context.user_data.get("stored_path", "")
+    filename = context.user_data.get("doc_name", "response_sheet.pdf")
+
+    result = score_answers(records, config)
+    score = result["score"]
+    sections = result.get("sections", {})
+
+    context.user_data["last_sections"] = sections
+    context.user_data["last_result"] = result
+    exam_display_name = config.get("display_name", exam_key)
+    context.user_data["last_exam_name"] = exam_display_name
+
+    meta = context.user_data.get("candidate_meta", {})
+    roll_number = meta.get("roll_number") or ""
+    candidate_name = meta.get("candidate_name") or ""
+    district = meta.get("district") or "महाराष्ट्र (सर्वसाधारण)"
+    test_date = meta.get("test_date") or ""
+
+    with get_connection() as db:
+        existing_row = None
+        if roll_number:
+            existing_row = db.execute(
+                "SELECT id FROM uploads WHERE roll_number = ? AND exam_key = ?",
+                (roll_number, exam_key)
+            ).fetchone()
+        if not existing_row:
+            existing_row = db.execute(
+                "SELECT id FROM uploads WHERE telegram_user_id = ? AND filename = ?",
+                (user_id, filename)
+            ).fetchone()
+
+        if existing_row:
+            upload_id = existing_row[0]
+            db.execute(
+                """UPDATE uploads SET
+                    storage_path = ?, category = ?, post_name = ?, district = ?,
+                    roll_number = ?, candidate_name = ?, test_date = ?,
+                    score = ?, correct_count = ?, incorrect_count = ?, unanswered_count = ?,
+                    status = 'analyzed'
+                WHERE id = ?""",
+                (stored_path, category, post_name, district,
+                 roll_number, candidate_name, test_date,
+                 score, result["correct"], result["incorrect"], result["unanswered"],
+                 upload_id)
+            )
+        else:
+            cursor = db.execute(
+                """INSERT INTO uploads(
+                    telegram_user_id, filename, storage_path, exam_key, category, post_name,
+                    district, roll_number, candidate_name, test_date,
+                    score, correct_count, incorrect_count, unanswered_count, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (user_id, filename, stored_path, exam_key, category, post_name,
+                 district, roll_number, candidate_name, test_date,
+                 score, result["correct"], result["incorrect"], result["unanswered"], "analyzed")
+            )
+            upload_id = cursor.lastrowid
+            db.execute("UPDATE users SET total_uploads = total_uploads + 1 WHERE telegram_id = ?", (user_id,))
+
+    overall_scores, exam_scores, post_scores, cat_scores, post_cat_scores = get_candidate_scores(exam_key, category, post_name)
+    rank_data = estimate_cohort_rank(
+        student_score=score,
+        all_scores=exam_scores,
+        category=category,
+        category_scores=cat_scores,
+        overall_scores=overall_scores,
+        post_name=post_name,
+        post_scores=post_scores,
+        post_category_scores=post_cat_scores
+    )
+
+    with get_connection() as db:
+        db.execute(
+            "UPDATE uploads SET rank = ?, percentile = ? WHERE id = ?",
+            (rank_data.get("exam_rank", rank_data.get("rank")), rank_data.get("exam_percentile", rank_data.get("percentile")), upload_id)
+        )
+
+    card = format_score_card(exam_display_name, category, result, rank_data)
+
+    # Compute AI SWOT Performance Audit
+    swot = generate_swot_analysis(records, result, config)
+    swot_text = format_swot_telegram_message(swot)
+    full_card = f"{card}\n\n{swot_text}"
+
+    # Background quiz publisher: extracts all questions and posts 1-by-1 continuously to channel
+    asyncio.create_task(auto_post_quizzes_background(context.bot, raw_text, exam_display_name, records=records))
+
+    # Gated access: Only after candidate submits response sheet, generate single-use VIP channel invite
+    channel_join_url = PAID_CHANNEL_LINK or "https://t.me/+EjtGp-pH4hMxZDM1"
+    if PAID_CHANNEL_ID:
+        try:
+            target_chat = int(PAID_CHANNEL_ID) if PAID_CHANNEL_ID.lstrip("-").isdigit() else PAID_CHANNEL_ID
+            invite = await context.bot.create_chat_invite_link(
+                chat_id=target_chat,
+                member_limit=1,
+                name=f"VIP_{user_id}"
+            )
+            channel_join_url = invite.invite_link
+        except Exception as e:
+            logger.warning(f"Could not generate single-use invite link: {e}")
+
+    keyboard = [
+        [InlineKeyboardButton("🏆 मोफत VIP चॅनेल जॉइन करा (Answer Key सबमिट झाली)", url=channel_join_url)],
+        [InlineKeyboardButton("📖 सर्व १०० प्रश्न व उत्तरे पहा (Full Questions)", callback_data="review_all:0")],
+        [InlineKeyboardButton(f"❌ {result['incorrect']} चुकीचे प्रश्न व सविस्तर स्पष्टीकरण", callback_data="review_wrong:0")],
+        [InlineKeyboardButton("📥 डाऊनलोड १०० प्रश्न सविस्तर निकाल (HTML फाईल)", callback_data="download_html_report")],
+        [InlineKeyboardButton("📊 विषयनिहाय विश्लेषण (Subject Stats)", callback_data="show_sections")]
+    ]
+
+    if result.get("incorrect", 0) > 0:
+        keyboard.append([InlineKeyboardButton(f"📑 डाऊनलोड चुकीचे प्रश्न विश्लेषण ({result['incorrect']} प्रश्न)", callback_data="download_wrong_report")])
+
+    keyboard.append([InlineKeyboardButton("🔄 दुसरी रिस्पॉन्स शीट तपासा (Analyze Another)", callback_data="analyze")])
+
+    context.user_data["last_scorecard_text"] = full_card
+    context.user_data["last_scorecard_keyboard"] = keyboard
+
+    chat_id = update.effective_chat.id
+    await safe_send_message(
+        context.bot,
+        chat_id,
+        full_card,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        disable_web_page_preview=True
+    )
+    context.user_data["awaiting_pdf"] = False
+
+    # Automatically display full questions with all options and explanations immediately!
+    await send_question_review_page(update, context, offset=0, only_wrong=(result["incorrect"] > 0))
+
+async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles text input (manual score, UTR submission) and photos (payment screenshots)."""
+    user = update.effective_user
+    msg = update.message
+    if not msg:
+        return
+    raw_text = (msg.text or "").strip()
+
+    # Check if message was forwarded from a channel
+    forward_chat = None
+    if getattr(msg, "forward_from_chat", None):
+        forward_chat = msg.forward_from_chat
+    elif hasattr(msg, "forward_origin"):
+        forward_chat = getattr(msg.forward_origin, "chat", None)
+
+    if forward_chat and str(getattr(forward_chat, "type", "")) in ("channel", "supergroup", "group"):
+        f_id = str(forward_chat.id)
+        f_title = forward_chat.title or "Channel"
+        update_env_channel_id(f_id)
+
+        is_admin = False
+        can_post = False
+        try:
+            m = await context.bot.get_chat_member(chat_id=f_id, user_id=context.bot.id)
+            is_admin = m.status in ("administrator", "creator")
+            can_post = getattr(m, "can_post_messages", True)
+        except Exception:
+            pass
+
+        if is_admin and can_post:
+            await msg.reply_text(
+                f"✅ <b>चॅनेल यशस्वीरित्या कनेक्ट झाले! (Channel Connected)</b>\n\n"
+                f"📢 चॅनेल नाव: <b>{f_title}</b>\n"
+                f"🆔 चॅनेल आयडी: <code>{f_id}</code>\n"
+                f"👑 <b>Admin Status:</b> ✅ Administrator (Post Messages Allowed)\n\n"
+                f"आता या चॅनेलवर थेट क्विझ पोल्स पाठवण्यासाठी खालील कमांड दाबा:\n"
+                f"👉 <code>/postquizzes</code>",
+                parse_mode="HTML"
+            )
+        else:
+            bot_info = await context.bot.get_me()
+            add_link = f"https://t.me/{bot_info.username}?startchannel=true&admin=post_messages+edit_messages+delete_messages"
+            await msg.reply_text(
+                f"📢 <b>चॅनेल सापडले: {f_title} (ID: <code>{f_id}</code>)</b>\n\n"
+                f"⚠️ बॉट अजून या चॅनेलचा <b>Administrator नाही</b>.\n"
+                f"बॉटला चॅनेलमध्ये ॲड करण्यासाठी खालील १-क्लिक बटण दाबा 👇",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➕ १-क्लिक चॅनेल ॲडमिन करा (Add Admin)", url=add_link)]])
+            )
+        return
+
+    # Force Join Channel Gate
+    if not await check_channel_membership(context.bot, user.id):
+        await prompt_force_join(update, context)
+        return
+
+    # Check if user sent a response sheet Web / DigiALM URL
+    url_match = re.search(r"https?://[^\s<>\"']+", raw_text)
+    if url_match:
+        await handle_url_sheet(update, context, url_match.group(0))
+        return
+
+    # Check if user tapped one of the persistent reply keyboard buttons
+    clean_text = raw_text.lower()
+    if any(k in clean_text for k in ["start", "सुरू करा", "main menu", "मुख्य मेनू", "मेनू", "menu"]) or raw_text in ("/start", "/menu"):
+        await start(update, context)
+        return
+    elif any(k in clean_text for k in ["daily questions", "आजचे प्रश्न", "विचारलेले प्रश्न", "daily_questions", "questions"]) or raw_text == "/daily_questions":
+        await daily_questions_cmd(update, context)
+        return
+    elif any(k in clean_text for k in ["vip", "क्विझ चॅनेल", "quiz channel"]):
+        pay_info = get_upi_payment_details(user.id)
+        context.user_data["awaiting_payment_proof"] = True
+        caption = (
+            "💎 <b>VIP EXAM QUIZ CHANNEL — ₹99 LIFETIME ACCESS</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "🎯 <b>What You Get in the Channel:</b>\n"
+            "• Authentic questions from response sheets as interactive Telegram Quizzes\n"
+            "• Daily practice tests & question banks with instant explanations\n"
+            f"• Direct Channel Preview: <a href=\"{PAID_CHANNEL_LINK}\">Visit Channel Link</a>\n\n"
+            "📲 <b>Payment Details (Any UPI App):</b>\n"
+            f"• UPI ID: <code>{pay_info['upi_id']}</code> <i>(tap to copy)</i>\n"
+            f"• Amount: <b>₹{pay_info['amount']}</b>\n"
+            f"• Payee Name: <b>{pay_info['upi_name']}</b>\n\n"
+            "💡 <b>Instructions:</b>\n"
+            "1. Pay ₹99 via UPI.\n"
+            "2. Send your <b>12-digit UTR Number</b> or <b>Screenshot</b> here.\n"
+            "3. Your personal invite link will be issued immediately!"
+        )
+        keyboard = [
+            [InlineKeyboardButton("🔗 Open Paid Channel Preview", url=PAID_CHANNEL_LINK)],
+            [InlineKeyboardButton("📤 Submit UTR / Screenshot", callback_data="submit_proof")],
+            [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]
+        ]
+        await msg.reply_text(caption, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True)
+        return
+    elif any(k in clean_text for k in ["कॅल्क्युलेटर", "calculator", "quick rank", "रँक"]):
+        keyboard = [[InlineKeyboardButton(c["display_name"], callback_data=f"man_exam:{k}")] for k, c in EXAMS.items()]
+        keyboard.append([InlineKeyboardButton("🔙 मुख्य मेनू", callback_data="main_menu")])
+        await msg.reply_text("<b>Quick Rank Predictor:</b>\nSelect which exam you want to predict your rank for:", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+    elif any(k in clean_text for k in ["help", "मदत", "faq", "मार्गदर्शन"]) or raw_text == "/help":
+        help_text = (
+            "📖 <b>How ExamRankers Works (100% Free):</b>\n\n"
+            "1. <b>Upload Sheet:</b> Select your category and send your official response sheet PDF.\n"
+            "2. <b>4-Tier Rank:</b> Bot calculates overall, exam, post-wise, and category rank.\n"
+            "3. <b>Subject Dashboard:</b> View section-wise marks and accuracy.\n"
+            "4. <b>Wrong Answers & Objections:</b> AI explains errors & checks objections!\n\n"
+            f"💎 <i>Optional:</i> Join our <a href=\"{PAID_CHANNEL_LINK}\">Paid Quiz Channel</a> (₹99) for daily authentic exam polls."
+        )
+        keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
+        await msg.reply_text(help_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True)
+        return
+
+    # Case 1: Payment proof
+    if context.user_data.get("awaiting_payment_proof") or (msg.caption and "utr" in msg.caption.lower()):
+        utr_text = msg.text or msg.caption or "Screenshot Uploaded"
+        photo_id = msg.photo[-1].file_id if msg.photo else None
+
+        pay_id = record_payment_request(
+            user_id=user.id,
+            username=user.username or "",
+            first_name=user.first_name or "",
+            utr=utr_text,
+            file_id=photo_id
+        )
+        context.user_data["awaiting_payment_proof"] = False
+
+        await msg.reply_text(
+            "✅ <b>Payment Proof Received!</b>\n\n"
+            f"Your submission (ID: #{pay_id}) has been sent for verification.\n"
+            f"Your invite link to the <b>Paid Quiz Channel</b> (<a href=\"{PAID_CHANNEL_LINK}\">Preview</a>) will be delivered here automatically! ⏳",
+            parse_mode="HTML",
+            disable_web_page_preview=True
+        )
+
+        admin_kb = [
+            [
+                InlineKeyboardButton("✅ Approve & Send One-Time Invite Link", callback_data=f"approve_pay:{pay_id}"),
+                InlineKeyboardButton("❌ Reject", callback_data=f"reject_pay:{pay_id}")
+            ]
+        ]
+        admin_msg = (
+            f"🔔 <b>New ₹99 Channel Payment Request #{pay_id}!</b>\n"
+            f"👤 User: {user.first_name} (@{user.username or 'NoUsername'})\n"
+            f"🆔 Telegram ID: <code>{user.id}</code>\n"
+            f"📝 UTR / Details: <code>{utr_text}</code>"
+        )
+        for admin_id in ADMIN_IDS:
+            try:
+                if photo_id:
+                    await context.bot.send_photo(
+                        chat_id=admin_id,
+                        photo=photo_id,
+                        caption=admin_msg,
+                        parse_mode="HTML",
+                        reply_markup=InlineKeyboardMarkup(admin_kb)
+                    )
+                else:
+                    await context.bot.send_message(
+                        chat_id=admin_id,
+                        text=admin_msg,
+                        parse_mode="HTML",
+                        reply_markup=InlineKeyboardMarkup(admin_kb)
+                    )
+            except Exception as e:
+                logger.error(f"Failed to alert admin {admin_id}: {e}")
+        return
+
+    # Case 2: Manual score calculation
+    if context.user_data.get("awaiting_manual_score") and msg.text:
+        try:
+            score = float(msg.text.strip())
+        except ValueError:
+            await msg.reply_text("⚠️ Please enter a valid numeric score (e.g. 124.5).")
+            return
+
+        exam_key = context.user_data.get("manual_exam_key", "EXAMPLE_2026")
+        category = context.user_data.get("manual_category", "Open")
+        config = EXAMS.get(exam_key, {})
+
+        overall_scores, exam_scores, post_scores, cat_scores, post_cat_scores = get_candidate_scores(exam_key, category)
+        rank_data = estimate_cohort_rank(score, exam_scores, category, cat_scores, overall_scores=overall_scores)
+
+        with get_connection() as db:
+            db.execute(
+                """INSERT INTO uploads(
+                    telegram_user_id, filename, storage_path, exam_key, category, post_name,
+                    score, rank, percentile, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (user.id, "manual_input", "none", exam_key, category, "General",
+                 score, rank_data.get("exam_rank", rank_data.get("rank")), rank_data.get("exam_percentile", rank_data.get("percentile")), "manual")
+            )
+
+        resp = (
+            f"🎯 <b>FREE QUICK 4-TIER RANK PREDICTION</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📋 <b>Exam:</b> {config.get('display_name', exam_key)}\n"
+            f"👤 <b>Category:</b> {category}\n"
+            f"🏆 <b>Your Entered Score:</b> <code>{score} marks</code>\n\n"
+            f"📈 <b>Live 4-Tier Rank & Percentile:</b>\n"
+            f"🌐 <b>1. Overall State Rank:</b> <b>#{rank_data.get('overall_rank', 1)}</b> of <b>{rank_data.get('overall_total', 1)}</b> ({rank_data.get('overall_percentile', 0)}%ile)\n"
+            f"📋 <b>2. Exam Cohort Rank:</b> <b>#{rank_data.get('exam_rank', 1)}</b> of <b>{rank_data.get('exam_total', 1)}</b> ({rank_data.get('exam_percentile', 0)}%ile)\n"
+        )
+        if rank_data.get("category_rank"):
+            resp += f"👤 <b>3. Category Rank ({category}):</b> <b>#{rank_data['category_rank']}</b> of <b>{rank_data['category_total']}</b> ({rank_data.get('category_percentile', 0)}%ile)\n"
+
+        resp += (
+            f"\n• Cohort Average: <b>{rank_data.get('avg_score', 0)}</b>\n"
+            f"• Top Score: <b>{rank_data.get('top_score', 0)}</b>\n"
+            f"• Predicted Zone: {rank_data.get('zone', 'N/A')}\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"💡 <i>Tip: Upload your official response sheet PDF to get automatic Post-wise rank and subject dashboard!</i>"
+        )
+
+        keyboard = [
+            [InlineKeyboardButton("💎 Join Paid ₹99 Quiz Channel (Official MCQs)", callback_data="join_paid")],
+            [InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]
+        ]
+        await msg.reply_text(resp, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+        context.user_data["awaiting_manual_score"] = False
+        return
+
+    # Case 3: Forwarded post from channel to detect channel ID (Admin helper)
+    if msg.forward_from_chat:
+        f_chat = msg.forward_from_chat
+        await msg.reply_text(
+            f"🔍 <b>Forwarded Channel Detected:</b>\n"
+            f"• Title: <b>{f_chat.title}</b>\n"
+            f"• Channel ID: <code>{f_chat.id}</code>\n"
+            f"• Username: @{f_chat.username or 'Private'}\n\n"
+            f"<i>You can paste <code>PAID_CHANNEL_ID={f_chat.id}</code> into your .env file!</i>",
+            parse_mode="HTML"
+        )
+        return
+
+    # Default fallback: If user sends ANY text message, greeting, or unhandled text
+    await start(update, context)
+
+# ----------------- ADMIN COMMANDS ----------------- #
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Displays bot statistics, ₹99 paid members, and ad performance."""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to bot administrators.")
+        return
+
+    with get_connection() as db:
+        total_users = db.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        total_uploads = db.execute("SELECT COUNT(*) FROM uploads").fetchone()[0]
+        paid_count = db.execute("SELECT COUNT(*) FROM payments WHERE status = 'approved'").fetchone()[0]
+        pending_pay = db.execute("SELECT COUNT(*) FROM payments WHERE status = 'pending'").fetchone()[0]
+        revenue = paid_count * float(os.getenv("CHANNEL_FEE_INR", "99"))
+        ad_row = db.execute("SELECT impressions, clicks FROM ads_config WHERE is_active = 1 ORDER BY id DESC LIMIT 1").fetchone()
+
+    ad_imp = ad_row[0] if ad_row else 0
+    ad_clk = ad_row[1] if ad_row else 0
+    ctr = round((ad_clk / ad_imp * 100), 2) if ad_imp > 0 else 0.0
+
+    msg = (
+        "📊 <b>BOT OWNER & REVENUE DASHBOARD</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"👥 Total Registered Users: <b>{total_users}</b>\n"
+        f"📑 Response Sheets Analyzed: <b>{total_uploads}</b>\n\n"
+        "💎 <b>Paid ₹99 Channel Stats:</b>\n"
+        f"• Approved Paid Members: <b>{paid_count}</b>\n"
+        f"• Pending Payment Approvals: <b>{pending_pay}</b>\n"
+        f"• Total Paid Revenue: <b>₹{revenue:,.2f}</b>\n"
+        f"• Channel Link: <a href=\"{PAID_CHANNEL_LINK}\">{PAID_CHANNEL_LINK}</a>\n"
+        f"• Auto-Quiz Channel ID: <code>{PAID_CHANNEL_ID or 'Not Set'}</code>\n\n"
+        "📢 <b>Sponsor Ads Performance:</b>\n"
+        f"• Ad Impressions: <b>{ad_imp}</b> | Clicks: <b>{ad_clk}</b> (CTR: {ctr}%)\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "<i>Use /paid_users to see all paid subscribers.</i>\n"
+        "<i>Use /post_quizzes &lt;ID&gt; to generate quizzes from any stored sheet.</i>"
+    )
+    kb = [
+        [InlineKeyboardButton("📊 संपूर्ण मास्टर परीक्षा अहवाल (Master Report)", callback_data="admin_master_report")],
+        [InlineKeyboardButton("📑 One-Liner Question Bank (PDF)", callback_data="admin_qbank")],
+        [InlineKeyboardButton("🎨 माइंडमॅप पोस्ट करा (Mindmap)", callback_data="admin_post_mindmap"), InlineKeyboardButton("🚀 ॲड पोस्ट करा (Promo)", callback_data="admin_post_promo")],
+        [InlineKeyboardButton("📦 सर्व रिस्पॉन्स शीट्स ZIP डाऊनलोड करा", callback_data="admin_dl_all_zip")],
+        [InlineKeyboardButton("📂 साठवलेल्या फाईल्स यादी (Files)", callback_data="admin_files_list")],
+        [InlineKeyboardButton("📢 चॅनेल स्टेटस तपासा", callback_data="check_channel_status")]
+    ]
+    await update.message.reply_text(msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb), disable_web_page_preview=True)
+
+async def channel_id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Helper to detect channel ID: forward a message from your channel or use in channel."""
+    chat = update.effective_chat
+    await update.message.reply_text(
+        f"🔍 Current Chat / Channel ID:\n<code>{chat.id}</code>\nTitle: <b>{chat.title or chat.first_name}</b>",
+        parse_mode="HTML"
+    )
+
+async def paid_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lists recent paid members and approval status."""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to bot administrators.")
+        return
+
+    with get_connection() as db:
+        rows = db.execute(
+            "SELECT id, telegram_user_id, username, first_name, status, created_at FROM payments ORDER BY id DESC LIMIT 20"
+        ).fetchall()
+
+    if not rows:
+        await update.message.reply_text("No payment submissions yet.")
+        return
+
+    lines = ["<b>Recent ₹99 Channel Payment Submissions:</b>\n"]
+    for pid, uid, uname, fname, status, created in rows:
+        lines.append(f"• <b>#{pid}:</b> {fname} (@{uname or 'none'}) | ID: <code>{uid}</code> | <b>{status.upper()}</b> | {created}")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+async def post_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Admin command: /postquizes or /postquizzes
+    Publishes ALL unposted questions from all uploaded response sheets (or a specific upload)
+    1-by-1 continuously to the channel with passages, explanations, and deduplication.
+    """
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to bot administrators.")
+        return
+
+    # 1. Determine target channel ID
+    channel = os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID
+
+    # Parse optional arguments: /postquizes [channel_id] [upload_id/count]
+    args = list(context.args) if context.args else []
+    forced_upload_id = None
+    max_q = 99999  # Default: continue and post ALL questions!
+
+    for arg in list(args):
+        if arg.startswith("-100") or (arg.startswith("-") and arg[1:].isdigit()):
+            channel = arg
+            update_env_channel_id(channel)
+            args.remove(arg)
+        elif arg.isdigit():
+            val = int(arg)
+            if val < 500 and forced_upload_id is None:
+                forced_upload_id = val
+            else:
+                max_q = val
+
+    if not channel or channel.startswith("http"):
+        guide_text = (
+            "⚠️ <b>चॅनेल कनेक्ट करणे आवश्यक आहे (Channel Connection Needed):</b>\n\n"
+            f"आपली चॅनेल लिंक: <a href=\"{PAID_CHANNEL_LINK}\">{PAID_CHANNEL_LINK}</a>\n\n"
+            "Telegram नियमांनुसार प्रायव्हेट इनव्हाइट लिंकवर थेट क्विझ पाठवण्यासाठी बॉटला चॅनेलमध्ये <b>Administrator</b> बनवणे आवश्यक असते:\n\n"
+            "<b>फक्त २ सोप्या स्टेप्स करा:</b>\n"
+            "1️⃣ आपल्या चॅनेलच्या Settings ➔ Administrators ➔ <b>Add Admin</b> वर जा.\n"
+            "2️⃣ <code>@ExamRankersIndiaBot</code> सर्च करून ॲड करा ('Post Messages' परवानगी ऑन ठेवा).\n"
+            "3️⃣ चॅनेलवरील कोणताही एक मेसेज या बॉटला <b>Forward</b> करा!\n\n"
+            "💡 <i>किंवा आपल्या चॅनेलचा numeric ID माहीत असल्यास थेट कमांड द्या:</i>\n"
+            "<code>/postquizes -100xxxxxxxxxx</code>"
+        )
+        await update.message.reply_text(guide_text, parse_mode="HTML", disable_web_page_preview=True)
+        return
+
+    status_msg = await update.message.reply_text(
+        "⏳ <b>सर्व रिस्पॉन्स शीट्समधून अप्रकाशित प्रश्न गोळा करत आहे...</b>\n"
+        f"🎯 लक्ष्य चॅनेल: <code>{channel}</code>\n"
+        "<i>(प्रक्रिया १-बाय-१ सातत्याने चालू राहील)</i>",
+        parse_mode="HTML"
+    )
+
+    all_unposted_quizzes = []
+    scanned_sources = []
+
+    try:
+        # Case A: Specific upload ID requested
+        if forced_upload_id:
+            with get_connection() as db:
+                row = db.execute("SELECT storage_path, exam_key FROM uploads WHERE id = ?", (forced_upload_id,)).fetchone()
+            if row and Path(row[0]).is_file():
+                s_path = Path(row[0])
+                scanned_sources.append((s_path, row[1] or "महाराष्ट्र सरळसेवा भरती"))
+        else:
+            # Case B: Collect from ALL uploaded response sheets in database & disk
+            with get_connection() as db:
+                rows = db.execute("SELECT DISTINCT storage_path, exam_key FROM uploads WHERE storage_path IS NOT NULL ORDER BY id DESC").fetchall()
+                for sp, ek in rows:
+                    if sp and Path(sp).is_file():
+                        scanned_sources.append((Path(sp), ek or "महाराष्ट्र सरळसेवा भरती"))
+
+            # Fallback to RESPONSE_DIR if DB has no paths
+            if not scanned_sources and RESPONSE_DIR.exists():
+                for p in RESPONSE_DIR.iterdir():
+                    if p.is_file() and p.suffix.lower() in (".html", ".htm", ".pdf"):
+                        scanned_sources.append((p, "महाराष्ट्र सरळसेवा भरती"))
+
+        if not scanned_sources:
+            await status_msg.edit_text("❌ कोणतीही रिस्पॉन्स शीट उपलब्ध नाही. कृपया आधी रिस्पॉन्स शीट अपलोड करा.")
+            return
+
+        # Extract quizzes from all collected response sheets
+        for s_path, ek in scanned_sources:
+            try:
+                if s_path.suffix.lower() in (".html", ".htm"):
+                    raw_html = s_path.read_text(encoding="utf-8", errors="ignore")
+                    parsed_text = parse_html_response_sheet(raw_html)
+                else:
+                    parsed_text = extract_pdf_text(str(s_path))
+
+                recs = parse_answers(parsed_text)
+                batch = extract_quizzes_from_records(
+                    recs,
+                    max_questions=max_q - len(all_unposted_quizzes),
+                    filter_unposted=True,
+                    db_path=DB_PATH
+                )
+                all_unposted_quizzes.extend(batch)
+                if len(all_unposted_quizzes) >= max_q:
+                    break
+            except Exception as e:
+                logger.warning(f"Error parsing {s_path} in post_quizzes: {e}")
+
+        if not all_unposted_quizzes:
+            await status_msg.edit_text(
+                "✅ <b>सर्व प्रश्न आधीच चॅनेलवर पोस्ट केलेले आहेत!</b>\n"
+                "कोणताही नवीन अप्रकाशित प्रश्न शिल्लक नाही. नवीन रिस्पॉन्स शीट येताच आपोआप पुढील प्रश्न १-बाय-१ पोस्ट केले जातील."
+            )
+            return
+
+        total_to_post = len(all_unposted_quizzes)
+        await status_msg.edit_text(
+            f"🚀 <b>एकूण {total_to_post} नवीन प्रश्न सापडले!</b>\n"
+            f"📢 <b>चॅनेल:</b> <code>{channel}</code>\n"
+            f"⚡ <i>आता १-बाय-१ सातत्याने पोस्टिंग सुरू आहे... कृपया थांबा.</i>",
+            parse_mode="HTML"
+        )
+
+        header = (
+            f"🎯 <b>महाराष्ट्र सरळसेवा भरती अधिकृत प्रश्न क्विझ (TCS & IBPS Pattern)</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📊 <b>एकूण प्रश्न:</b> {total_to_post}\n"
+            f"👇 <i>खालील सर्व प्रश्न अचूक सोडवा आणि लगेच अधिकृत उत्तर व स्पष्टीकरण तपासा:</i>"
+        )
+
+        sent_count = await send_quizzes_to_channel(
+            bot=context.bot,
+            channel_id=channel,
+            quizzes=all_unposted_quizzes,
+            header_text=header,
+            send_priority_topics=True,
+            db_path=DB_PATH
+        )
+
+        if sent_count > 0:
+            await status_msg.edit_text(
+                f"✅ <b>यशस्वीरित्या सर्व {sent_count} प्रश्न चॅनेलवर १-बाय-१ पोस्ट झाले!</b>\n\n"
+                f"📢 <b>चॅनेल:</b> <code>{channel}</code>\n"
+                f"📝 <b>एकूण प्रश्न:</b> {sent_count}\n"
+                f"🔗 <b>चॅनेल लिंक:</b> <a href=\"{PAID_CHANNEL_LINK}\">{PAID_CHANNEL_LINK}</a>",
+                parse_mode="HTML",
+                disable_web_page_preview=True
+            )
+        else:
+            await status_msg.edit_text(
+                f"⚠️ क्विझ पाठवता आल्या नाहीत.\n"
+                f"कृपया खात्री करा की बॉट (<code>@ExamRankersIndiaBot</code>) चॅनेल <code>{channel}</code> चा Administrator आहे आणि 'Post Messages' परवानगी दिलेली आहे.",
+                parse_mode="HTML"
+            )
+
+    except Exception as e:
+        logger.error(f"Error in post_quizzes: {e}", exc_info=True)
+        await status_msg.edit_text(f"❌ त्रुटी आली: {e}")
+
+async def set_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Allows admin to update active sponsor ad: /set_ad Text | Button | URL"""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to bot administrators.")
+        return
+
+    raw = " ".join(context.args)
+    if not raw or "|" not in raw:
+        await update.message.reply_text("Usage:\n<code>/set_ad Ad Text Here | Button Text | https://link.com</code>", parse_mode="HTML")
+        return
+
+    parts = [p.strip() for p in raw.split("|")]
+    if len(parts) < 3:
+        await update.message.reply_text("Error: Format must be: <code>Ad Text | Button Label | https://target-link</code>", parse_mode="HTML")
+        return
+
+    text, btn_text, url = parts[0], parts[1], parts[2]
+    with get_connection() as db:
+        db.execute(
+            "INSERT INTO ads_config (ad_name, ad_text, button_text, button_url, is_active) VALUES (?, ?, ?, ?, 1)",
+            ("Custom Sponsor Ad", text, btn_text, url)
+        )
+    await update.message.reply_text(f"✅ <b>Sponsored Ad Updated Successfully!</b>\n\n<b>Text:</b> {text}\n<b>Button:</b> {btn_text}\n<b>URL:</b> {url}", parse_mode="HTML")
+
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Broadcasts a sponsored message to all registered users."""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to bot administrators.")
+        return
+
+    message_text = " ".join(context.args).strip()
+    if not message_text:
+        await update.message.reply_text("Usage: <code>/broadcast Your promotional message here</code>", parse_mode="HTML")
+        return
+
+    with get_connection() as db:
+        users = [r[0] for r in db.execute("SELECT telegram_id FROM users").fetchall()]
+
+    if not users:
+        await update.message.reply_text("No registered users found in database yet.")
+        return
+
+    status_msg = await update.message.reply_text(f"🚀 Broadcasting message to {len(users)} users...")
+    sent, failed = 0, 0
+    for uid in users:
+        try:
+            await context.bot.send_message(chat_id=uid, text=message_text, parse_mode="HTML")
+            sent += 1
+        except Exception:
+            try:
+                await context.bot.send_message(chat_id=uid, text=message_text)
+                sent += 1
+            except Exception:
+                failed += 1
+
+    await status_msg.edit_text(f"✅ <b>Broadcast Completed:</b>\n• Successfully Sent: {sent}\n• Failed/Blocked: {failed}", parse_mode="HTML")
+
+async def responses_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Command to get all question responses, full HTML report, and interactive navigator (Admin only)."""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to bot administrators.")
+        return
+
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
+
+    forced_id = None
+    if context.args and context.args[0].isdigit():
+        forced_id = int(context.args[0])
+
+    records = []
+    meta = {}
+    result = {}
+    exam_name = "महाराष्ट्र सरळसेवा भरती (GMC Peon Exam)"
+
+    target_path = None
+    with get_connection() as db:
+        if forced_id:
+            row = db.execute("SELECT storage_path, exam_key FROM uploads WHERE id = ?", (forced_id,)).fetchone()
+        else:
+            row = db.execute("SELECT storage_path, exam_key FROM uploads ORDER BY id DESC LIMIT 1").fetchone()
+
+        if row and Path(row[0]).is_file():
+            target_path = Path(row[0])
+            exam_name = EXAMS.get(row[1], {}).get("display_name", row[1] or exam_name)
+
+    if not target_path:
+        candidates = list(RESPONSE_DIR.glob("*.html")) + list(RESPONSE_DIR.glob("*.pdf"))
+        if candidates:
+            candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            target_path = candidates[0]
+
+    if target_path and target_path.is_file():
+        try:
+            if target_path.suffix.lower() in (".html", ".htm"):
+                raw_html = target_path.read_text(encoding="utf-8", errors="ignore")
+                parsed_text = parse_html_response_sheet(raw_html)
+            else:
+                parsed_text = extract_pdf_text(str(target_path))
+
+            records = parse_answers(parsed_text)
+            if not meta:
+                meta = extract_post_and_metadata(parsed_text)
+            cfg = EXAMS.get("GMC_SARALSEWA", {"positive_marks": 1.0, "negative_marks": 0.0})
+            result = score_answers(records, cfg)
+            context.user_data["last_records"] = records
+            context.user_data["candidate_meta"] = meta
+            context.user_data["last_result"] = result
+            context.user_data["last_exam_name"] = exam_name
+        except Exception as e:
+            logger.error(f"Error restoring records in responses_cmd: {e}")
+
+    if not records:
+        await update.message.reply_text(
+            "⚠️ <b>कोणतीही रिस्पॉन्स शीट आढळली नाही.</b>\n"
+            "कृपया आधी आपल्या रिस्पॉन्स शीटची लिंक (DigiALM URL) पेस्ट करा किंवा PDF फाईल पाठवा.",
+            parse_mode="HTML"
+        )
+        return
+
+    status_msg = await update.message.reply_text("⏳ <i>सर्व प्रश्नांची सविस्तर उत्तरे व स्पष्टीकरण फाईल तयार करत आहे...</i>", parse_mode="HTML")
+    try:
+        html_code = generate_html_full_report(records, meta, result, exam_name)
+        roll = meta.get("roll_number") or str(user_id)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            file_path = Path(tmp_dir) / f"ExamRankers_All_Responses_{roll}.html"
+            file_path.write_text(html_code, encoding="utf-8")
+            with open(file_path, "rb") as doc_f:
+                await context.bot.send_document(
+                    chat_id=chat_id,
+                    document=doc_f,
+                    filename=f"ExamRankers_All_Responses_{roll}.html",
+                    caption=(
+                        f"📄 <b>सर्व {len(records)} प्रश्नांची उत्तरे व अधिकृत स्पष्टीकरण फाईल!</b>\n\n"
+                        f"• एकूण प्रश्न: <b>{len(records)}</b>\n"
+                        f"• बरोबर उत्तरे: <b>{result.get('correct', 0)}</b>\n"
+                        f"• चुकीची उत्तरे: <b>{result.get('incorrect', 0)}</b>\n\n"
+                        "💡 <i>ही फाईल कोणत्याही ब्राऊझरमध्ये उघडून तुम्ही सर्व प्रश्न, तुमचे उत्तर व बरोबर उत्तर पाहू शकता.</i>"
+                    ),
+                    parse_mode="HTML",
+                    read_timeout=60,
+                    write_timeout=60,
+                    connect_timeout=60
+                )
+        await status_msg.delete()
+    except Exception as e:
+        logger.warning(f"Could not send HTML report in responses_cmd: {e}")
+        await status_msg.edit_text(f"⚠️ HTML फाईल तयार करताना अडचण आली: {e}")
+
+    # Launch the interactive review page for direct on-screen browsing
+    await send_question_review_page(update, context, offset=0, only_wrong=False)
+
+async def admin_files(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: View all stored response sheets with download buttons and ZIP export."""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to bot administrators.")
+        return
+
+    with get_connection() as db:
+        rows = db.execute(
+            "SELECT id, telegram_user_id, filename, score, exam_key, created_at, storage_path FROM uploads ORDER BY id DESC LIMIT 15"
+        ).fetchall()
+        total_count = db.execute("SELECT COUNT(*) FROM uploads").fetchone()[0]
+
+    if not rows:
+        await update.message.reply_text("📂 <b>No response sheets stored yet.</b>", parse_mode="HTML")
+        return
+
+    lines = [
+        f"📂 <b>सर्व साठवलेल्या रिस्पॉन्स शीट्स (Stored Response Sheets: {total_count})</b>",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        "<i>कोणतीही फाईल डाऊनलोड करण्यासाठी खालील बटण दाबा किंवा <code>/getfile ID</code> वापरा:</i>\n"
+    ]
+
+    kb_rows = []
+    current_btn_row = []
+
+    for file_id, uid, fname, score, exam_key, created_at, spath in rows:
+        f_size = "N/A"
+        if spath and Path(spath).is_file():
+            sz = Path(spath).stat().st_size
+            f_size = f"{round(sz / 1024, 1)} KB" if sz < 1024 * 1024 else f"{round(sz / (1024 * 1024), 2)} MB"
+
+        clean_fn = Path(fname or "sheet").name
+        clean_dt = created_at[:16] if created_at else ""
+        lines.append(f"• <b>ID #{file_id}:</b> <code>{clean_fn}</code>\n  👤 User: <code>{uid}</code> | Score: <b>{score}</b> | Size: {f_size} | {clean_dt}")
+
+        current_btn_row.append(InlineKeyboardButton(f"📥 #{file_id}", callback_data=f"getfile:{file_id}"))
+        if len(current_btn_row) == 5:
+            kb_rows.append(current_btn_row)
+            current_btn_row = []
+
+    if current_btn_row:
+        kb_rows.append(current_btn_row)
+
+    kb_rows.append([InlineKeyboardButton("📦 सर्व फाईल्स ZIP डाऊनलोड करा (Download All ZIP)", callback_data="admin_dl_all_zip")])
+    kb_rows.append([InlineKeyboardButton("📢 चॅनेल स्टेटस तपासा (Channel Status)", callback_data="check_channel_status")])
+
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb_rows))
+
+async def get_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command to download a specific stored response sheet by ID."""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to bot administrators.")
+        return
+
+    if not context.args or not context.args[0].isdigit():
+        await update.message.reply_text("Usage: <code>/getfile &lt;ID&gt;</code>\nExample: <code>/getfile 1</code>", parse_mode="HTML")
+        return
+
+    file_id = int(context.args[0])
+    with get_connection() as db:
+        row = db.execute("SELECT filename, storage_path, exam_key, score FROM uploads WHERE id = ?", (file_id,)).fetchone()
+
+    if not row or not Path(row[1]).is_file():
+        await update.message.reply_text(f"❌ Upload ID #{file_id} फाईल डिस्कवर सापडली नाही.")
+        return
+
+    fpath = Path(row[1])
+    kb = [
+        [InlineKeyboardButton(f"📊 Full HTML Report", callback_data=f"admin_report:{file_id}")],
+        [InlineKeyboardButton(f"❌ Wrong Questions Review", callback_data=f"admin_wrong:{file_id}")]
+    ]
+    with open(fpath, "rb") as doc_f:
+        await context.bot.send_document(
+            chat_id=update.effective_chat.id,
+            document=doc_f,
+            filename=fpath.name,
+            caption=f"📄 <b>Stored Response Sheet #{file_id}</b>\n• Exam: <code>{row[2]}</code>\n• Score: <b>{row[3]}</b>\n• Filename: <code>{fpath.name}</code>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
+
+async def download_all_responses_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: Downloads all stored response sheets as a single compressed ZIP archive."""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to bot administrators.")
+        return
+
+    files = [f for f in RESPONSE_DIR.iterdir() if f.is_file() and f.suffix.lower() in (".html", ".htm", ".pdf")]
+    if not files:
+        await update.message.reply_text("⚠️ No stored response sheet files found on disk.")
+        return
+
+    chat_id = update.effective_chat.id
+    status_msg = await context.bot.send_message(
+        chat_id=chat_id,
+        text=f"⏳ <i>एकूण {len(files)} रिस्पॉन्स शीट्सची ZIP फाईल तयार करत आहे...</i>",
+        parse_mode="HTML"
+    )
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        zip_path = Path(tmp_dir) / f"ExamRankers_All_Response_Sheets_{ts}.zip"
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for f in files:
+                zipf.write(f, arcname=f.name)
+
+        zip_size_mb = round(zip_path.stat().st_size / (1024 * 1024), 2)
+        with open(zip_path, "rb") as zf:
+            await context.bot.send_document(
+                chat_id=chat_id,
+                document=zf,
+                filename=f"ExamRankers_All_Response_Sheets_{ts}.zip",
+                caption=(
+                    f"📦 <b>सर्व स्टोअर केलेल्या रिस्पॉन्स शीट्स (ZIP Archive)</b>\n\n"
+                    f"• एकूण फाईल्स: <b>{len(files)}</b>\n"
+                    f"• ZIP साईज: <b>{zip_size_mb} MB</b>\n"
+                    f"• दिनांक: <code>{datetime.now().strftime('%d-%m-%Y %H:%M:%S')}</code>\n\n"
+                    "💡 <i>या ZIP फाईलमध्ये सर्व विद्यार्थ्यांच्या मूळ HTML व PDF रिस्पॉन्स शीट्स सुरक्षित आहेत.</i>"
+                ),
+                parse_mode="HTML",
+                read_timeout=120,
+                write_timeout=120,
+                connect_timeout=60
+            )
+    await status_msg.delete()
+
+async def wrong_answers_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Command to get all incorrect answers, detailed explanations, and objection review."""
+    chat_id = update.effective_chat.id
+    records = context.user_data.get("last_records", [])
+    meta = context.user_data.get("candidate_meta", {})
+    result = context.user_data.get("last_result", {})
+    exam_name = context.user_data.get("last_exam_name", "महाराष्ट्र सरळसेवा भरती")
+
+    if not records:
+        target_path = None
+        with get_connection() as db:
+            row = db.execute("SELECT storage_path, exam_key FROM uploads ORDER BY id DESC LIMIT 1").fetchone()
+            if row and Path(row[0]).is_file():
+                target_path = Path(row[0])
+                exam_name = EXAMS.get(row[1], {}).get("display_name", row[1] or exam_name)
+        if target_path and target_path.is_file():
+            try:
+                if target_path.suffix.lower() in (".html", ".htm"):
+                    raw_html = target_path.read_text(encoding="utf-8", errors="ignore")
+                    text = parse_html_response_sheet(raw_html)
+                else:
+                    text = extract_pdf_text(str(target_path))
+                records = parse_answers(text)
+                meta = extract_post_and_metadata(text)
+                cfg = EXAMS.get("GMC_SARALSEWA", {"positive_marks": 1.0, "negative_marks": 0.0})
+                result = score_answers(records, cfg)
+                context.user_data["last_records"] = records
+                context.user_data["candidate_meta"] = meta
+                context.user_data["last_result"] = result
+                context.user_data["last_exam_name"] = exam_name
+            except Exception as e:
+                logger.error(f"Error loading records in wrong_answers_cmd: {e}")
+
+    if not records:
+        await update.message.reply_text(
+            "⚠️ <b>कोणतीही रिस्पॉन्स शीट सक्रिय नाही.</b>\nकृपया आधी आपल्या रिस्पॉन्स शीटची लिंक (DigiALM URL) पेस्ट करा किंवा PDF फाईल पाठवा.",
+            parse_mode="HTML"
+        )
+        return
+
+    wrong_records = [r for r in records if r.get("evaluation") == "incorrect"]
+    if not wrong_records:
+        await update.message.reply_text("🎉 <b>अभिनंदन!</b> या प्रश्नपत्रिकेत तुमचे १ही उत्तर चुकीचे नाही (0 incorrect answers)!", parse_mode="HTML")
+        return
+
+    status_msg = await update.message.reply_text(f"⏳ <i>सर्व {len(wrong_records)} चुकीच्या प्रश्नांची सविस्तर स्पष्टीकरणासह HTML फाईल तयार करत आहे...</i>", parse_mode="HTML")
+    try:
+        html_code = generate_incorrect_answers_report(records, meta, result, exam_name)
+        roll = meta.get("roll_number") or str(update.effective_user.id)
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            file_path = Path(tmp_dir) / f"ExamRankers_Wrong_Questions_{roll}.html"
+            file_path.write_text(html_code, encoding="utf-8")
+            with open(file_path, "rb") as doc_f:
+                await context.bot.send_document(
+                    chat_id=chat_id,
+                    document=doc_f,
+                    filename=f"ExamRankers_Wrong_Questions_{roll}.html",
+                    caption=(
+                        f"❌ <b>येथे तुमचे सर्व {len(wrong_records)} चुकीच्या प्रश्नांचे सविस्तर विश्लेषण आहे!</b>\n\n"
+                        "• <b>गणित व बुद्धिमत्ता:</b> पायरी-पायरीने अचूक सोडवणूक (Step-by-Step Solution)\n"
+                        "• <b>मराठी व इंग्रजी:</b> अचूक व्याकरण नियम व संदर्भ (Grammar Rules)\n"
+                        "• <b>सामान्य ज्ञान:</b> अधिकृत शासकीय संदर्भ व तथ्य\n"
+                        "• <b>आक्षेप तपासणी:</b> अधिकृत हरकतींसाठी आक्षेप मसुदा (Objection Draft)\n\n"
+                        "💡 <i>ही फाईल कोणत्याही ब्राऊझरमध्ये उघडून तुम्ही प्रत्येक चुकीचा प्रश्न, तुमचे उत्तर व बरोबर उत्तर पाहू शकता.</i>"
+                    ),
+                    parse_mode="HTML"
+                )
+        await status_msg.delete()
+    except Exception as e:
+        logger.warning(f"Error in wrong_answers_cmd: {e}")
+        await status_msg.edit_text(f"❌ Error generating wrong answers report: {e}")
+
+    await send_question_review_page(update, context, offset=0, only_wrong=True)
+
+async def connect_channel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: Provides 1-click automatic administrator addition link to eliminate username search issues."""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to bot administrators.")
+        return
+
+    bot_info = await context.bot.get_me()
+    add_link = f"https://t.me/{bot_info.username}?startchannel=true&admin=post_messages+edit_messages+delete_messages"
+
+    text = (
+        "🔗 <b>बॉटला तुमच्या Telegram चॅनेलशी १-क्लिकमध्ये कनेक्ट करा:</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "Telegram चॅनेलच्या Settings मध्ये सर्च करताना बॉट न दिसल्यास खालील <b>१-क्लिक लिंक</b> वापरा:\n\n"
+        "👉 <b>फक्त १ सोपी स्टेप:</b>\n"
+        "खालील <b>'➕ चॅनेल ॲडमिन करा'</b> बटणावर क्लिक करा ➔ तुमचे चॅनेल निवडा ➔ Confirm करा.\n"
+        "बॉट आपोआप <b>Administrator</b> म्हणून ॲड होईल आणि चॅनेल आयडी आपोआप सेव्ह होईल!\n\n"
+        "💡 <i>पर्याय: चॅनेलवरील कोणताही एक मेसेज या बॉटला Forward केला तरीही चॅनेल आपोआप कनेक्ट होते.</i>\n\n"
+        f"सद्य कनेक्टेड चॅनेल: <code>{PAID_CHANNEL_ID or 'Not Connected'}</code>"
+    )
+    keyboard = [
+        [InlineKeyboardButton("➕ १-क्लिक बॉटला चॅनेल ॲडमिन करा (Add to Channel)", url=add_link)],
+        [InlineKeyboardButton("🔍 चॅनेल स्टेटस तपासा (Check Status)", callback_data="check_channel_status")]
+    ]
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True)
+
+async def set_channel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command to set channel ID or username directly: /set_channel -100xxxx or /set_channel @channel"""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to bot administrators.")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: <code>/set_channel -100xxxxxxxxxx</code> किंवा <code>/set_channel @channelusername</code>",
+            parse_mode="HTML"
+        )
+        return
+
+    raw_channel = context.args[0].strip()
+    try:
+        chat = await context.bot.get_chat(raw_channel)
+        channel_id = str(chat.id)
+        channel_title = chat.title or raw_channel
+        member = await context.bot.get_chat_member(chat_id=channel_id, user_id=context.bot.id)
+
+        if member.status in ("administrator", "creator"):
+            can_post = getattr(member, "can_post_messages", True)
+            update_env_channel_id(channel_id)
+            await update.message.reply_text(
+                f"✅ <b>चॅनेल यशस्वीरित्या कनेक्ट झाले!</b>\n\n"
+                f"📢 <b>चॅनेल:</b> {channel_title}\n"
+                f"🆔 <b>ID:</b> <code>{channel_id}</code>\n"
+                f"👑 <b>Status:</b> Administrator\n"
+                f"✍️ <b>Post Messages Permission:</b> {'✅ Yes' if can_post else '⚠️ Permission Missing'}\n\n"
+                f"आता क्विझ पाठवण्यासाठी वापरा: <code>/postquizzes</code>",
+                parse_mode="HTML"
+            )
+        else:
+            await update.message.reply_text(
+                f"⚠️ बॉट चॅनेल <b>{channel_title}</b> मध्ये आढळला, परंतु तो <b>Administrator नाही</b>.\n"
+                f"कृपया चॅनेल Settings -> Administrators मध्ये जाऊन 'Post Messages' परवानगी द्या.",
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ चॅनेल कनेक्ट करताना त्रुटी आली: <code>{e}</code>\n\n"
+            f"💡 कृपया आधी बॉटला चॅनेलमध्ये ॲड करा किंवा /connect_channel मधील १-क्लिक बटण वापरा.",
+            parse_mode="HTML"
+        )
+
+async def channel_status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: Checks current channel connection status and posting rights."""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to bot administrators.")
+        return
+
+    channel = os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID
+    if not channel or channel.startswith("http"):
+        bot_info = await context.bot.get_me()
+        add_link = f"https://t.me/{bot_info.username}?startchannel=true&admin=post_messages+edit_messages+delete_messages"
+        await update.message.reply_text(
+            "⚠️ <b>कोणतेही चॅनेल कनेक्ट केलेले नाही.</b>\n\n"
+            "बॉटला चॅनेलमध्ये जोडण्यासाठी खालील १-क्लिक बटण दाबा 👇",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("➕ Connect Channel", url=add_link)]])
+        )
+        return
+
+    try:
+        chat = await context.bot.get_chat(channel)
+        member = await context.bot.get_chat_member(chat_id=chat.id, user_id=context.bot.id)
+        status = member.status
+        can_post = getattr(member, "can_post_messages", True)
+
+        await update.message.reply_text(
+            f"📢 <b>Channel Status Report:</b>\n\n"
+            f"• <b>Title:</b> {chat.title}\n"
+            f"• <b>ID:</b> <code>{chat.id}</code>\n"
+            f"• <b>Bot Role:</b> {status.upper()}\n"
+            f"• <b>Can Post Messages:</b> {'✅ Ready (सक्रिय)' if can_post else '❌ Permission Denied'}\n\n"
+            f"🚀 <i>क्विझ पोल्स पोस्ट करण्यासाठी तयार आहे:</i> <code>/postquizzes</code>",
+            parse_mode="HTML"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Channel Check Failed: <code>{e}</code>\nChannel ID: <code>{channel}</code>", parse_mode="HTML")
+
+async def daily_questions_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Command to view daily latest asked exam questions."""
+    daily_data = get_daily_latest_exam_questions()
+    lines = [
+        daily_data["trend_summary"],
+        ""
+    ]
+    for i, q_item in enumerate(daily_data["questions"], 1):
+        lines.extend([
+            f"━━━━━━━━━━━━━━━━━━━━━━",
+            f"<b>Q{i}. [{q_item['subject']}]</b>",
+            f"{q_item['question']}",
+            "",
+            "\n".join([f"  {opt}" for opt in q_item["options"]]),
+            "",
+            f"✅ <b>उत्तर:</b> <code>{q_item['answer']}</code>",
+            f"💡 <b>स्पष्टीकरण:</b> {q_item['explanation']}",
+            ""
+        ])
+    lines.extend([
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        "⚡ <i>टीप: TCS व IBPS दररोज याच पॅटर्नवर आधारित प्रश्न विचारत आहे!</i>\n",
+        "💎 <b>दररोज विचारलेले सर्व प्रश्न क्विझ स्वरूपात सोडवण्यासाठी आजच आमचे VIP चॅनेल जॉईन करा!</b>"
+    ])
+    keyboard = [
+        [InlineKeyboardButton("💎 Join Paid ₹99 Quiz Channel", callback_data="join_paid")],
+        [InlineKeyboardButton("🎯 Analyze My Response Sheet", callback_data="analyze")],
+        [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]
+    ]
+    full_text = "\n".join(lines)
+    await safe_send_message(
+        context.bot,
+        update.effective_chat.id,
+        full_text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        disable_web_page_preview=True
+    )
+
+async def post_analysis_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: post daily topic weightage analysis to Paid Channel."""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to bot administrators.")
+        return
+    channel = os.getenv("PAID_CHANNEL_ID", "").strip()
+    if not channel or channel.startswith("http"):
+        await update.message.reply_text(
+            "⚠️ Please configure a valid numeric channel ID or @username in PAID_CHANNEL_ID (.env) first."
+        )
+        return
+
+    exam_name = "महाराष्ट्र सरळसेवा भरती (TCS & IBPS Pattern)"
+    if context.args:
+        exam_name = " ".join(context.args)
+
+    from .ai_analysis import get_fallback_topic_analysis
+    analysis_text = get_fallback_topic_analysis(exam_name)
+    await safe_send_message(context.bot, channel, analysis_text, parse_mode="HTML")
+    await update.message.reply_text(
+        f"✅ <b>Daily Topic & Weightage Analysis successfully posted to Paid Channel (<code>{channel}</code>)!</b>",
+        parse_mode="HTML"
+    )
+
+async def master_report_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: generate full master exam analysis report: examwise, locationwise, categorywise, postwise."""
+    user = update.effective_user
+    if user.id not in ADMIN_IDS:
+        if update.callback_query:
+            await update.callback_query.answer("⛔ Restricted to administrators only.", show_alert=True)
+        else:
+            await update.message.reply_text("⛔ Restricted to administrators only.")
+        return
+
+    chat_id = update.effective_chat.id
+    status_msg = await context.bot.send_message(
+        chat_id=chat_id,
+        text="⏳ <i>सर्व परीक्षांचा डेटा संकलित करत आहे आणि सविस्तर विश्लेषण अहवाल (HTML) तयार करत आहे...</i>",
+        parse_mode="HTML"
+    )
+
+    with get_connection() as db:
+        rows = db.execute("""
+            SELECT id, telegram_user_id, filename, roll_number, candidate_name, exam_key,
+                   category, post_name, district, score, correct_count, incorrect_count,
+                   unanswered_count, rank, percentile, created_at
+            FROM uploads
+            WHERE status = 'analyzed' OR score > 0
+            ORDER BY score DESC
+        """).fetchall()
+
+    if not rows:
+        await status_msg.edit_text("ℹ️ अजून कोणतीही रिस्पॉन्स शीट नोंदवलेली नाही.")
+        return
+
+    total_candidates = len(rows)
+    all_scores = [float(r[9]) for r in rows if r[9] is not None]
+    max_score = max(all_scores) if all_scores else 0.0
+    min_score = min(all_scores) if all_scores else 0.0
+    avg_score = sum(all_scores) / total_candidates if total_candidates else 0.0
+
+    total_correct = sum(int(r[10]) for r in rows if r[10] is not None)
+    total_incorrect = sum(int(r[11]) for r in rows if r[11] is not None)
+    avg_accuracy = (total_correct / max(1, total_correct + total_incorrect)) * 100
+
+    # 1. Exam-wise
+    exam_groups = {}
+    for r in rows:
+        ekey = r[5] or "OTHER"
+        ename = EXAMS.get(ekey, {}).get("display_name", ekey)
+        if ename not in exam_groups:
+            exam_groups[ename] = []
+        exam_groups[ename].append(float(r[9] or 0.0))
+
+    exams_data = []
+    for ename, scs in exam_groups.items():
+        scs_sorted = sorted(scs, reverse=True)
+        e_cnt = len(scs)
+        e_avg = sum(scs) / e_cnt
+        safe_idx = max(0, int(e_cnt * 0.1) - 1)
+        border_idx = max(0, int(e_cnt * 0.3) - 1)
+        exams_data.append({
+            "name": ename,
+            "count": e_cnt,
+            "max_score": scs_sorted[0],
+            "min_score": scs_sorted[-1],
+            "avg_score": e_avg,
+            "safe_cutoff": scs_sorted[safe_idx],
+            "border_cutoff": scs_sorted[border_idx]
+        })
+    exams_data.sort(key=lambda x: x["count"], reverse=True)
+
+    # 2. Post-wise
+    post_groups = {}
+    for r in rows:
+        pname = r[7] or "General (सर्वसाधारण)"
+        if pname not in post_groups:
+            post_groups[pname] = []
+        post_groups[pname].append(float(r[9] or 0.0))
+
+    posts_data = []
+    for pname, scs in post_groups.items():
+        p_cnt = len(scs)
+        posts_data.append({
+            "name": pname,
+            "count": p_cnt,
+            "max_score": max(scs),
+            "avg_score": sum(scs) / p_cnt
+        })
+    posts_data.sort(key=lambda x: x["count"], reverse=True)
+
+    # 3. Category-wise
+    cat_groups = {}
+    for r in rows:
+        cat = r[6] or "Open"
+        if cat not in cat_groups:
+            cat_groups[cat] = []
+        cat_groups[cat].append(float(r[9] or 0.0))
+
+    categories_data = []
+    for cat, scs in cat_groups.items():
+        c_cnt = len(scs)
+        c_avg = sum(scs) / c_cnt
+        scs_sorted = sorted(scs, reverse=True)
+        cutoff_est = scs_sorted[max(0, int(c_cnt * 0.2) - 1)] if scs_sorted else c_avg
+        categories_data.append({
+            "name": cat,
+            "count": c_cnt,
+            "percentage": (c_cnt / total_candidates) * 100,
+            "avg_score": c_avg,
+            "max_score": max(scs),
+            "cutoff_est": cutoff_est
+        })
+    categories_data.sort(key=lambda x: x["count"], reverse=True)
+
+    # 4. Location / District-wise
+    loc_groups = {}
+    for r in rows:
+        dist = r[8] or "महाराष्ट्र (सर्वसाधारण)"
+        if dist not in loc_groups:
+            loc_groups[dist] = []
+        loc_groups[dist].append(float(r[9] or 0.0))
+
+    locations_data = []
+    for dist, scs in loc_groups.items():
+        l_cnt = len(scs)
+        locations_data.append({
+            "district": dist,
+            "count": l_cnt,
+            "max_score": max(scs),
+            "avg_score": sum(scs) / l_cnt
+        })
+    locations_data.sort(key=lambda x: x["count"], reverse=True)
+
+    # 5. Top 10 Rankers
+    toppers_data = []
+    for idx, r in enumerate(rows[:10], 1):
+        toppers_data.append({
+            "rank": idx,
+            "name": r[4] or f"परीक्षार्थी #{idx}",
+            "roll": r[3] or "N/A",
+            "exam": EXAMS.get(r[5], {}).get("display_name", r[5] or "N/A"),
+            "post": r[7] or "General",
+            "category": r[6] or "Open",
+            "score": float(r[9] or 0.0)
+        })
+
+    master_payload = {
+        "overall": {
+            "total_candidates": total_candidates,
+            "highest_score": max_score,
+            "lowest_score": min_score,
+            "avg_score": avg_score,
+            "total_exams": len(exams_data),
+            "total_posts": len(posts_data),
+            "avg_accuracy": avg_accuracy
+        },
+        "exams": exams_data,
+        "posts": posts_data,
+        "categories": categories_data,
+        "locations": locations_data,
+        "toppers": toppers_data
+    }
+
+    # Generate HTML file
+    html_content = generate_master_analytics_report_html(master_payload)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    report_filename = f"ExamRankers_Master_Analytics_{ts}.html"
+    report_path = REPORT_DIR / report_filename
+    report_path.write_text(html_content, encoding="utf-8")
+
+    # Executive Telegram Summary
+    summary_text = (
+        "📊 <b>EXAMRANKERS™ मास्टर परीक्षा विश्लेषण अहवाल (Master Report)</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"👥 <b>एकूण अद्वितीय परीक्षार्थी:</b> <b>{total_candidates}</b>\n"
+        f"🏆 <b>राज्यस्तरीय अव्वल गुण (Topper):</b> <b>{max_score:.1f} Marks</b>\n"
+        f"📈 <b>एकूण राज्य सरासरी गुण:</b> <b>{avg_score:.1f} Marks</b>\n"
+        f"🎯 <b>सरासरी अचूकता (Accuracy):</b> <b>{avg_accuracy:.1f}%</b>\n\n"
+        "📝 <b>परीक्षानिहाय विद्यार्थी संख्या:</b>\n"
+    )
+    for e in exams_data[:4]:
+        summary_text += f"• <b>{e['name']}:</b> {e['count']} उमेदवार (Avg: {e['avg_score']:.1f}, Top: {e['max_score']:.1f})\n"
+
+    summary_text += "\n👔 <b>मुख्य पदानिहाय विश्लेषण:</b>\n"
+    for p in posts_data[:4]:
+        summary_text += f"• <b>{p['name']}:</b> {p['count']} उमेदवार (Avg: {p['avg_score']:.1f})\n"
+
+    summary_text += "\n👥 <b>प्रवर्गनिहाय वाटप:</b>\n"
+    for c in categories_data[:5]:
+        summary_text += f"• <b>{c['name']}:</b> {c['count']} ({c['percentage']:.1f}%) | Cutoff Est: {c['cutoff_est']:.1f}\n"
+
+    summary_text += "\n📍 <b>केंद्रे व जिल्हानिहाय सहभाग:</b>\n"
+    for l in locations_data[:4]:
+        summary_text += f"• <b>{l['district']}:</b> {l['count']} उमेदवार (Top: {l['max_score']:.1f})\n"
+
+    summary_text += (
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📑 <i>खालील जोडलेला इंटरॅक्टिव्ह HTML अहवाल डाऊनलोड करा. संपूर्ण ग्राफिकल तक्ते व प्रिंट पर्याय उपलब्ध आहे!</i>"
+    )
+
+    await status_msg.edit_text(summary_text, parse_mode="HTML")
+
+    with open(report_path, "rb") as f:
+        await context.bot.send_document(
+            chat_id=chat_id,
+            document=f,
+            filename=report_filename,
+            caption="📊 <b>ExamRankers™ Master Analytics & Merit Report (HTML)</b>\n<i>(ब्राउझरमध्ये उघडून पाहा किंवा Print करा)</i>",
+            parse_mode="HTML"
+        )
+
+async def question_bank_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    1-Click download for Admins: Generates and sends One-Liner Question Bank PDF.
+    Contains Question, Official Correct Answer, and Conceptual Rule/Explanation.
+    """
+    user_id = update.effective_user.id
+    if user_id not in ADMIN_IDS:
+        if update.callback_query:
+            await update.callback_query.answer("⛔ Restricted to administrators only.", show_alert=True)
+        else:
+            await update.message.reply_text("⛔ ही कमांड फक्त ॲडमिनसाठी (Admin Only) राखीव आहे.")
+        return
+
+    chat_id = update.effective_chat.id
+    status_msg = await context.bot.send_message(
+        chat_id=chat_id,
+        text="⏳ <b>वनलायनर प्रश्नसंच PDF तयार होत आहे... कृपया थोडा वेळ थांबा.</b>",
+        parse_mode="HTML"
+    )
+    try:
+        report_file = REPORT_DIR / f"oneliner_question_bank_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        generate_oneliner_question_bank_pdf(DB_PATH, str(report_file))
+
+        caption = (
+            "📑 <b>महास्पर्धा परीक्षा — वनलायनर प्रश्नसंच (One-Liner Question Bank)</b>\n\n"
+            "• TCS, IBPS व MPSC पॅटर्ननुसार अधिकृत उत्तरे\n"
+            "• महत्त्वाचे नियम, ट्रिक्स व सविस्तर स्पष्टीकरण\n"
+            "• १००% निनावी (Zero personal student data)\n\n"
+            "⚡ <i>१-क्लिक प्रिंट व वाचनासाठी तयार PDF फाईल खाली दिली आहे.</i>"
+        )
+        with open(report_file, "rb") as f:
+            await context.bot.send_document(
+                chat_id=chat_id,
+                document=f,
+                filename="ExamRankers_OneLiner_Question_Bank.pdf",
+                caption=caption,
+                parse_mode="HTML"
+            )
+        await status_msg.delete()
+    except Exception as e:
+        logger.error(f"Error generating question bank PDF: {e}")
+        await status_msg.edit_text(f"❌ PDF तयार करताना त्रुटी आली: {e}")
+
+async def post_mindmap_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: posts daily trending topic mindmap in Marathi to channel with rotating fresh topics."""
+    user = update.effective_user
+    if user.id not in ADMIN_IDS:
+        if update.callback_query:
+            await update.callback_query.answer("⛔ Restricted to administrators only.", show_alert=True)
+        else:
+            await update.message.reply_text("⛔ Restricted to administrators only.")
+        return
+
+    channel = os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID
+    if not channel or channel.startswith("http"):
+        await update.message.reply_text("⚠️ कृपया आधी .env मध्ये PAID_CHANNEL_ID सेट करा.")
+        return
+
+    target_chat = int(channel) if channel.lstrip("-").isdigit() else channel
+
+    status_reply = None
+    if update.callback_query:
+        await update.callback_query.answer("⏳ नवीन ट्रेंडिंग माइंडमॅप तयार करत आहे...")
+    else:
+        status_reply = await update.message.reply_text("⏳ <i>नवीन ट्रेंडिंग घटकाचा माइंडमॅप व इन्फोग्राफिक तयार करत आहे...</i>", parse_mode="HTML")
+
+    try:
+        topic, img_path, mindmap_caption = get_next_dynamic_mindmap(DB_PATH)
+
+        kb = [
+            [InlineKeyboardButton(f"✍️ '{topic.get('subject', '')}' सराव प्रश्न सोडवा", url="https://t.me/ExamRankersIndiaBot?start=quiz")],
+            [InlineKeyboardButton("📢 अधिकृत VIP चॅनेल जॉइन करा", url=PAID_CHANNEL_LINK)]
+        ]
+
+        if img_path and img_path.exists():
+            with open(img_path, "rb") as photo_f:
+                await context.bot.send_photo(
+                    chat_id=target_chat,
+                    photo=photo_f,
+                    caption=mindmap_caption,
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(kb)
+                )
+        else:
+            await context.bot.send_message(
+                chat_id=target_chat,
+                text=mindmap_caption,
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(kb),
+                disable_web_page_preview=True
+            )
+
+        record_mindmap_posted(topic["id"], topic["title"], DB_PATH)
+
+        msg_text = (
+            f"✅ <b>नवीन अपडेटेड माइंडमॅप यशस्वीरित्या चॅनेलवर पोस्ट केला!</b>\n\n"
+            f"📌 <b>घटक:</b> {topic.get('title', '')}\n"
+            f"📚 <b>विषय:</b> {topic.get('subject', '')}\n"
+            f"📢 <b>चॅनेल:</b> <code>{target_chat}</code>\n"
+            f"🔄 <i>(पुढील वेळी आपोआप पुढील नवीन विषयाचा माइंडमॅप पोस्ट होईल)</i>"
+        )
+        if update.callback_query:
+            await update.callback_query.message.reply_text(msg_text, parse_mode="HTML")
+        elif status_reply:
+            await status_reply.edit_text(msg_text, parse_mode="HTML")
+        else:
+            await update.message.reply_text(msg_text, parse_mode="HTML")
+
+    except Exception as e:
+        logger.error(f"Error posting mindmap: {e}", exc_info=True)
+        err_text = f"❌ माइंडमॅप पोस्ट करताना त्रुटी आली: {e}"
+        if update.callback_query:
+            await update.callback_query.message.reply_text(err_text)
+        elif status_reply:
+            await status_reply.edit_text(err_text)
+        else:
+            await update.message.reply_text(err_text)
+
+async def post_promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: posts 3-hour promotional ad banner to channel."""
+    user = update.effective_user
+    if user.id not in ADMIN_IDS:
+        if update.callback_query:
+            await update.callback_query.answer("⛔ Restricted to administrators only.", show_alert=True)
+        else:
+            await update.message.reply_text("⛔ Restricted to administrators only.")
+        return
+
+    channel = os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID
+    if not channel or channel.startswith("http"):
+        await update.message.reply_text("⚠️ कृपया आधी .env मध्ये PAID_CHANNEL_ID सेट करा.")
+        return
+
+    target_chat = int(channel) if channel.lstrip("-").isdigit() else channel
+    promo_banner_path = Path(__file__).resolve().parent.parent / "assets" / "promo_banner.jpg"
+
+    promo_caption = (
+        "⚠️ <b>तुम्ही जो प्रश्न सोपा समजून सोडला, तोच प्रश्न दुसऱ्या विद्यार्थ्याला मेरीटमध्ये पुढे घेऊन गेला तर?</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "😰 <b>फक्त ०.५ गुणांमुळे पोस्ट हुकल्याचा पश्चाताप टाळा!</b>\n\n"
+        "लाखो विद्यार्थी रात्रंदिवस अभ्यास करत आहेत, पण <b>स्मार्ट विद्यार्थी</b> जुन्या पद्धतींवर अवलंबून न राहता <b>TCS व IBPS च्या चालू शिफ्ट्समधील ओरिजिनल प्रश्नांचा सराव</b> करत आहेत.\n\n"
+        "तुम्ही अजूनही जुन्या पॅटर्नमध्ये अडकून आपले शासकीय सेवेचे स्वप्न धोक्यात तर घालत नाही ना?\n\n"
+        "🚨 <b>हक्काचे २ ते ४ गुण गमावण्याची भीती:</b>\n"
+        "TCS/IBPS च्या प्रत्येक पेपरमध्ये ३-४ प्रश्न संदिग्ध असतात. जर वेळेत हरकत (Objection) घेतली नाही, तर ते गुण कायमचे गमावले जातात!\n\n"
+        "🎯 <b>EXAMRANKERS™ AI बॉटवर त्वरित मोफत तपासा:</b>\n"
+        "• ⚡ <b>१-सेकंदात निकाल:</b> तुमची DigiALM रिस्पॉन्स शीट लिंक किंवा PDF टाका.\n"
+        "• 🌐 <b>४-टियर रँक:</b> राज्यातील हजारो विद्यार्थ्यांमध्ये तुमचा खरा रँक व कटऑफ झोन.\n"
+        "• ❌ <b>चुकीच्या प्रश्नांचे पोस्टमार्टम:</b> तुमचे उत्तर का चुकले? स्टेप-बाय-स्टेप गणित व व्याकरण स्पष्टीकरण.\n"
+        "• ⚖️ <b>हरकत (Objection) सल्ला:</b> कोणत्या प्रश्नांवर आक्षेप नोंदवून गुण वाढवून घ्यायचे?\n"
+        "• 📑 <b>वनलायनर प्रश्नसंच:</b> चालू परीक्षांमध्ये विचारलेले प्रश्न व अधिकृत उत्तरे.\n\n"
+        "💎 <b>VIP चॅनेल मोफत मिळवण्याची संधी:</b>\n"
+        "बॉटमध्ये तुमची रिस्पॉन्स शीट तपासा आणि थेट VIP क्विझ चॅनेलचा मोफत ॲक्सेस मिळवा!\n\n"
+        f"👉 <b>बॉट सुरू करा:</b> <a href=\"https://t.me/ExamRankersIndiaBot\">@ExamRankersIndiaBot</a>\n"
+        f"📢 <b>अधिकृत VIP चॅनेल:</b> <a href=\"{PAID_CHANNEL_LINK}\">{PAID_CHANNEL_LINK}</a>"
+    )
+
+    kb = [
+        [InlineKeyboardButton("⚡ माझी रिस्पॉन्स शीट तपासा व रँक पहा (Free)", url="https://t.me/ExamRankersIndiaBot?start=fomo_promo")],
+        [InlineKeyboardButton("🚨 इतर विद्यार्थ्यांच्या पुढे राहा — VIP चॅनेल", url=PAID_CHANNEL_LINK)]
+    ]
+
+    try:
+        if promo_banner_path.exists():
+            with open(promo_banner_path, "rb") as photo_f:
+                await context.bot.send_photo(
+                    chat_id=target_chat,
+                    photo=photo_f,
+                    caption=promo_caption,
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(kb)
+                )
+        else:
+            await context.bot.send_message(
+                chat_id=target_chat,
+                text=promo_caption,
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(kb),
+                disable_web_page_preview=True
+            )
+        msg_text = f"✅ <b>प्रमोशनल ॲड चॅनेलवर (<code>{target_chat}</code>) यशस्वीरित्या पोस्ट केली!</b>"
+        if update.callback_query:
+            await update.callback_query.message.reply_text(msg_text, parse_mode="HTML")
+        else:
+            await update.message.reply_text(msg_text, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error posting promo: {e}")
+        err_text = f"❌ प्रमोशनल ॲड पोस्ट करताना त्रुटी आली: {e}"
+        if update.callback_query:
+            await update.callback_query.message.reply_text(err_text)
+        else:
+            await update.message.reply_text(err_text)
+
+
+async def three_hour_promo_scheduler_loop(application: Application):
+    """
+    Automated 3-Hour Bot Promotion Scheduler:
+    - Runs every 3 hours (10800 seconds).
+    - Posts the generated promotional banner (assets/promo_banner.jpg).
+    - Uses psychological FOMO, fear of cutoff loss, and missed opportunity triggers.
+    - Includes bot link & channel link.
+    """
+    await asyncio.sleep(120)  # Wait 2 minutes after startup before initial promo
+    while True:
+        try:
+            channel = os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID
+            if channel and not channel.startswith("http"):
+                target_chat = int(channel) if channel.lstrip("-").isdigit() else channel
+                promo_banner_path = Path(__file__).resolve().parent.parent / "assets" / "promo_banner.jpg"
+
+                promo_caption = (
+                    "⚠️ <b>तुम्ही जो प्रश्न सोपा समजून सोडला, तोच प्रश्न दुसऱ्या विद्यार्थ्याला मेरीटमध्ये पुढे घेऊन गेला तर?</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "😰 <b>फक्त ०.५ गुणांमुळे पोस्ट हुकल्याचा पश्चाताप टाळा!</b>\n\n"
+                    "लाखो विद्यार्थी रात्रंदिवस अभ्यास करत आहेत, पण <b>स्मार्ट विद्यार्थी</b> जुन्या पद्धतींवर अवलंबून न राहता <b>TCS व IBPS च्या चालू शिफ्ट्समधील ओरिजिनल प्रश्नांचा सराव</b> करत आहेत.\n\n"
+                    "तुम्ही अजूनही जुन्या पॅटर्नमध्ये अडकून आपले शासकीय सेवेचे स्वप्न धोक्यात तर घालत नाही ना?\n\n"
+                    "🚨 <b>हक्काचे २ ते ४ गुण गमावण्याची भीती:</b>\n"
+                    "TCS/IBPS च्या प्रत्येक पेपरमध्ये ३-४ प्रश्न संदिग्ध असतात. जर वेळेत हरकत (Objection) घेतली नाही, तर ते गुण कायमचे गमावले जातात!\n\n"
+                    "🎯 <b>EXAMRANKERS™ AI बॉटवर त्वरित मोफत तपासा:</b>\n"
+                    "• ⚡ <b>१-सेकंदात निकाल:</b> तुमची DigiALM रिस्पॉन्स शीट लिंक किंवा PDF टाका.\n"
+                    "• 🌐 <b>४-टियर रँक:</b> राज्यातील हजारो विद्यार्थ्यांमध्ये तुमचा खरा रँक व कटऑफ झोन.\n"
+                    "• ❌ <b>चुकीच्या प्रश्नांचे पोस्टमार्टम:</b> तुमचे उत्तर का चुकले? स्टेप-बाय-स्टेप गणित व व्याकरण स्पष्टीकरण.\n"
+                    "• ⚖️ <b>हरकत (Objection) सल्ला:</b> कोणत्या प्रश्नांवर आक्षेप नोंदवून गुण वाढवून घ्यायचे?\n"
+                    "• 📑 <b>वनलायनर प्रश्नसंच:</b> चालू परीक्षांमध्ये विचारलेले प्रश्न व अधिकृत उत्तरे.\n\n"
+                    "💎 <b>VIP चॅनेल मोफत मिळवण्याची संधी:</b>\n"
+                    "बॉटमध्ये तुमची रिस्पॉन्स शीट तपासा आणि थेट VIP क्विझ चॅनेलचा मोफत ॲक्सेस मिळवा!\n\n"
+                    f"👉 <b>बॉट सुरू करा:</b> <a href=\"https://t.me/ExamRankersIndiaBot\">@ExamRankersIndiaBot</a>\n"
+                    f"📢 <b>अधिकृत VIP चॅनेल:</b> <a href=\"{PAID_CHANNEL_LINK}\">{PAID_CHANNEL_LINK}</a>"
+                )
+
+                kb = [
+                    [InlineKeyboardButton("⚡ माझी रिस्पॉन्स शीट तपासा व रँक पहा (Free)", url="https://t.me/ExamRankersIndiaBot?start=fomo_promo")],
+                    [InlineKeyboardButton("🚨 इतर विद्यार्थ्यांच्या पुढे राहा — VIP चॅनेल", url=PAID_CHANNEL_LINK)]
+                ]
+
+                if promo_banner_path.exists():
+                    with open(promo_banner_path, "rb") as photo_f:
+                        await application.bot.send_photo(
+                            chat_id=target_chat,
+                            photo=photo_f,
+                            caption=promo_caption,
+                            parse_mode="HTML",
+                            reply_markup=InlineKeyboardMarkup(kb)
+                        )
+                else:
+                    await application.bot.send_message(
+                        chat_id=target_chat,
+                        text=promo_caption,
+                        parse_mode="HTML",
+                        reply_markup=InlineKeyboardMarkup(kb),
+                        disable_web_page_preview=True
+                    )
+                logger.info(f"3-hour promo successfully posted to {target_chat}")
+        except Exception as e:
+            logger.error(f"Error in three_hour_promo_scheduler_loop: {e}")
+
+        await asyncio.sleep(10800)  # Wait 3 hours
+
+async def daily_mindmap_scheduler_loop(application: Application):
+    """
+    Automated Daily Mindmap Scheduler:
+    - Runs every 24 hours (86400 seconds).
+    - Always selects an updated, non-repeated topic from 10+ high-yield exam areas.
+    - Generates dynamic 1200x800 visual card and comprehensive Marathi explanation.
+    """
+    await asyncio.sleep(180)  # Wait 3 minutes after startup
+    while True:
+        try:
+            channel = os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID
+            if channel and not channel.startswith("http"):
+                target_chat = int(channel) if channel.lstrip("-").isdigit() else channel
+                topic, img_path, mindmap_caption = get_next_dynamic_mindmap(DB_PATH)
+
+                kb = [
+                    [InlineKeyboardButton(f"✍️ '{topic.get('subject', '')}' सराव प्रश्न सोडवा", url="https://t.me/ExamRankersIndiaBot?start=quiz")],
+                    [InlineKeyboardButton("📢 अधिकृत VIP चॅनेल जॉइन करा", url=PAID_CHANNEL_LINK)]
+                ]
+
+                if img_path and img_path.exists():
+                    with open(img_path, "rb") as photo_f:
+                        await application.bot.send_photo(
+                            chat_id=target_chat,
+                            photo=photo_f,
+                            caption=mindmap_caption,
+                            parse_mode="HTML",
+                            reply_markup=InlineKeyboardMarkup(kb)
+                        )
+                else:
+                    await application.bot.send_message(
+                        chat_id=target_chat,
+                        text=mindmap_caption,
+                        parse_mode="HTML",
+                        reply_markup=InlineKeyboardMarkup(kb),
+                        disable_web_page_preview=True
+                    )
+
+                record_mindmap_posted(topic["id"], topic["title"], DB_PATH)
+                logger.info(f"Daily updated mindmap '{topic['title']}' successfully posted to {target_chat}")
+        except Exception as e:
+            logger.error(f"Error in daily_mindmap_scheduler_loop: {e}")
+
+        await asyncio.sleep(86400)  # Wait 24 hours
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    await update.message.reply_text("Current action cancelled. Send /start to begin again.")
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.warning(f"Telegram network/bot update warning: {context.error}")
+
+async def set_bot_commands(application: Application):
+    """Configures the official Telegram chat menu button [≡], command scopes, and launches background schedulers."""
+    user_commands = [
+        BotCommand("start", "🚀 सुरू करा (Start Bot & Select Category)"),
+        BotCommand("wrong", "❌ चुकीचे प्रश्न व सविस्तर स्पष्टीकरण"),
+        BotCommand("responses", "📄 रिस्पॉन्स शीट निकाल (HTML Report)"),
+        BotCommand("menu", "📋 मुख्य मेनू (Main Menu)"),
+        BotCommand("help", "ℹ️ कशी वापरावी व FAQ (Help & Guide)"),
+        BotCommand("cancel", "❌ रद्द करा (Cancel)")
+    ]
+    admin_commands = [
+        BotCommand("start", "🚀 सुरू करा (Start Bot)"),
+        BotCommand("wrong", "❌ चुकीचे प्रश्न व सविस्तर स्पष्टीकरण"),
+        BotCommand("responses", "📄 रिस्पॉन्स शीट निकाल व फाईल्स"),
+        BotCommand("master_report", "📊 मास्टर परीक्षा व गुणवत्ता अहवाल (Admin)"),
+        BotCommand("qbank", "📑 वनलायनर प्रश्नसंच PDF (Admin)"),
+        BotCommand("post_mindmap", "🎨 ट्रेंडिंग माइंडमॅप पोस्ट करा (Admin)"),
+        BotCommand("post_promo", "🚀 ॲडव्हर्टाईज पोस्ट करा (Admin)"),
+        BotCommand("admin_files", "📂 सर्व साठवलेल्या रिस्पॉन्स शीट्स (Admin)"),
+        BotCommand("download_all", "📦 सर्व रिस्पॉन्स शीट्स ZIP डाऊनलोड करा (Admin)"),
+        BotCommand("connect_channel", "🔗 चॅनेल १-क्लिक कनेक्ट करा (Admin)"),
+        BotCommand("channel_status", "📢 चॅनेल स्टेटस व परवानगी (Admin)"),
+        BotCommand("postquizzes", "📢 चॅनेलवर सर्व प्रश्न १-बाय-१ पोस्ट करा (Admin)"),
+        BotCommand("stats", "📊 मालक व महसूल डॅशबोर्ड (Admin)"),
+        BotCommand("menu", "📋 मुख्य मेनू (Main Menu)"),
+        BotCommand("cancel", "❌ रद्द करा (Cancel)")
+    ]
+    desc = (
+        "🎯 महाराष्ट्र सरळसेवा भरती (TCS व IBPS पॅटर्न) रँक व गुण विश्लेषक बॉट.\n\n"
+        "• तलाठी, ZP, पोलीस भरती, वनरक्षक, नगरपरिषद, आरोग्य विभाग\n"
+        "• १००% मोफत ४-टियर रँक (राज्यस्तरीय, परीक्षा, पद व प्रवर्ग)\n"
+        "• चुकीच्या प्रश्नांचे पायरी-पायरीने गणितीय व व्याकरण विश्लेषण\n\n"
+        "बॉट सुरू करण्यासाठी खालील START बटण दाबा!"
+    )
+    s_desc = "महाराष्ट्र सरळसेवा TCS/IBPS भरती रँक व गुण विश्लेषक बॉट"
+    try:
+        await application.bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
+        await application.bot.set_my_commands(user_commands, scope=BotCommandScopeAllPrivateChats())
+        for admin_id in ADMIN_IDS:
+            try:
+                await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=admin_id))
+            except Exception as e:
+                logger.warning(f"Could not set admin commands for {admin_id}: {e}")
+        await application.bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+        await application.bot.set_my_description(description=desc)
+        await application.bot.set_my_short_description(short_description=s_desc)
+        logger.info("Telegram chat menu button [≡], scopes, and descriptions configured successfully!")
+
+        # Launch automated background schedulers (Quiz schedule removed; all quizzes posted on-demand via /postquizes)
+        asyncio.create_task(three_hour_promo_scheduler_loop(application))
+        asyncio.create_task(daily_mindmap_scheduler_loop(application))
+        logger.info("Background Schedulers launched: 3-Hr Promo, Daily Mindmap (Hourly quiz scheduler removed)!")
+    except Exception as e:
+        logger.warning(f"Could not set bot commands or description: {e}")
+
+class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        html = (
+            "<!DOCTYPE html><html><head><title>ExamRankers India Bot — 24/7 Live</title>"
+            "<meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>"
+            "<style>body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#f8fafc;"
+            "display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px;box-sizing:border-box;text-align:center;}"
+            ".card{background:#1e293b;padding:32px;border-radius:16px;box-shadow:0 10px 25px rgba(0,0,0,0.5);max-width:480px;border:1px solid #334155;}"
+            "h1{color:#38bdf8;font-size:22px;margin:0 0 10px;}"
+            ".status{background:#166534;color:#4ade80;display:inline-block;padding:6px 16px;border-radius:20px;font-weight:bold;font-size:14px;margin:12px 0;}"
+            "p{color:#94a3b8;line-height:1.6;font-size:14px;margin:10px 0;}"
+            "a.btn{display:inline-block;margin-top:16px;background:#0284c7;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:bold;transition:0.2s;}"
+            "a.btn:hover{background:#0369a1;}"
+            "</style></head><body>"
+            "<div class='card'>"
+            "<h1>🚀 ExamRankers India Bot</h1>"
+            "<div class='status'>🟢 24/7 LIVE & RUNNING</div>"
+            "<p>Official Maharashtra Saralsewa TCS & IBPS Rank Predictor & 1-by-1 Interactive Quiz Channel Bot.</p>"
+            f"<p><b>Uptime Health:</b> 100% OK<br><b>Cloud Port:</b> {self.server.server_address[1]}</p>"
+            "<a class='btn' href='https://t.me/ExamRankersIndiaBot' target='_blank'>Open Telegram Bot</a>"
+            "</div></body></html>"
+        )
+        self.wfile.write(html.encode("utf-8"))
+
+    def log_message(self, format, *args):
+        pass  # Keep terminal logs clean from ping health-checks
+
+def start_health_check_server():
+    """Runs a background HTTP server so the bot can be hosted 24/7 on free cloud services (Render, Koyeb, Hugging Face, etc.)."""
+    port_str = os.getenv("PORT", "8080")
+    try:
+        port = int(port_str)
+    except ValueError:
+        port = 8080
+    try:
+        server = http.server.ThreadingHTTPServer(("0.0.0.0", port), HealthCheckHandler)
+        t = threading.Thread(target=server.serve_forever, daemon=True)
+        t.start()
+        logger.info(f"🟢 24/7 Health-check web server live on 0.0.0.0:{port}!")
+    except Exception as e:
+        logger.warning(f"Could not start health-check web server on port {port}: {e}")
+
+def main():
+    if not TOKEN:
+        raise RuntimeError("Set TELEGRAM_BOT_TOKEN in .env")
+    start_health_check_server()
+    init_db()
+    init_quiz_db(DB_PATH)
+    logger.info("Initializing Telegram application...")
+    app = (
+        Application.builder()
+        .token(TOKEN)
+        .read_timeout(30)
+        .write_timeout(30)
+        .connect_timeout(30)
+        .post_init(set_bot_commands)
+        .build()
+    )
+    app.add_error_handler(error_handler)
+
+    # Core user commands (100% Free rank prediction & subject analysis)
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("menu", start))
+    app.add_handler(CommandHandler("help", start))
+    app.add_handler(CommandHandler(["wrong", "wrong_answers", "incorrect"], wrong_answers_cmd))
+    app.add_handler(CommandHandler(["responses", "all_responses", "my_responses", "allresponses"], responses_cmd))
+    app.add_handler(CommandHandler("cancel", cancel))
+
+    # Admin commands (Response sheets, ZIP export, Channel, Quizzes, QBank, Schedulers)
+    app.add_handler(CommandHandler("stats", stats))
+    app.add_handler(CommandHandler(["master_report", "exam_report", "analytics_report", "generate_report"], master_report_cmd))
+    app.add_handler(CommandHandler(["qbank", "question_bank", "oneliner"], question_bank_cmd))
+    app.add_handler(CommandHandler(["post_mindmap", "mindmap"], post_mindmap_cmd))
+    app.add_handler(CommandHandler(["post_promo", "advertise", "promo"], post_promo_cmd))
+    app.add_handler(CommandHandler("channel_id", channel_id_cmd))
+    app.add_handler(CommandHandler(["channel_status", "test_channel"], channel_status_cmd))
+    app.add_handler(CommandHandler("connect_channel", connect_channel_cmd))
+    app.add_handler(CommandHandler("set_channel", set_channel_cmd))
+    app.add_handler(CommandHandler(["download_all", "download_responses", "export_all"], download_all_responses_cmd))
+    app.add_handler(CommandHandler("admin_files", admin_files))
+    app.add_handler(CommandHandler("getfile", get_file))
+    app.add_handler(CommandHandler(["post_quizzes", "postquizzes", "postquizes", "postquiz"], post_quizzes))
+    app.add_handler(CommandHandler("post_analysis", post_analysis_cmd))
+    app.add_handler(CommandHandler("paid_users", paid_users))
+    app.add_handler(CommandHandler("set_ad", set_ad))
+    app.add_handler(CommandHandler("broadcast", broadcast))
+
+    # Channel Admin addition listener (captures when bot is added as administrator)
+    app.add_handler(ChatMemberHandler(on_chat_member_updated, ChatMemberHandler.MY_CHAT_MEMBER))
+
+    # Callbacks and Message Handlers
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.Document.PDF, handle_document))
+    app.add_handler(MessageHandler((filters.TEXT & ~filters.COMMAND) | filters.PHOTO | filters.FORWARDED, handle_text_or_photo))
+
+    logger.info("ExamRankers Telegram Bot started successfully!")
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+
+if __name__ == "__main__":
+    main()
