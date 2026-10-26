@@ -1,0 +1,14 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.git
+.gitignore
+.env
+.pytest_cache
+*.log
+response_sheets/*.pdf
+response_sheets/*.html
+admin_storage/
+reports/*.pdf
+reports/*.html

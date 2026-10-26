@@ -1,0 +1,175 @@
+{
+  "TALATHI_BHARTI": {
+    "display_name": "महाराष्ट्र तलाठी भरती (Talathi Bharti - TCS Pattern)",
+    "aliases": [
+      "Talathi",
+      "तलाठी",
+      "Revenue Department",
+      "Talathi 2023",
+      "Talathi 2024",
+      "Talathi 2025",
+      "Talathi 2026"
+    ],
+    "positive_marks": 2.0,
+    "negative_marks": 0.0,
+    "total_questions": 100,
+    "max_marks": 200.0,
+    "posts": [
+      "तलाठी (गट-क / Talathi Group C)"
+    ],
+    "notes": "TCS Pattern: 100 Questions (Marathi, English, GK, Reasoning/Maths), 200 Marks. No negative marking."
+  },
+  "ZP_BHARTI": {
+    "display_name": "जिल्हा परिषद भरती (ZP Bharti - IBPS Pattern)",
+    "aliases": [
+      "Zilla Parishad",
+      "ZP Bharti",
+      "जिल्हा परिषद",
+      "Gramsevak",
+      "Arogya Sevak",
+      "ZP 2024",
+      "ZP 2025",
+      "ZP 2026"
+    ],
+    "positive_marks": 2.0,
+    "negative_marks": 0.0,
+    "total_questions": 100,
+    "max_marks": 200.0,
+    "posts": [
+      "ग्रामसेवक (Gramsevak)",
+      "आरोग्य सेवक (Arogya Sevak)",
+      "कनिष्ठ अभियंता (Junior Engineer)",
+      "विस्तार अधिकारी (Extension Officer)",
+      "कनिष्ठ प्रशासन अधिकारी"
+    ],
+    "notes": "IBPS Pattern: 100 Questions, 200 Marks. No negative marking."
+  },
+  "POLICE_BHARTI": {
+    "display_name": "महाराष्ट्र पोलीस भरती (Maharashtra Police Constable / Driver)",
+    "aliases": [
+      "Police Bharti",
+      "पोलीस भरती",
+      "Maharashtra Police",
+      "SRPF",
+      "पोलीस शिपाई"
+    ],
+    "positive_marks": 1.0,
+    "negative_marks": 0.0,
+    "total_questions": 100,
+    "max_marks": 100.0,
+    "posts": [
+      "पोलीस शिपाई (Police Constable)",
+      "पोलीस शिपाई चालक (Driver)",
+      "SRPF सशस्त्र पोलीस शिपाई"
+    ],
+    "notes": "100 Questions: अंकगणित, बुद्धिमत्ता, मराठी व्याकरण, चालू घडामोडी. 100 Marks. No negative marking."
+  },
+  "VANRAKSHAK_BHARTI": {
+    "display_name": "महाराष्ट्र वनविभाग वनरक्षक भरती (Forest Guard - TCS Pattern)",
+    "aliases": [
+      "Vanrakshak",
+      "वनरक्षक",
+      "Forest Guard",
+      "Maha Forest",
+      "Van Vibhag"
+    ],
+    "positive_marks": 2.0,
+    "negative_marks": 0.5,
+    "total_questions": 60,
+    "max_marks": 120.0,
+    "posts": [
+      "वनरक्षक (Forest Guard)",
+      "लेखापाल (Accountant)",
+      "सर्वेक्षक (Surveyor)"
+    ],
+    "notes": "TCS Pattern: 60 Questions, 120 Marks, -0.5 negative marking per incorrect answer."
+  },
+  "AROGYA_BHARTI": {
+    "display_name": "सार्वजनिक आरोग्य विभाग भरती (Arogya Vibhag Group C & D)",
+    "aliases": [
+      "Arogya Vibhag",
+      "आरोग्य विभाग",
+      "Public Health Department",
+      "Staff Nurse",
+      "Laboratory Technician"
+    ],
+    "positive_marks": 2.0,
+    "negative_marks": 0.0,
+    "total_questions": 100,
+    "max_marks": 200.0,
+    "posts": [
+      "स्टाफ नर्स (Staff Nurse)",
+      "औषध निर्माण अधिकारी (Pharmacist)",
+      "प्रयोगशाळा वैज्ञानिक अधिकारी",
+      "आरोग्य सेवक / सेविका"
+    ],
+    "notes": "TCS Pattern: 100 Questions, 200 Marks. No negative marking."
+  },
+  "MPSC_COMBINED": {
+    "display_name": "MPSC अराजपत्रित गट-ब व गट-क संयुक्त पूर्व परीक्षा (Group B & C Combined)",
+    "aliases": [
+      "MPSC Combined",
+      "संयुक्त पूर्व परीक्षा",
+      "MPSC Group B",
+      "MPSC Group C",
+      "लिपिक टंकलेखक",
+      "कर सहाय्यक",
+      "PSI",
+      "STI",
+      "ASO"
+    ],
+    "positive_marks": 1.0,
+    "negative_marks": 0.25,
+    "total_questions": 100,
+    "max_marks": 100.0,
+    "posts": [
+      "लिपिक-टंकलेखक (Clerk Typist)",
+      "कर सहाय्यक (Tax Assistant)",
+      "पोलीस उपनिरीक्षक (PSI)",
+      "राज्य कर निरीक्षक (STI)",
+      "सहाय्यक कक्ष अधिकारी (ASO)"
+    ],
+    "notes": "MPSC Prelims: 100 Questions, 100 Marks, 1/4th negative marking."
+  },
+  "NAGAR_PARISHAD": {
+    "display_name": "महाराष्ट्र नगरपरिषद राज्यसेवा संवर्ग भरती (TCS Pattern)",
+    "aliases": [
+      "Nagar Parishad",
+      "नगर परिषद",
+      "DMA Maharashtra",
+      "Municipal Council"
+    ],
+    "positive_marks": 2.0,
+    "negative_marks": 0.5,
+    "total_questions": 100,
+    "max_marks": 200.0,
+    "posts": [
+      "कर व प्रशासकीय सेवा",
+      "अग्निशामक सेवा",
+      "लेखापरीक्षक व लेखा सेवा",
+      "अभियांत्रिकी सेवा"
+    ],
+    "notes": "TCS Pattern: 100 Questions, 200 Marks, -0.5 negative marking."
+  },
+  "GMC_SARALSEWA": {
+    "display_name": "महाराष्ट्र शासकीय वैद्यकीय महाविद्यालय व रुग्णालय भरती (GMC / VDGMC Recruitment)",
+    "aliases": [
+      "VDGMC",
+      "GMC",
+      "GMC Recruitment",
+      "शासकीय वैद्यकीय",
+      "वैद्यकीय महाविद्यालय"
+    ],
+    "positive_marks": 1.0,
+    "negative_marks": 0.0,
+    "total_questions": 100,
+    "max_marks": 100.0,
+    "posts": [
+      "शिपाई (Peon)",
+      "कक्ष सेवक (Ward Boy)",
+      "सफाईगार",
+      "प्रयोगशाळा सहाय्यक"
+    ],
+    "notes": "100 Questions, 100 Marks, No negative marking."
+  }
+}
