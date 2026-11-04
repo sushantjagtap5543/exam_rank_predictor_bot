@@ -752,7 +752,11 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
         <h2 class="faq-title">नेहमी विचारले जाणारे प्रश्न (FAQ)</h2>
         <div class="faq-item">
             <div class="faq-q">❓ पेमेंट केल्यानंतर ई-बुक कसे मिळेल?</div>
-            <div class="faq-a">पेमेंटचा UTR नंबर टाकून 'कन्फर्म' करताच अवघ्या ३ सेकंदात तुमच्या ईमेलवर PDF ई-बुक पाठवले जाते आणि याच स्क्रीनवरही थेट १-क्लिक 'Download PDF' बटण मिळते!</div>
+            <div class="faq-a">पेमेंट पूर्ण करून 'मी पेमेंट केले आहे' वर क्लिक करताच अवघ्या ३ सेकंदात याच स्क्रीनवर थेट १-क्लिक 'Download PDF' बटण मिळते आणि तुमच्या ईमेलवरही PDF ई-बुक पाठवले जाते!</div>
+        </div>
+        <div class="faq-item">
+            <div class="faq-q">⚠️ खरेदी केल्यानंतर पैसे परत (Refund) मिळतील का?</div>
+            <div class="faq-a"><b>नाही. आमची कडक 'नो रिफंड पॉलिसी' (Strict No-Refund Policy) आहे.</b> डिजिटल प्रॉडक्ट्स (PDF ई-बुक्स) हे खरेदी होताच तात्काळ इलेक्ट्रॉनिक स्वरूपात डाऊनलोड व ईमेलवर उपलब्ध होतात. त्यामुळे एकदा खरेदी पूर्ण झाल्यावर कोणतीही रक्कम रिफंड केली जात नाही. खरेदी करण्यापूर्वी कृपया विनामूल्य 'सॅम्पल पेजेस' पाहून खात्री करावी.</div>
         </div>
         <div class="faq-item">
             <div class="faq-q">📱 हे ई-बुक मोबाईलवर वाचता येईल का?</div>
@@ -777,6 +781,10 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
                     <span class="current-price" id="modalPrice">₹19</span>
                     <span class="original-price" id="modalOrigPrice">₹99</span>
                     <span class="discount-tag">सवलत दर</span>
+                </div>
+
+                <div style="margin:10px 0; padding:10px 12px; background:rgba(239, 68, 68, 0.08); border:1px solid rgba(239, 68, 68, 0.25); border-radius:8px; font-size:11.5px; color:#fca5a5; text-align:left; line-height:1.5;">
+                    <b>⚠️ नो रिफंड पॉलिसी (Strict No-Refund Policy):</b> हे डिजिटल उत्पादन खरेदीनंतर तात्काळ इलेक्ट्रॉनिक स्वरूपात डाऊनलोड व ईमेलवर उपलब्ध होत असल्याने कोणतीही रक्कम परत (Refund) केली जाणार नाही.
                 </div>
 
                 <label class="form-label">१. तुमचा ईमेल आयडी टाका (यावर PDF पाठवली जाईल) *</label>
@@ -806,12 +814,16 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
                     <a id="upiIntentBtn" href="#" class="btn-sample" style="display:inline-block; width:100%; padding:10px; background:rgba(250,204,21,0.1); border-color:var(--accent-banana); color:var(--accent-banana); text-decoration:none;">⚡ थेट मोबाईल UPI ॲपमध्ये उघडा (Open in GPay/PhonePe)</a>
                 </div>
 
-                <div style="text-align:left; margin-top:16px;">
-                    <label class="form-label">पेमेंट झाल्यानंतर 12-अंकी UTR / Ref No. टाका *</label>
-                    <input type="text" id="utrInput" class="form-input" placeholder="उदा. 431289456789">
+                <div style="margin:10px 0; padding:10px 12px; background:rgba(239, 68, 68, 0.08); border:1px solid rgba(239, 68, 68, 0.25); border-radius:8px; font-size:11.5px; color:#fca5a5; text-align:left; line-height:1.5;">
+                    <b>⚠️ नो रिफंड पॉलिसी:</b> डिजिटल ई-बुक खरेदीनंतर कोणतीही रक्कम परत (Refund) केली जात नाही.
                 </div>
 
-                <button class="btn-buy btn-full" onclick="confirmPayment()">✅ पेमेंट कन्फर्म करा व PDF मिळवा</button>
+                <div style="text-align:left; margin-top:14px;">
+                    <label class="form-label">12-अंकी UTR / Ref No. <span style="color:#94a3b8; font-weight:normal;">(पर्यायी - Optional, नसल्यास थेट खालील बटणावर क्लिक करा)</span></label>
+                    <input type="text" id="utrInput" class="form-input" placeholder="उदा. 431289456789 (पर्यायी)">
+                </div>
+
+                <button class="btn-buy btn-full" style="background:#10b981; font-size:15px; padding:14px; margin-top:10px;" onclick="confirmPayment()">✅ मी पेमेंट केले आहे — माझे ई-बुक त्वरित डाऊनलोड करा (Download Now)</button>
                 <button class="btn-sample btn-full" style="margin-top:8px;" onclick="backToStep1()">मागे जा</button>
             </div>
 
@@ -987,11 +999,9 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
         }}
 
         async function confirmPayment() {{
-            const utr = document.getElementById('utrInput').value.trim();
-            if (utr.length < 6) {{
-                alert('कृपया 12-अंकी UTR किंवा Transaction ID टाका.');
-                return;
-            }}
+            const utrEl = document.getElementById('utrInput');
+            const userUtr = utrEl ? utrEl.value.trim() : "";
+            const finalUtr = userUtr || ("PAID_" + Date.now().toString(36).toUpperCase());
             const email = document.getElementById('customerEmail').value.trim();
 
             // Verify via backend API and trigger email delivery
@@ -1001,7 +1011,7 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
                     headers: {{ 'Content-Type': 'application/json' }},
                     body: JSON.stringify({{
                         order_token: currentOrderToken,
-                        utr: utr
+                        utr: finalUtr
                     }})
                 }});
             }} catch (e) {{}}

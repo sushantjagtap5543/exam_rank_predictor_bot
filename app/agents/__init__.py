@@ -43,12 +43,13 @@ from .content_faculty_agents import (
 
 # Operations, Branding & Commerce
 from .channel_branding_agent import ChannelBrandingAgent
-from .digital_product_agent import DigitalProductPackagingAgent
+from .digital_product_agent import DigitalProductPackagingAgent, DEFAULT_PRODUCTS
 from .marketing_sales_agent import MarketingSalesAgent
 from .fulfillment_email_agent import FulfillmentEmailAgent
 
 __all__ = [
     "BaseSeniorAgent",
+    "DEFAULT_PRODUCTS",
     # Executive
     "ChiefExecutiveOfficer",
     "AILeadDirector",

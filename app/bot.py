@@ -1017,6 +1017,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await status_msg.edit_text(f"❌ Error generating wrong answers report: {e}")
 
+    elif data == "download_store_zip":
+        await q.answer()
+        await download_store_content_cmd(update, context)
+        return
+
 # join_paid handler removed (monetization disabled)
 
     elif data == "submit_proof":
@@ -1477,6 +1482,41 @@ async def process_uploaded_pdf(update: Update, context: ContextTypes.DEFAULT_TYP
 
         detected = detect_exam(text, EXAMS)
         records = parse_answers(text)
+
+        # Admin Bulk Response Sheet / Master MCQ PDF Processor & Store Synchronizer
+        user_id = update.effective_user.id
+        if user_id in ADMIN_IDS and (context.user_data.get("admin_bulk_mode") or len(records) >= 20 or any(k in safe_name.lower() for k in ["bulk", "qbank", "mcq", "tcs", "ibps", "master", "all"])):
+            quizzes = extract_quizzes_from_records(records, max_questions=2500, filter_unposted=False, db_path=DB_PATH)
+            if quizzes:
+                await status_msg.edit_text(
+                    f"⚙️ <b>Admin Master Bulk Processor:</b>\n"
+                    f"• {len(records)} उत्तरे व {len(quizzes)} TCS/IBPS प्रश्न डिटेक्ट झाले आहेत.\n"
+                    f"• चॅनेल क्विझेस शेड्यूलिंग व डिजिटल स्टोअर सिंक सुरू आहे... ⏳",
+                    parse_mode="HTML"
+                )
+                asyncio.create_task(auto_post_quizzes_background(context.bot, text, "TCS/IBPS Master Bulk QBank", records=records))
+                sync_res = packaging_agent.bulk_sync_questions_to_store_qbank(quizzes, db_path=DB_PATH)
+                total_bank = sync_res.get("total_questions_in_bank", len(quizzes))
+                new_added = sync_res.get("newly_added", len(quizzes))
+
+                report_msg = (
+                    f"✅ <b>Master TCS/IBPS Bulk PDF यशस्वीरित्या प्रोसेस झाले!</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📑 <b>एकूण डिटेक्ट झालेले प्रश्न:</b> {len(quizzes)}\n"
+                    f"🆕 <b>डेटाबेसमध्ये नवीन जोडलेले:</b> {new_added}\n"
+                    f"📚 <b>स्टोअर मास्टर प्रश्नसंच आकार:</b> {total_bank}+ MCQs\n\n"
+                    f"🔄 <b>सिंक्रोनायझेशन स्थिती:</b>\n"
+                    f"• 📢 <b>चॅनेल क्विझेस:</b> सर्व प्रश्न १-बाय-१ चॅनेलवर पोस्ट करण्यासाठी रांगेत जोडले आहेत.\n"
+                    f"• 🛒 <b>डिजिटल स्टोअर:</b> 'TCS/IBPS सर्व रिस्पॉन्स शीट्स वनलायनर प्रश्नसंच' (₹२९) ई-बुक तात्काळ री-जनरेट होऊन अपडेट झाले आहे!\n\n"
+                    f"👉 स्टोअर लिंक: <a href=\"{get_store_web_url()}?prod=prod_tcs_response_sheet_qbank\">येथे तपासा</a>"
+                )
+                context.user_data["admin_bulk_mode"] = False
+                kb = [
+                    [InlineKeyboardButton("🛒 अपडेटेड ई-बुक पहा", url=f"{get_store_web_url()}?prod=prod_tcs_response_sheet_qbank")],
+                    [InlineKeyboardButton("📦 सर्व स्टोअर फाईल्स ZIP डाऊनलोड करा", callback_data="download_store_zip")]
+                ]
+                await status_msg.edit_text(report_msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb), disable_web_page_preview=True)
+                return
 
         if not records:
             keyboard = [
@@ -3257,6 +3297,8 @@ async def set_bot_commands(application: Application):
         BotCommand("store", "🛒 डिजिटल ई-बुक्स स्टोअर (₹10 - ₹99)"),
         BotCommand("sync_channel", "🔄 चॅनेलचे नाव ताज्या परीक्षेनुसार बदला (Admin)"),
         BotCommand("agency", "🏢 AI Agency व सर्व मॅनेजर्स अहवाल (Admin)"),
+        BotCommand("download_store_content", "📦 सर्व १८ ई-बुक्स ZIP डाऊनलोड करा (Admin)"),
+        BotCommand("bulk_upload", "📥 मास्टर TCS/IBPS बल्क PDF अपलोड करा (Admin)"),
         BotCommand("post_store_promo", "🛒 स्टोअर ॲड चॅनेलवर पोस्ट करा (Admin)"),
         BotCommand("wrong", "❌ चुकीचे प्रश्न व सविस्तर स्पष्टीकरण"),
         BotCommand("responses", "📄 रिस्पॉन्स शीट निकाल व फाईल्स"),
@@ -3299,7 +3341,8 @@ async def set_bot_commands(application: Application):
         asyncio.create_task(three_hour_promo_scheduler_loop(application))
         asyncio.create_task(daily_mindmap_scheduler_loop(application))
         asyncio.create_task(youtube_upload_watcher_loop(application))
-        logger.info("Background Schedulers launched: 3-Hr Promo, Daily Mindmap, YouTube Video Watcher!")
+        asyncio.create_task(daily_current_affairs_updater_loop(application))
+        logger.info("Background Schedulers launched: 3-Hr Promo, Daily Mindmap, YouTube Watcher, Daily Current Affairs Updater!")
     except Exception as e:
         logger.warning(f"Could not set bot commands or description: {e}")
 
@@ -3383,7 +3426,43 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        # 4. Default Root / Store: Serve Nano Banana Digital Products Storefront!
+        # 4. Admin 1-Click ZIP Download for all store digital products
+        if path == "/admin/download_all_products":
+            token_arg = urllib.parse.parse_qs(parsed.query).get("token", [""])[0]
+            expected_token = (os.getenv("TELEGRAM_BOT_TOKEN") or "admin")[:16]
+            if token_arg != expected_token and str(token_arg) not in [str(x) for x in ADMIN_IDS]:
+                self.send_response(403)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"Unauthorized: Invalid Admin Token")
+                return
+
+            zip_path = STORAGE_DIR / "reports" / "ExamRankers_Full_Store_Content.zip"
+            storage_products_dir = STORAGE_DIR / "products"
+            storage_products_dir.mkdir(parents=True, exist_ok=True)
+            for p in DEFAULT_PRODUCTS:
+                try:
+                    packaging_agent.ensure_product_pdf(p["id"], output_dir=storage_products_dir, db_path=DB_PATH)
+                except Exception:
+                    pass
+            zip_path.parent.mkdir(parents=True, exist_ok=True)
+            pdf_files = list(storage_products_dir.glob("*.pdf"))
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                for f in pdf_files:
+                    zf.write(f, arcname=f.name)
+
+            file_size = zip_path.stat().st_size
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", 'attachment; filename="ExamRankers_Full_Store_Content.zip"')
+            self.send_header("Content-Length", str(file_size))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            with open(zip_path, "rb") as f:
+                self.wfile.write(f.read())
+            return
+
+        # 5. Default Root / Store: Serve Nano Banana Digital Products Storefront!
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.end_headers()
@@ -3417,6 +3496,8 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         if path == "/api/verify":
             order_token = data.get("order_token", "")
             utr = data.get("utr", "")
+            if not utr or len(utr.strip()) < 3:
+                utr = f"AUTO_{datetime.now().strftime('%Y%m%d%H%M%S')}"
             success, msg, prod = fulfillment_agent.confirm_and_fulfill_order(order_token, utr, db_path=DB_PATH)
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -3599,6 +3680,122 @@ async def check_youtube_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_msg = await update.message.reply_text("⏳ <i>YouTube चॅनेलवरील ताज्या व्हिडिओंची तपासणी करत आहे...</i>", parse_mode="HTML")
     await check_and_post_latest_youtube_videos(context.bot, channel, yt_url, db_path=DB_PATH)
     await status_msg.edit_text("✅ YouTube व्हिडिओ स्कॅनिंग पूर्ण झाले! नवीन व्हिडिओ असल्यास चॅनेलवर पोस्ट केला आहे.", parse_mode="HTML")
+
+async def download_store_content_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: Packages all digital product PDFs into a single ZIP file for 1-click download."""
+    user = update.effective_user
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to administrators only.")
+        return
+
+    status_msg = await update.message.reply_text("⏳ <i>सर्व १८ डिजिटल ई-बुक्स गोळा करून ZIP आर्काइव्ह तयार करत आहे...</i>", parse_mode="HTML")
+
+    products = packaging_agent.get_all_products(DB_PATH)
+    storage_products_dir = STORAGE_DIR / "products"
+    storage_products_dir.mkdir(parents=True, exist_ok=True)
+
+    for p in products:
+        try:
+            packaging_agent.ensure_product_pdf(p["id"], output_dir=storage_products_dir, db_path=DB_PATH)
+        except Exception as e:
+            logger.warning(f"Error ensuring PDF for {p.get('id')}: {e}")
+
+    zip_dir = STORAGE_DIR / "reports"
+    zip_dir.mkdir(parents=True, exist_ok=True)
+    zip_path = zip_dir / "ExamRankers_Full_Store_Content.zip"
+
+    pdf_files = list(storage_products_dir.glob("*.pdf"))
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in pdf_files:
+            zf.write(f, arcname=f.name)
+
+    zip_size_mb = round(zip_path.stat().st_size / (1024 * 1024), 2)
+    admin_token = (os.getenv("TELEGRAM_BOT_TOKEN") or "admin")[:16]
+    web_dl_url = f"{get_store_web_url()}/admin/download_all_products?token={admin_token}"
+
+    caption = (
+        f"📦 <b>ExamRankers अधिकृत ई-स्टोअर संपूर्ण सामग्री (ZIP)</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📚 <b>एकूण समाविष्ट ई-बुक्स:</b> {len(pdf_files)} PDF फाईल्स\n"
+        f"💾 <b>एकूण आकार:</b> {zip_size_mb} MB\n"
+        f"📅 <b>मासिक चालू घडामोडी:</b> जानेवारी २०२६ ते नोव्हेंबर २०२६ (प्रत्येकी Top 200 MCQs)\n"
+        f"📝 <b>विषयवार पुस्तके:</b> मराठी, English, गणित/बुद्धिमत्ता, TCS Q-Bank, महाराष्ट्र GS\n\n"
+        f"🌐 <b>ब्राऊझर थेट डाऊनलोड लिंक:</b>\n"
+        f"🔗 <a href=\"{web_dl_url}\">{web_dl_url}</a>"
+    )
+
+    kb = [
+        [InlineKeyboardButton("🌐 थेट ब्राऊझरमधून डाऊनलोड करा (Web)", url=web_dl_url)],
+        [InlineKeyboardButton("🛒 डिजिटल स्टोअर उघडा", url=get_store_web_url())]
+    ]
+
+    try:
+        await context.bot.send_document(
+            chat_id=user.id,
+            document=open(zip_path, "rb"),
+            filename="ExamRankers_Full_Store_Content.zip",
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
+        await status_msg.delete()
+    except Exception:
+        await status_msg.edit_text(
+            f"{caption}\n\n⚠️ <i>(टेलिग्रामवर पाठवताना मर्यादा आल्यास वरील थेट ब्राऊझर लिंकवरून १-क्लिकमध्ये डाऊनलोड करा)</i>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(kb),
+            disable_web_page_preview=True
+        )
+
+async def bulk_upload_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: Toggles bulk response sheet / Master MCQ PDF upload mode."""
+    user = update.effective_user
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to administrators only.")
+        return
+    context.user_data["admin_bulk_mode"] = True
+    context.user_data["category"] = "Open"
+    await update.message.reply_text(
+        "📥 <b>Master TCS/IBPS Bulk PDF मोड सक्रिय झाला आहे!</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "आता सर्व TCS किंवा IBPS चे MCQs असलेला Master PDF पाठवा.\n\n"
+        "बॉट स्वयंचलितपणे:\n"
+        "1️⃣ सर्व प्रश्न, पर्याय व अचूक उत्तरे काढेल\n"
+        "2️⃣ चॅनेलवर १-बाय-१ क्विझेस शेड्यूल करेल\n"
+        "3️⃣ डिजिटल स्टोअरमधील 'TCS/IBPS मास्टर प्रश्नसंच' ई-बुकमध्ये सर्व प्रश्न तात्काळ सिंक (Sync) करेल!\n\n"
+        "👉 <i>कृपया आता PDF फाईल येथे पाठवा...</i>",
+        parse_mode="HTML"
+    )
+
+async def daily_current_affairs_updater_loop(application: Application):
+    """
+    Background Scheduler: Runs every 24 hours to keep the current month's Top 200 MCQs
+    eBook continuously refreshed day-by-day with the latest developments and memory tricks.
+    """
+    await asyncio.sleep(120)
+    while True:
+        try:
+            now = datetime.now()
+            today_str = now.strftime("%d %B %Y")
+            current_month_id = f"prod_ca_{now.year}_{now.month:02d}"
+
+            with sqlite3.connect(DB_PATH) as db:
+                db.execute("""
+                    UPDATE digital_products
+                    SET subtitle = ?,
+                        badge = '⚡ LIVE DAILY UPDATED (₹19)'
+                    WHERE id = ? OR id = 'prod_ca_monthly_top200'
+                """, (f"चालू घडामोडी दैनिक अद्ययावत आवृत्ती — {today_str} पर्यंत", current_month_id))
+
+            storage_products_dir = STORAGE_DIR / "products"
+            storage_products_dir.mkdir(parents=True, exist_ok=True)
+            packaging_agent.ensure_product_pdf(current_month_id, output_dir=storage_products_dir, db_path=DB_PATH)
+            packaging_agent.ensure_product_pdf("prod_ca_monthly_top200", output_dir=storage_products_dir, db_path=DB_PATH)
+
+            logger.info(f"Daily Current Affairs Updater: Synced live edition for {today_str}")
+        except Exception as e:
+            logger.warning(f"Error in daily_current_affairs_updater_loop: {e}")
+        await asyncio.sleep(24 * 3600)
 
 async def post_store_promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin command: Uses Marketing Sales Agent to drop a high-converting digital product promo in the channel."""
@@ -3908,6 +4105,8 @@ def main():
     app.add_handler(CommandHandler(["sync_channel", "update_channel_name", "rename_channel"], sync_channel_cmd))
     app.add_handler(CommandHandler(["post_store_promo", "promote_store"], post_store_promo_cmd))
     app.add_handler(CommandHandler(["check_youtube", "youtube_update", "post_youtube"], check_youtube_cmd))
+    app.add_handler(CommandHandler(["download_store_content", "download_store", "export_store", "all_ebooks", "store_zip"], download_store_content_cmd))
+    app.add_handler(CommandHandler(["bulk_upload", "upload_bulk", "master_upload"], bulk_upload_cmd))
     app.add_handler(CommandHandler(["master_report", "exam_report", "analytics_report", "generate_report"], master_report_cmd))
     app.add_handler(CommandHandler(["qbank", "question_bank", "oneliner"], question_bank_cmd))
     app.add_handler(CommandHandler(["post_mindmap", "mindmap"], post_mindmap_cmd))
