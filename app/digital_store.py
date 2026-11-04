@@ -873,6 +873,9 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
                         </div>
                         <h2 class="card-title">${{p.title}}</h2>
                         <p class="card-sub">${{p.subtitle || p.description}}</p>
+                        <div style="display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; color:#10b981; margin:6px 0 8px 0; background:rgba(16,185,129,0.12); padding:3px 8px; border-radius:6px; border:1px solid rgba(16,185,129,0.25);">
+                            ⚡ स्मरण ट्रिक्स, शॉर्टकट सूत्रे व माइंड-हॅक्स समाविष्ट
+                        </div>
                         <div class="card-meta">
                             <span>⭐ ${{p.rating}} (${{p.reviews_count}})</span>
                             <span>📄 ${{p.pages}} पृष्ठे</span>

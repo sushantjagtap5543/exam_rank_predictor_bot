@@ -385,6 +385,79 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             ]
             elements.extend(q_flow)
 
+        # Section 2: High-Yield Tricks, Mnemonics & Shortcuts
+        elements.append(Spacer(1, 12))
+        elements.append(HRFlowable(width="100%", thickness=1.2, color=colors.HexColor("#0284c7"), spaceAfter=12))
+        elements.append(Paragraph("<b>⚡ भाग २: हमखास लक्षात ठेवण्याच्या स्मरण क्लृप्त्या व शॉर्टकट ट्रिक्स (Tricks & Mnemonics)</b>", sec_style))
+        elements.append(Spacer(1, 6))
+
+        tricks_data = [
+            ("💡 प्रयोग ओळखण्याची ३-सेकंद क्लृप्ती (मराठी व्याकरण):",
+             "• नियम १: कर्त्याला कोणताही प्रत्यय नाही? ➔ १००% 'कर्तरी प्रयोग'!\n"
+             "• नियम २: कर्त्याला तृतीया प्रत्यय (ने, नी, ई, शी) + कर्माला प्रत्यय नाही? ➔ १००% 'कर्मणी प्रयोग'!\n"
+             "• नियम ३: कर्त्याला व कर्माला दोघांनाही प्रत्यय असल्यास? ➔ १००% 'भावे प्रयोग'!"),
+            ("💡 समास ओळखण्याचे जलद कोडवर्ड्स (मराठी व्याकरण):",
+             "• पहिले पद प्रधान / उपसर्ग (प्रति, यथा, गैर, बे, दर)? ➔ 'अव्ययीभाव समास'\n"
+             "• दुसरे पद प्रधान / विभक्ती प्रत्ययाचा लोप? ➔ 'तत्पुरुष समास'\n"
+             "• दोन्ही पदे महत्त्वाची (आणि, व, किंवा, अथवा)? ➔ 'द्वंद्व समास'\n"
+             "• दोन्ही पदे गौण असून तिसऱ्याच घटकाचा बोध? ➔ 'बहुव्रीहि समास'"),
+            ("💡 Subject-Verb Agreement 'E-E-E-N' Shortcut (English):",
+             "• 'Each, Every, Either, Neither, None' या शब्दांनंतर नाम अनेकवचनी असले तरी क्रियापद नेहमी SINGULAR (एकवचनी) वापरावे!\n"
+             "  उदा. 'Each of the candidates IS qualified' (ARE नाही)."),
+            ("💡 Conjunction Traps (TCS/IBPS English):",
+             "• 'No sooner' नंतर नेहमी 'than' येतो ('when' किंवा 'then' कधीही नाही).\n"
+             "• 'Hardly / Scarcely' नंतर नेहमी 'when' येतो ('than' कधीही नाही).\n"
+             "• 'Although / Though' सोबत कधीही 'but' येत नाही ('yet' किंवा स्वल्पविराम वापरावा)."),
+            ("💡 बैठक व्यवस्था (Seating Arrangement) वर्तुळाकार दिशा ट्रिक:",
+             "• केंद्राकडे तोंड (Facing Centre): घड्याळाच्या दिशेने (Clockwise) = डावीकडे (Left) | विरुद्ध (Anticlockwise) = उजवीकडे (Right).\n"
+             "• केंद्राबाहेर तोंड (Facing Outside): वरील दिशा तंतोतंत उलट होतात!"),
+            ("💡 कामाचे दिवस शॉर्टकट सूत्र (Work & Time Formula):",
+             "• A एक काम x दिवसात व B तेच काम y दिवसात करत असल्यास दोघे मिळून ते काम:\n"
+             "  एकूण दिवस = (x × y) / (x + y) दिवसात पूर्ण करतील. (उदा. १० व १५ दिवस = १५०/२५ = ६ दिवस!)."),
+            ("💡 भारतातील ११ अभिजात भाषा (Classical Languages) स्मरण कोडवर्ड:",
+             "• कोडवर्ड: 'ता-सं-क-ते-म-ओ + म-पा-प्रा-आ-ब'\n"
+             "  (तमिळ, संस्कृत, कन्नड, तेलगू, मल्याळम, ओडिया + ऑक्टोबर २०२४ च्या नव्या ५ भाषा: मराठी, पाली, प्राकृत, आसामी, बंगाली)."),
+            ("💡 माहितीचा अधिकार (RTI Act 2005) मुख्य कलमे ट्रिक:",
+             "• कलम ४: माहितीचे स्वयंस्फूर्त प्रकटन (Proactive Disclosure)\n"
+             "• कलम ६: अर्ज सादर करणे | कलम ७: ३० दिवसांत माहिती देणे | कलम १९: अपील | कलम २०: दररोज ₹२५० दंड.")
+        ]
+
+        trick_box_style = ParagraphStyle(
+            "TBX",
+            parent=styles["Normal"],
+            fontName=font_regular,
+            fontSize=9,
+            leading=13.5,
+            textColor=colors.HexColor("#0f172a")
+        )
+        trick_title_style = ParagraphStyle(
+            "TTX",
+            parent=styles["Normal"],
+            fontName=font_bold,
+            fontSize=10,
+            leading=14,
+            textColor=colors.HexColor("#0369a1")
+        )
+
+        for heading, body_text in tricks_data:
+            formatted_body = body_text.replace("\n", "<br/>")
+            table_content = [
+                [Paragraph(f"<b>{heading}</b>", trick_title_style)],
+                [Paragraph(formatted_body, trick_box_style)]
+            ]
+            t_box = Table(table_content, colWidths=[520])
+            t_box.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ('BOX', (0, 0), (-1, -1), 0.7, colors.HexColor("#38bdf8")),
+                ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ('TOPPADDING', (0, 0), (-1, -1), 5),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+                ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ]))
+            elements.append(t_box)
+            elements.append(Spacer(1, 6))
+
         # Footer Notice
         elements.append(Spacer(1, 10))
         elements.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#94a3b8"), spaceAfter=10))

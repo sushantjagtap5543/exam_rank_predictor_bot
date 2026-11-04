@@ -12,6 +12,7 @@ import urllib.parse
 import threading
 from datetime import datetime
 from pathlib import Path
+from typing import Optional, Dict, Any, List, Tuple
 from dotenv import load_dotenv
 
 from telegram import (
@@ -1621,9 +1622,6 @@ async def complete_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     # Background quiz publisher: extracts all questions and posts 1-by-1 continuously to channel
     asyncio.create_task(auto_post_quizzes_background(context.bot, raw_text, exam_display_name, records=records))
-
-    # Automatic Channel Name & Branding Synchronizer according to latest active government exam
-    asyncio.create_task(auto_sync_channel_name_background(context.bot))
 
     # Gated access: Only after candidate submits response sheet, generate single-use VIP channel invite
     channel_join_url = PAID_CHANNEL_LINK or "https://t.me/+EjtGp-pH4hMxZDM1"
@@ -3300,8 +3298,8 @@ async def set_bot_commands(application: Application):
         # Launch automated background schedulers (Quiz schedule removed; all quizzes posted on-demand via /postquizes)
         asyncio.create_task(three_hour_promo_scheduler_loop(application))
         asyncio.create_task(daily_mindmap_scheduler_loop(application))
-        asyncio.create_task(auto_channel_branding_scheduler_loop(application))
-        logger.info("Background Schedulers launched: 3-Hr Promo, Daily Mindmap, 6-Hr Auto Channel Branding!")
+        asyncio.create_task(youtube_upload_watcher_loop(application))
+        logger.info("Background Schedulers launched: 3-Hr Promo, Daily Mindmap, YouTube Video Watcher!")
     except Exception as e:
         logger.warning(f"Could not set bot commands or description: {e}")
 
@@ -3566,28 +3564,41 @@ async def agency_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await status_msg.edit_text("\n".join(report_lines), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb), disable_web_page_preview=True)
 
 async def sync_channel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin command: Force syncs channel name according to latest government exam."""
+    """Admin command: Exam trend analysis report (Channel renaming disabled)."""
+    user = update.effective_user
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to administrators only.")
+        return
+
+    status_msg = await update.message.reply_text("⏳ <i>परीक्षा ट्रेंड व ॲनालिटिक्स गोळा करत आहे...</i>", parse_mode="HTML")
+    trending = channel_branding_agent.detect_trending_exam(DB_PATH)
+
+    reply = (
+        f"🏆 <b>सध्याची ट्रेंडिंग परीक्षा विश्लेषण:</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 <b>सक्रिय परीक्षा:</b> {trending.get('name')}\n"
+        f"🏷️ <b>परीक्षेचा कोड:</b> <code>{trending.get('key')}</code>\n\n"
+        f"🔒 <b>चॅनेल नाव संरक्षण:</b>\n"
+        f"<i>आपल्या सूचनेनुसार चॅनेलचे नाव आपोआप बदलणे (Auto Name Changing) पूर्णपणे बंद करण्यात आले आहे. तुमचे मूळ चॅनेल नाव कायम सुरक्षित राहील.</i>"
+    )
+    await status_msg.edit_text(reply, parse_mode="HTML")
+
+async def check_youtube_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: Force checks YouTube channel uploads and broadcasts new video with store links."""
     user = update.effective_user
     if user.id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Restricted to administrators only.")
         return
 
     channel = os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID
-    if not channel or channel.startswith("http"):
-        await update.message.reply_text("⚠️ कृपया आधी .env मध्ये PAID_CHANNEL_ID सेट करा.")
+    yt_url = get_youtube_link()
+    if not yt_url:
+        await update.message.reply_text("⚠️ कृपया आधी .env मध्ये YOUTUBE_CHANNEL_LINK सेट करा.")
         return
 
-    status_msg = await update.message.reply_text("⏳ <i>Brand Strategist Agent ताज्या परीक्षेचे विश्लेषण करून चॅनेलचे नाव बदलत आहे...</i>", parse_mode="HTML")
-    res = await channel_branding_agent.sync_telegram_channel_title(context.bot, channel, DB_PATH)
-
-    reply = (
-        f"🏆 <b>चॅनेल ब्रँडिंग अपडेट अहवाल:</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"📌 <b>सक्रिय परीक्षा:</b> {res.get('exam_name')}\n"
-        f"🏷️ <b>नवीन नाव:</b> <code>{res.get('title')}</code>\n"
-        f"📝 <b>स्थिती:</b> {res.get('message')}\n"
-    )
-    await status_msg.edit_text(reply, parse_mode="HTML")
+    status_msg = await update.message.reply_text("⏳ <i>YouTube चॅनेलवरील ताज्या व्हिडिओंची तपासणी करत आहे...</i>", parse_mode="HTML")
+    await check_and_post_latest_youtube_videos(context.bot, channel, yt_url, db_path=DB_PATH)
+    await status_msg.edit_text("✅ YouTube व्हिडिओ स्कॅनिंग पूर्ण झाले! नवीन व्हिडिओ असल्यास चॅनेलवर पोस्ट केला आहे.", parse_mode="HTML")
 
 async def post_store_promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin command: Uses Marketing Sales Agent to drop a high-converting digital product promo in the channel."""
@@ -3622,30 +3633,186 @@ async def post_store_promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYP
     )
     await update.message.reply_text(f"✅ Digital Product ॲड चॅनेलवर यशस्वीरित्या पोस्ट केली! (Product: {target_prod['title']})")
 
-async def auto_sync_channel_name_background(bot):
-    """Background helper to update Telegram Channel title automatically when response sheets arrive."""
-    channel = os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID
-    if not channel or channel.startswith("http"):
-        return
-    try:
-        res = await channel_branding_agent.sync_telegram_channel_title(bot, channel, DB_PATH)
-        if res.get("success"):
-            logger.info(f"🏆 Auto-Synced Channel Title: {res.get('title')}")
-    except Exception as e:
-        logger.warning(f"Auto-sync channel title note: {e}")
+async def get_youtube_channel_id(yt_url: str) -> Optional[str]:
+    """Resolves YouTube channel ID from a channel link, handle or URL."""
+    if not yt_url:
+        return None
+    m = re.search(r"UC[a-zA-Z0-9_-]{22}", yt_url)
+    if m:
+        return m.group(0)
 
-async def auto_channel_branding_scheduler_loop(application: Application):
-    """Background Scheduler: Checks trending government exams every 6 hours and updates channel branding."""
-    await asyncio.sleep(60)
+    try:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+            resp = await client.get(yt_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+            if resp.status_code == 200:
+                html = resp.text
+                m = re.search(r'itemprop="channelId"\s+content="(UC[a-zA-Z0-9_-]{22})"', html)
+                if m:
+                    return m.group(1)
+                m = re.search(r'https://www.youtube.com/feeds/videos.xml\?channel_id=(UC[a-zA-Z0-9_-]{22})', html)
+                if m:
+                    return m.group(1)
+    except Exception as e:
+        logger.debug(f"Could not extract channel ID from {yt_url}: {e}")
+    return None
+
+async def check_and_post_latest_youtube_videos(bot, channel_target: str, yt_url: str, db_path: str = "bot.db"):
+    """
+    Checks the YouTube channel RSS feed for new video uploads.
+    When a new video is detected, broadcasts it to the Telegram channel with
+    YouTube link, video highlights, and Nano Banana digital product store links with shortcuts and tricks.
+    """
+    import xml.etree.ElementTree as ET
+
+    with sqlite3.connect(db_path) as db:
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS posted_youtube_videos (
+                video_id TEXT PRIMARY KEY,
+                title TEXT,
+                published_at TEXT,
+                posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+    channel_id = os.getenv("YOUTUBE_CHANNEL_ID", "").strip()
+    if not channel_id:
+        channel_id = await get_youtube_channel_id(yt_url)
+
+    if not channel_id:
+        logger.debug("YouTube Watcher: No valid channel ID could be resolved.")
+        return
+
+    feed_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+            resp = await client.get(feed_url, headers={"User-Agent": "Mozilla/5.0"})
+            if resp.status_code != 200:
+                return
+            xml_text = resp.text
+    except Exception as e:
+        logger.warning(f"YouTube RSS fetch failed: {e}")
+        return
+
+    try:
+        root = ET.fromstring(xml_text)
+    except Exception as e:
+        logger.warning(f"Error parsing YouTube RSS XML: {e}")
+        return
+
+    ns = {
+        'atom': 'http://www.w3.org/2005/Atom',
+        'yt': 'http://www.youtube.com/xml/schemas/2015',
+        'media': 'http://search.yahoo.com/mrss/'
+    }
+
+    entries = root.findall('atom:entry', ns)
+    if not entries:
+        return
+
+    with sqlite3.connect(db_path) as db:
+        posted_ids = {row[0] for row in db.execute("SELECT video_id FROM posted_youtube_videos").fetchall()}
+
+        if not posted_ids:
+            # Seed current videos on initial startup so we only announce NEW uploads going forward
+            for entry in entries:
+                vid_id_elem = entry.find('yt:videoId', ns)
+                if vid_id_elem is not None and vid_id_elem.text:
+                    title_elem = entry.find('atom:title', ns)
+                    pub_elem = entry.find('atom:published', ns)
+                    db.execute(
+                        "INSERT OR IGNORE INTO posted_youtube_videos (video_id, title, published_at) VALUES (?, ?, ?)",
+                        (vid_id_elem.text.strip(), title_elem.text if title_elem is not None else "", pub_elem.text if pub_elem is not None else "")
+                    )
+            logger.info(f"Seeded {len(entries)} existing YouTube videos into database. Watching for new uploads...")
+            return
+
+    for entry in reversed(entries):
+        vid_id_elem = entry.find('yt:videoId', ns)
+        if vid_id_elem is None or not vid_id_elem.text:
+            continue
+        vid_id = vid_id_elem.text.strip()
+        if vid_id in posted_ids:
+            continue
+
+        title_elem = entry.find('atom:title', ns)
+        video_title = title_elem.text.strip() if title_elem is not None else "नवीन परीक्षा मार्गदर्शन व्हिडिओ"
+        pub_elem = entry.find('atom:published', ns)
+        pub_date = pub_elem.text.strip() if pub_elem is not None else ""
+        video_url = f"https://youtu.be/{vid_id}"
+
+        products = packaging_agent.get_all_products(db_path)
+        target_prod = products[0]
+        title_lower = video_title.lower()
+        if "चालू घडामोडी" in title_lower or "current" in title_lower:
+            target_prod = next((p for p in products if "current" in p["id"]), products[0])
+        elif "मराठी" in title_lower or "व्याकरण" in title_lower:
+            target_prod = next((p for p in products if "marathi" in p["id"]), products[0])
+        elif "english" in title_lower:
+            target_prod = next((p for p in products if "english" in p["id"]), products[0])
+        elif "गणित" in title_lower or "बुद्धिमत्ता" in title_lower or "reasoning" in title_lower:
+            target_prod = next((p for p in products if "maths" in p["id"]), products[0])
+        else:
+            target_prod = next((p for p in products if "qbank" in p["id"]), products[0])
+
+        store_url = get_store_web_url()
+        prod_buy_url = f"{store_url}?prod={target_prod['id']}"
+
+        post_msg = (
+            f"🎬 <b>नवीन YouTube व्हिडिओ अपलोड झाला आहे!</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📌 <b>{video_title}</b>\n\n"
+            f"💡 <i>या व्हिडिओमध्ये TCS व IBPS परीक्षेसाठी अत्यंत उपयुक्त शॉर्टकट ट्रिक्स, "
+            f"प्रश्न विश्लेषण व स्मरण क्लृप्त्या (Tricks & Tips) देण्यात आल्या आहेत. संपूर्ण व्हिडिओ नक्की पहा!</i>\n\n"
+            f"📺 <b>व्हिडिओ लिंक:</b> {video_url}\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📚 <b>या विषयाशी संबंधित ई-बुक व शॉर्टकट ट्रिक्स हँडबुक:</b>\n"
+            f"{target_prod['icon']} <b>{target_prod['title']}</b>\n"
+            f"💰 <b>किंमत:</b> <s>₹{target_prod.get('original_price_inr', 99)}</s> <b>फक्त ₹{target_prod.get('price_inr', 19)}/-</b>\n"
+            f"⚡ <i>पेमेंटनंतर तात्काळ ब्राऊझरमध्ये डाऊनलोड व ईमेलवर PDF प्राप्त होते!</i>"
+        )
+
+        kb = [
+            [InlineKeyboardButton("▶️ व्हिडिओ पहा (Watch Video)", url=video_url)],
+            [InlineKeyboardButton(f"🛒 ई-बुक खरेदी करा (फक्त ₹{target_prod.get('price_inr', 19)})", url=prod_buy_url)],
+            [InlineKeyboardButton("🌐 अधिकृत डिजिटल स्टोअर उघडा (Nano Banana)", url=store_url)],
+            [InlineKeyboardButton("🔴 आमचे YouTube चॅनेल (Subscribe)", url=get_youtube_link() or video_url)]
+        ]
+
+        target_chat = int(channel_target) if channel_target.lstrip("-").isdigit() else channel_target
+        try:
+            await bot.send_message(
+                chat_id=target_chat,
+                text=post_msg,
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(kb),
+                disable_web_page_preview=False
+            )
+            logger.info(f"📢 Broadcasted new YouTube video '{video_title}' to channel {channel_target}")
+
+            with sqlite3.connect(db_path) as db:
+                db.execute(
+                    "INSERT OR REPLACE INTO posted_youtube_videos (video_id, title, published_at) VALUES (?, ?, ?)",
+                    (vid_id, video_title, pub_date)
+                )
+        except Exception as e:
+            logger.warning(f"Failed to post YouTube video update to channel: {e}")
+
+async def youtube_upload_watcher_loop(application: Application):
+    """
+    Background Scheduler: Checks YouTube channel every 10 minutes for new video uploads.
+    When a new video is published, immediately broadcasts it with video link, store links,
+    and relevant digital product recommendations with shortcuts and tricks.
+    """
+    await asyncio.sleep(45)
     while True:
         try:
-            channel = os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID
-            if channel and not channel.startswith("http"):
-                res = await channel_branding_agent.sync_telegram_channel_title(application.bot, channel, DB_PATH)
-                logger.info(f"6-Hour Channel Branding Check: {res.get('message')}")
+            channel_target = os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID
+            yt_url = get_youtube_link()
+            if channel_target and not channel_target.startswith("http") and yt_url:
+                await check_and_post_latest_youtube_videos(application.bot, channel_target, yt_url, db_path=DB_PATH)
         except Exception as e:
-            logger.warning(f"Error in auto_channel_branding_scheduler_loop: {e}")
-        await asyncio.sleep(6 * 3600)
+            logger.warning(f"Error in youtube_upload_watcher_loop: {e}")
+        await asyncio.sleep(600)
 
 def start_keep_alive_pinger():
     """
@@ -3740,6 +3907,7 @@ def main():
     app.add_handler(CommandHandler(["agency", "agents", "team", "ai_status", "force_agents"], agency_cmd))
     app.add_handler(CommandHandler(["sync_channel", "update_channel_name", "rename_channel"], sync_channel_cmd))
     app.add_handler(CommandHandler(["post_store_promo", "promote_store"], post_store_promo_cmd))
+    app.add_handler(CommandHandler(["check_youtube", "youtube_update", "post_youtube"], check_youtube_cmd))
     app.add_handler(CommandHandler(["master_report", "exam_report", "analytics_report", "generate_report"], master_report_cmd))
     app.add_handler(CommandHandler(["qbank", "question_bank", "oneliner"], question_bank_cmd))
     app.add_handler(CommandHandler(["post_mindmap", "mindmap"], post_mindmap_cmd))
