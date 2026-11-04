@@ -88,9 +88,17 @@ DB_PATH = os.getenv("DATABASE_PATH", "bot.db")
 STORAGE_DIR = Path(os.getenv("ADMIN_STORAGE_DIR", "admin_storage")).resolve()
 RESPONSE_DIR = STORAGE_DIR / "response_sheets"
 REPORT_DIR = STORAGE_DIR / "reports"
-ADMIN_IDS = {int(x.strip()) for x in os.getenv("ADMIN_TELEGRAM_IDS", "").split(",") if x.strip().isdigit()}
+ADMIN_IDS = {int(x.strip()) for x in (os.getenv("ADMIN_TELEGRAM_IDS") or os.getenv("ADMIN_USER_IDS") or "").split(",") if x.strip().isdigit()}
 PAID_CHANNEL_ID = os.getenv("PAID_CHANNEL_ID", "").strip()
 PAID_CHANNEL_LINK = get_paid_channel_link()
+
+def get_youtube_link() -> str:
+    """Returns the configured YouTube channel URL."""
+    return os.getenv("YOUTUBE_CHANNEL_LINK", "").strip()
+
+def get_youtube_button_text() -> str:
+    """Returns the custom or default YouTube subscribe button text."""
+    return os.getenv("YOUTUBE_BUTTON_TEXT", "🔴 अधिकृत YouTube चॅनेल (Subscribe)").strip()
 
 def update_env_channel_id(channel_id: str):
     """Updates PAID_CHANNEL_ID in .env file, environment variables, and in-memory global."""
@@ -168,7 +176,7 @@ CATEGORY_MAP = {
 
 def get_category_keyboard(prefix="cat"):
     """Builds a clean 2-column inline keyboard with short callback_data (strictly under Telegram's 64-byte cap)."""
-    return [
+    rows = [
         [InlineKeyboardButton("🚀 रिस्पॉन्स शीट लिंक पेस्ट करा किंवा PDF पाठवा (START)", callback_data="prompt_upload")],
         [InlineKeyboardButton("Open (खुला)", callback_data=f"{prefix}:open"), InlineKeyboardButton("OBC (इतर मागास)", callback_data=f"{prefix}:obc")],
         [InlineKeyboardButton("EWS (आर्थिक दुर्बल)", callback_data=f"{prefix}:ews"), InlineKeyboardButton("SC (अनुसूचित जाती)", callback_data=f"{prefix}:sc")],
@@ -176,6 +184,10 @@ def get_category_keyboard(prefix="cat"):
         [InlineKeyboardButton("SBC / SEBC (मराठा आरक्षण)", callback_data=f"{prefix}:sebc")],
         [InlineKeyboardButton("✍️ Quick Score Calculator", callback_data="manual_calc"), InlineKeyboardButton("ℹ️ How it Works / FAQ", callback_data="help")]
     ]
+    yt_link = get_youtube_link()
+    if yt_link:
+        rows.append([InlineKeyboardButton(get_youtube_button_text(), url=yt_link)])
+    return rows
 
 def get_persistent_menu_keyboard():
     """Builds a persistent bottom menu keyboard."""
@@ -508,23 +520,28 @@ async def check_channel_membership(bot, user_id: int) -> bool:
         return True
 
 async def prompt_force_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Sends prompt requiring user to join the official ExamRankers channel before continuing."""
+    """Sends prompt requiring user to join official Telegram and YouTube channels before continuing."""
     channel_link = os.getenv("PAID_CHANNEL_LINK", "https://t.me/+EjtGp-pH4hMxZDM1").strip() or "https://t.me/+EjtGp-pH4hMxZDM1"
+    yt_link = get_youtube_link()
+    yt_text = get_youtube_button_text()
+
     msg_text = (
-        "📢 <b>कृपया आधी आमच्या अधिकृत टेलिग्राम चॅनेलला जॉईन करा!</b>\n"
-        "<i>(Please join our official Telegram channel to use the bot)</i>\n\n"
-        "🎯 <b>ExamRankers Official Channel</b>\n"
+        "📢 <b>कृपया आधी आमच्या अधिकृत चॅनेल्सला जॉईन/फॉलो करा!</b>\n"
+        "<i>(Please join our official channels to use the bot)</i>\n\n"
+        "🎯 <b>ExamRankers Official Hub</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
         "✅ रोजचे मोफत TCS/IBPS पॅटर्न सराव प्रश्न व सविस्तर स्पष्टीकरण\n"
         "✅ सर्व परीक्षांचे निकाल, गुणवत्ता यादी (Merit List) व कट-ऑफ अपडेट्स\n"
-        "✅ चालू घडामोडी व शासकीय नोकरी भरती नोट्स\n"
+        "✅ YouTube वर मोफत लाइव्ह लेक्चर्स, शॉर्ट ट्रिक्स व कट-ऑफ विश्लेषण\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "👇 <b>खालील बटणावर क्लिक करून चॅनेल जॉईन करा, त्यानंतर '✅ मी जॉईन केले' बटण दाबा:</b>"
+        "👇 <b>खालील बटणावर क्लिक करून जॉईन करा, त्यानंतर '✅ मी जॉईन केले' बटण दाबा:</b>"
     )
     keyboard = [
-        [InlineKeyboardButton("📢 चॅनेल जॉईन करा (Join ExamRankers)", url=channel_link)],
-        [InlineKeyboardButton("✅ मी जॉईन केले (I Have Joined)", callback_data="verify_channel_membership")]
+        [InlineKeyboardButton("📢 Telegram चॅनेल जॉईन करा (Join Channel)", url=channel_link)]
     ]
+    if yt_link:
+        keyboard.append([InlineKeyboardButton(yt_text, url=yt_link)])
+    keyboard.append([InlineKeyboardButton("✅ मी जॉईन केले (I Have Joined)", callback_data="verify_channel_membership")])
     if update.callback_query:
         try:
             await update.callback_query.message.edit_text(
@@ -1523,6 +1540,10 @@ async def complete_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         [InlineKeyboardButton("📥 डाऊनलोड १०० प्रश्न सविस्तर निकाल (HTML फाईल)", callback_data="download_html_report")],
         [InlineKeyboardButton("📊 विषयनिहाय विश्लेषण (Subject Stats)", callback_data="show_sections")]
     ]
+
+    yt_link = get_youtube_link()
+    if yt_link:
+        keyboard.insert(1, [InlineKeyboardButton(get_youtube_button_text(), url=yt_link)])
 
     if result.get("incorrect", 0) > 0:
         keyboard.append([InlineKeyboardButton(f"📑 डाऊनलोड चुकीचे प्रश्न विश्लेषण ({result['incorrect']} प्रश्न)", callback_data="download_wrong_report")])
@@ -2815,6 +2836,9 @@ async def post_mindmap_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton(f"✍️ '{topic.get('subject', '')}' सराव प्रश्न सोडवा", url="https://t.me/ExamRankersIndiaBot?start=quiz")],
             [InlineKeyboardButton("📢 अधिकृत VIP चॅनेल जॉइन करा", url=PAID_CHANNEL_LINK)]
         ]
+        yt_link = get_youtube_link()
+        if yt_link:
+            kb.append([InlineKeyboardButton(get_youtube_button_text(), url=yt_link)])
 
         if img_path and img_path.exists():
             with open(img_path, "rb") as photo_f:
@@ -2878,6 +2902,9 @@ async def post_promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_chat = int(channel) if channel.lstrip("-").isdigit() else channel
     promo_banner_path = Path(__file__).resolve().parent.parent / "assets" / "promo_banner.jpg"
 
+    yt_link = get_youtube_link()
+    yt_line = f"\n🔴 <b>अधिकृत YouTube:</b> <a href=\"{yt_link}\">{yt_link}</a>" if yt_link else ""
+
     promo_caption = (
         "⚠️ <b>तुम्ही जो प्रश्न सोपा समजून सोडला, तोच प्रश्न दुसऱ्या विद्यार्थ्याला मेरीटमध्ये पुढे घेऊन गेला तर?</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -2896,12 +2923,15 @@ async def post_promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "बॉटमध्ये तुमची रिस्पॉन्स शीट तपासा आणि थेट VIP क्विझ चॅनेलचा मोफत ॲक्सेस मिळवा!\n\n"
         f"👉 <b>बॉट सुरू करा:</b> <a href=\"https://t.me/ExamRankersIndiaBot\">@ExamRankersIndiaBot</a>\n"
         f"📢 <b>अधिकृत VIP चॅनेल:</b> <a href=\"{PAID_CHANNEL_LINK}\">{PAID_CHANNEL_LINK}</a>"
+        f"{yt_line}"
     )
 
     kb = [
         [InlineKeyboardButton("⚡ माझी रिस्पॉन्स शीट तपासा व रँक पहा (Free)", url="https://t.me/ExamRankersIndiaBot?start=fomo_promo")],
         [InlineKeyboardButton("🚨 इतर विद्यार्थ्यांच्या पुढे राहा — VIP चॅनेल", url=PAID_CHANNEL_LINK)]
     ]
+    if yt_link:
+        kb.append([InlineKeyboardButton(get_youtube_button_text(), url=yt_link)])
 
     try:
         if promo_banner_path.exists():
@@ -2951,6 +2981,9 @@ async def three_hour_promo_scheduler_loop(application: Application):
                 target_chat = int(channel) if channel.lstrip("-").isdigit() else channel
                 promo_banner_path = Path(__file__).resolve().parent.parent / "assets" / "promo_banner.jpg"
 
+                yt_link = get_youtube_link()
+                yt_line = f"\n🔴 <b>अधिकृत YouTube:</b> <a href=\"{yt_link}\">{yt_link}</a>" if yt_link else ""
+
                 promo_caption = (
                     "⚠️ <b>तुम्ही जो प्रश्न सोपा समजून सोडला, तोच प्रश्न दुसऱ्या विद्यार्थ्याला मेरीटमध्ये पुढे घेऊन गेला तर?</b>\n"
                     "━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -2969,12 +3002,15 @@ async def three_hour_promo_scheduler_loop(application: Application):
                     "बॉटमध्ये तुमची रिस्पॉन्स शीट तपासा आणि थेट VIP क्विझ चॅनेलचा मोफत ॲक्सेस मिळवा!\n\n"
                     f"👉 <b>बॉट सुरू करा:</b> <a href=\"https://t.me/ExamRankersIndiaBot\">@ExamRankersIndiaBot</a>\n"
                     f"📢 <b>अधिकृत VIP चॅनेल:</b> <a href=\"{PAID_CHANNEL_LINK}\">{PAID_CHANNEL_LINK}</a>"
+                    f"{yt_line}"
                 )
 
                 kb = [
                     [InlineKeyboardButton("⚡ माझी रिस्पॉन्स शीट तपासा व रँक पहा (Free)", url="https://t.me/ExamRankersIndiaBot?start=fomo_promo")],
                     [InlineKeyboardButton("🚨 इतर विद्यार्थ्यांच्या पुढे राहा — VIP चॅनेल", url=PAID_CHANNEL_LINK)]
                 ]
+                if yt_link:
+                    kb.append([InlineKeyboardButton(get_youtube_button_text(), url=yt_link)])
 
                 if promo_banner_path.exists():
                     with open(promo_banner_path, "rb") as photo_f:
@@ -3018,6 +3054,9 @@ async def daily_mindmap_scheduler_loop(application: Application):
                     [InlineKeyboardButton(f"✍️ '{topic.get('subject', '')}' सराव प्रश्न सोडवा", url="https://t.me/ExamRankersIndiaBot?start=quiz")],
                     [InlineKeyboardButton("📢 अधिकृत VIP चॅनेल जॉइन करा", url=PAID_CHANNEL_LINK)]
                 ]
+                yt_link = get_youtube_link()
+                if yt_link:
+                    kb.append([InlineKeyboardButton(get_youtube_button_text(), url=yt_link)])
 
                 if img_path and img_path.exists():
                     with open(img_path, "rb") as photo_f:
@@ -3057,6 +3096,7 @@ async def set_bot_commands(application: Application):
         BotCommand("start", "🚀 सुरू करा (Start Bot & Select Category)"),
         BotCommand("wrong", "❌ चुकीचे प्रश्न व सविस्तर स्पष्टीकरण"),
         BotCommand("responses", "📄 रिस्पॉन्स शीट निकाल (HTML Report)"),
+        BotCommand("channels", "📢 Telegram व YouTube अधिकृत चॅनेल्स"),
         BotCommand("menu", "📋 मुख्य मेनू (Main Menu)"),
         BotCommand("help", "ℹ️ कशी वापरावी व FAQ (Help & Guide)"),
         BotCommand("cancel", "❌ रद्द करा (Cancel)")
@@ -3065,6 +3105,7 @@ async def set_bot_commands(application: Application):
         BotCommand("start", "🚀 सुरू करा (Start Bot)"),
         BotCommand("wrong", "❌ चुकीचे प्रश्न व सविस्तर स्पष्टीकरण"),
         BotCommand("responses", "📄 रिस्पॉन्स शीट निकाल व फाईल्स"),
+        BotCommand("channels", "📢 Telegram व YouTube अधिकृत चॅनेल्स"),
         BotCommand("master_report", "📊 मास्टर परीक्षा व गुणवत्ता अहवाल (Admin)"),
         BotCommand("qbank", "📑 वनलायनर प्रश्नसंच PDF (Admin)"),
         BotCommand("post_mindmap", "🎨 ट्रेंडिंग माइंडमॅप पोस्ट करा (Admin)"),
@@ -3136,6 +3177,95 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass  # Keep terminal logs clean from ping health-checks
 
+async def channels_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Displays official YouTube and Telegram channels and social media communities."""
+    channel_link = os.getenv("PAID_CHANNEL_LINK", "https://t.me/+EjtGp-pH4hMxZDM1").strip() or "https://t.me/+EjtGp-pH4hMxZDM1"
+    yt_link = get_youtube_link()
+    yt_btn_text = get_youtube_button_text()
+
+    lines = [
+        "🎯 <b>ExamRankers Official Hub & Social Communities</b>",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        "महाराष्ट्र सरळसेवा, तलाठी, ZP, पोलीस भरती, वनरक्षक, TCS व IBPS परीक्षेसाठी आमचे अधिकृत चॅनेल्स:\n",
+        f"📢 <b>Telegram चॅनेल:</b> <a href=\"{channel_link}\">{channel_link}</a>",
+        "<i>(दैनिक क्विझ, प्रश्नपत्रिका, निकाल, गुणवत्ता यादी व कट-ऑफ अपडेट्स)</i>\n"
+    ]
+    if yt_link:
+        lines.extend([
+            f"🔴 <b>YouTube चॅनेल:</b> <a href=\"{yt_link}\">{yt_link}</a>",
+            "<i>(मोफत व्हिडिओ लेक्चर्स, शॉर्ट ट्रिक्स, प्रश्नपत्रिका विश्लेषण व मार्गदर्शन)</i>\n"
+        ])
+
+    lines.append("👇 <b>खालील बटणावर क्लिक करून लगेच सबस्क्राईब/जॉईन करा:</b>")
+    msg_text = "\n".join(lines)
+
+    keyboard = [
+        [InlineKeyboardButton("📢 अधिकृत Telegram चॅनेल", url=channel_link)]
+    ]
+    if yt_link:
+        keyboard.append([InlineKeyboardButton(yt_btn_text, url=yt_link)])
+    keyboard.append([InlineKeyboardButton("🔙 मुख्य मेनू (Main Menu)", callback_data="main_menu")])
+
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.reply_text(
+            msg_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True
+        )
+    elif update.message:
+        await update.message.reply_text(
+            msg_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True
+        )
+
+async def deals_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Shows curated study materials, mocks, deals, and YouTube channels."""
+    await update.message.reply_text(
+        "🎯 <b>ExamRankers Official Deals & Study Materials</b>\n\n"
+        "मोफत टेस्ट सिरीज, चालू घडामोडी व YouTube चॅनेल खालील लिंकवरून पाहा:",
+        parse_mode="HTML",
+        reply_markup=get_deals_keyboard()
+    )
+
+def start_keep_alive_pinger():
+    """
+    Periodically sends an HTTP GET request to the bot's public Render URL every 8 minutes
+    to keep Render's free web service awake 24/7 (preventing the 15-minute idle spin-down).
+    """
+    url = (
+        os.getenv("RENDER_EXTERNAL_URL")
+        or os.getenv("SELF_PING_URL")
+        or os.getenv("PING_URL")
+    )
+    if not url:
+        hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+        if hostname:
+            url = f"https://{hostname}"
+
+    if not url:
+        logger.info(
+            "ℹ️ Keep-alive pinger: No RENDER_EXTERNAL_URL or SELF_PING_URL configured. "
+            "To prevent Render free tier from sleeping, add SELF_PING_URL in Render environment variables or use UptimeRobot."
+        )
+        return
+
+    import time
+    import httpx
+
+    target_url = url.strip().rstrip("/") + "/"
+
+    def _ping_loop():
+        logger.info(f"🔄 Automated 24/7 Keep-Alive self-pinger active for: {target_url} (every 8 min)")
+        time.sleep(30)  # Initial wait before first ping
+        while True:
+            try:
+                res = httpx.get(target_url, timeout=20.0, follow_redirects=True)
+                logger.info(f"💓 Keep-alive ping sent to {target_url} -> Status {res.status_code}")
+            except Exception as e:
+                logger.warning(f"⚠️ Keep-alive ping failed: {e}")
+            time.sleep(8 * 60)  # Ping every 8 minutes
+
+    t = threading.Thread(target=_ping_loop, daemon=True)
+    t.start()
+
 def start_health_check_server():
     """Runs a background HTTP server so the bot can be hosted 24/7 on free cloud services (Render, Koyeb, Hugging Face, etc.)."""
     port_str = os.getenv("PORT", "8080")
@@ -3155,6 +3285,7 @@ def main():
     if not TOKEN:
         raise RuntimeError("Set TELEGRAM_BOT_TOKEN in .env")
     start_health_check_server()
+    start_keep_alive_pinger()
     init_db()
     init_quiz_db(DB_PATH)
     logger.info("Initializing Telegram application...")
@@ -3173,6 +3304,8 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("menu", start))
     app.add_handler(CommandHandler("help", start))
+    app.add_handler(CommandHandler(["channels", "channel", "youtube", "yt", "socials"], channels_cmd))
+    app.add_handler(CommandHandler(["deals", "notes", "offers"], deals_cmd))
     app.add_handler(CommandHandler(["wrong", "wrong_answers", "incorrect"], wrong_answers_cmd))
     app.add_handler(CommandHandler(["responses", "all_responses", "my_responses", "allresponses"], responses_cmd))
     app.add_handler(CommandHandler("cancel", cancel))

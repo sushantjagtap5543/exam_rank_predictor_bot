@@ -196,19 +196,19 @@ def build_ad_markup(ad: dict) -> list[list[InlineKeyboardButton]]:
     return [[btn]]
 
 def get_deals_keyboard() -> InlineKeyboardMarkup:
-    """Returns curated exam deals, free mocks, and affiliate partnership buttons."""
-    keyboard = [
-        [
-            InlineKeyboardButton("📚 Free Mock Test Pack & Previous Papers", url="https://t.me/telegram"),
-        ],
-        [
-            InlineKeyboardButton("🎯 General Studies Handwritten Notes (Discount)", url="https://t.me/telegram"),
-        ],
-        [
-            InlineKeyboardButton("⚡ Daily Current Affairs & Live Quizzes", url="https://t.me/telegram"),
-        ],
-        [
-            InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")
-        ]
-    ]
+    """Returns curated exam deals, free mocks, affiliate partnerships, and official social channels."""
+    channel_link = get_paid_channel_link()
+    yt_link = os.getenv("YOUTUBE_CHANNEL_LINK", "").strip()
+    yt_text = os.getenv("YOUTUBE_BUTTON_TEXT", "🔴 अधिकृत YouTube चॅनेल (मोफत लेक्चर्स)").strip()
+
+    keyboard = []
+    if yt_link:
+        keyboard.append([InlineKeyboardButton(yt_text, url=yt_link)])
+    keyboard.append([InlineKeyboardButton("📢 अधिकृत Telegram चॅनेल जॉईन करा", url=channel_link)])
+    keyboard.extend([
+        [InlineKeyboardButton("📚 Free Mock Test Pack & Previous Papers", url=channel_link)],
+        [InlineKeyboardButton("🎯 General Studies Handwritten Notes (Discount)", url=channel_link)],
+        [InlineKeyboardButton("⚡ Daily Current Affairs & Live Quizzes", url=channel_link)],
+        [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]
+    ])
     return InlineKeyboardMarkup(keyboard)
