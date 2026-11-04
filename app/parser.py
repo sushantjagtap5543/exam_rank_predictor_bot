@@ -38,12 +38,14 @@ def extract_pdf_text(path: str, max_ocr_pages: int = None) -> str:
 
         # If selectable text layer exists with sufficient content, return it directly
         if len(text.strip()) >= 60:
+            doc.close()
             return text
 
         # Document is image-based / scanned -> run RapidOCR
         logger.info(f"PDF {path} has no embedded text layer. Running RapidOCR fallback...")
         ocr = get_ocr_engine()
         if not ocr:
+            doc.close()
             return text
 
         ocr_pages = []
@@ -56,10 +58,70 @@ def extract_pdf_text(path: str, max_ocr_pages: int = None) -> str:
             result, _ = ocr(img_bytes)
             if result:
                 ocr_pages.append("\n".join([line[1] for line in result]))
+        doc.close()
         return "\n".join(ocr_pages)
     except Exception as e:
         logger.error(f"Error extracting PDF text from {path}: {e}")
         return ""
+
+def recover_digialm_url_from_pdf(path: str) -> str:
+    """
+    Inspects PDF metadata, link annotations, and runs a quick OCR on page 0
+    to recover the original DigiALM / TCS web URL if printed as a raster PDF.
+    Returns the live full URL string if successfully reconstructed, else empty string.
+    """
+    try:
+        doc = fitz.open(path)
+        total_pages = len(doc)
+        # 1. Embedded annotations / URI links
+        for page in doc[:min(5, total_pages)]:
+            for link in page.get_links():
+                uri = link.get("uri", "")
+                if any(k in uri.lower() for k in ["digialm.com", "touchstone", "ibpsonline", "tcsion"]):
+                    doc.close()
+                    return uri
+
+        # 2. Digital text layer
+        for page in doc[:min(3, total_pages)]:
+            txt = page.get_text("text")
+            m = re.search(r'(https?://[^\s"\'<>]+(?:digialm|touchstone|ibpsonline)[^\s"\'<>]*)', txt)
+            if m:
+                doc.close()
+                return m.group(1)
+
+        # 3. Document Title metadata + Page 0 OCR footer (Microsoft Print to PDF)
+        meta_title = doc.metadata.get("title", "")
+        m_fn = re.search(r'([A-Za-z0-9_-]+\.html)', meta_title)
+        meta_raw_fn = m_fn.group(1) if m_fn else ""
+
+        ocr = get_ocr_engine()
+        if ocr and total_pages > 0:
+            pix = doc[0].get_pixmap(dpi=150)
+            res, _ = ocr(pix.tobytes("png"))
+            if res:
+                for line in res:
+                    text_line = line[1]
+                    if "http" in text_line and "digialm.com" in text_line and ".html" in text_line:
+                        doc.close()
+                        return text_line.strip()
+                    if "digialm.com" in text_line and "touchstone" in text_line:
+                        m_dir = re.search(r'([A-Za-z0-9_./]+)/(\d+)\.\.\.', text_line)
+                        if m_dir and meta_raw_fn:
+                            base_path = m_dir.group(1).lstrip('/')
+                            prefix_digits = m_dir.group(2)
+                            m_sub = re.search(r'^(\d+)_(.+)$', meta_raw_fn)
+                            if m_sub:
+                                suffix_digits = m_sub.group(1)
+                                clean_fn = m_sub.group(2)
+                                full_folder = prefix_digits + suffix_digits
+                                url = f"https://{base_path}/{full_folder}/{clean_fn}"
+                                clean_url = re.sub(r"(?<!:)//+", "/", url)
+                                doc.close()
+                                return clean_url
+        doc.close()
+    except Exception as e:
+        logger.warning(f"Error checking PDF for DigiALM URL: {e}")
+    return ""
 
 def parse_html_response_sheet(html_content: str) -> str:
     """

@@ -44,6 +44,7 @@ from .parser import (
     score_answers,
     extract_post_and_metadata,
     parse_html_response_sheet,
+    recover_digialm_url_from_pdf,
 )
 from .rank import estimate_cohort_rank
 from .quiz_generator import (
@@ -1472,43 +1473,43 @@ async def process_uploaded_pdf(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return
 
-        # Check if the PDF has embedded selectable text or is image-based
-        has_text_layer = False
-        total_pages = 0
+        # Step 1: Check if this PDF was printed from DigiALM / TCS and recover original live web URL
+        text = ""
+        recovered_url = ""
         try:
-            import fitz
-            sample_doc = fitz.open(path)
-            total_pages = len(sample_doc)
-            for p in sample_doc[:min(5, total_pages)]:
-                if len(p.get_text("text").strip()) >= 30:
-                    has_text_layer = True
-                    break
-            sample_doc.close()
-        except Exception:
-            pass
+            recovered_url = await asyncio.to_thread(recover_digialm_url_from_pdf, path)
+        except Exception as e:
+            logger.warning(f"Error checking PDF for DigiALM URL: {e}")
 
-        if not has_text_layer:
-            keyboard = [
-                [InlineKeyboardButton("✍️ Quick Score & Rank Calculator", callback_data="manual_calc")],
-                [InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]
-            ]
+        if recovered_url:
             await status_msg.edit_text(
-                "❌ <b>ही PDF फोटो / इमेज स्वरूपात आहे (Scanned Image PDF).</b>\n\n"
-                f"या फाईलमध्ये <b>{total_pages} पाने</b> आहेत, पण त्यात कॉम्प्युटर मजकूर नसून फक्त चित्रे आहेत (उदा. 'Microsoft Print to PDF' ने सेव्ह केलेली).\n"
-                "त्यामुळे कॉम्प्युटर सिस्टीम थेट उत्तरे तपासू शकत नाही.\n\n"
-                "🚀 <b>तुमचा निकाल लगेच (1 सेकंदात) पाहण्यासाठी खालीलपैकी एक करा:</b>\n\n"
-                "1️⃣ <b>थेट वेब लिंक पाठवा (सर्वात सोपे व 100% अचूक):</b>\n"
-                "तुमच्या DigiALM / परीक्षा पोर्टलची वेब लिंक (उदा. <code>https://cdn.digialm.com/...</code>) येथे थेट चॅटमध्ये पेस्ट करा. बॉट संपूर्ण गुणपत्रिका लगेच 1 सेकंदात तपासेल!\n\n"
-                "2️⃣ <b>Text PDF म्हणून सेव्ह करा:</b>\n"
-                "पोर्टलवर रिस्पॉन्स शीट उघडून Print (Ctrl+P) करताना Destination मध्ये <b>'Save as PDF'</b> निवडा (*'Microsoft Print to PDF' निवडू नका*). त्यानंतर ती PDF येथे पाठवा.\n\n"
-                "3️⃣ <b>मॅन्युअल रँक कॅल्क्युलेटर:</b>\n"
-                "किंवा खालील बटणावर क्लिक करून तुमचे गुण टाईप करा आणि संभाव्य गुणवत्ता यादीतील रँक तपासा 👇",
-                parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup(keyboard)
+                "🔗 <b>मूळ DigiALM रिस्पॉन्स शीट लिंक डिटेक्ट झाली:</b>\n"
+                f"<code>{recovered_url[:70]}...</code>\n\n"
+                "⚡ अधिकृत सर्व्हरवरून थेट १००% अचूक डेटा डाऊनलोड करत आहे... ⏳",
+                parse_mode="HTML"
             )
-            return
+            try:
+                import httpx
+                clean_url = re.sub(r"(?<!:)//+", "/", recovered_url.strip())
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                }
+                async with httpx.AsyncClient(timeout=35.0, follow_redirects=True, headers=headers) as client:
+                    resp = await client.get(clean_url)
+                    if resp.status_code == 200 and len(resp.content) > 1000:
+                        html_str = resp.content.decode("utf-8", errors="ignore")
+                        text = parse_html_response_sheet(html_str)
+            except Exception as e:
+                logger.warning(f"Could not fetch recovered DigiALM URL: {e}")
 
-        text = await asyncio.to_thread(extract_pdf_text, path)
+        # Step 2: If no web URL or fetch failed, extract text directly via fitz / RapidOCR
+        if not text.strip():
+            await status_msg.edit_text(
+                "🔍 <b>PDF मजकूर व प्रश्न विश्लेषित करत आहे...</b>\n"
+                "<i>RapidOCR + AI इंजिन सुरू आहे... कृपया थोडी प्रतीक्षा करा ⏳</i>",
+                parse_mode="HTML"
+            )
+            text = await asyncio.to_thread(extract_pdf_text, path)
         if not text.strip():
             keyboard = [
                 [InlineKeyboardButton("✍️ Quick Score & Rank Calculator", callback_data="manual_calc")],
@@ -1530,7 +1531,11 @@ async def process_uploaded_pdf(update: Update, context: ContextTypes.DEFAULT_TYP
 
         # Admin Bulk Response Sheet / Master MCQ PDF Processor & Store Synchronizer
         user_id = update.effective_user.id
-        if user_id in ADMIN_IDS and (context.user_data.get("admin_bulk_mode") or len(records) >= 20 or any(k in safe_name.lower() for k in ["bulk", "qbank", "mcq", "tcs", "ibps", "master", "all"])):
+        is_bulk_request = (user_id in ADMIN_IDS) and (
+            context.user_data.get("admin_bulk_mode") is True
+            or any(k in safe_name.lower() for k in ["bulk_qbank", "master_mcq", "master_qbank", "bulk_mcq"])
+        )
+        if is_bulk_request:
             quizzes = extract_quizzes_from_records(records, max_questions=2500, filter_unposted=False, db_path=DB_PATH)
             if quizzes:
                 await status_msg.edit_text(
@@ -3397,7 +3402,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(b"OK")
             return
 
-        # 3. Download Endpoint: /download/<order_token>
+        # 3. Download Endpoint: /download/<order_token> (Strictly Protected: Paid & Approved Orders Only)
         if path.startswith("/download/"):
             token = path.split("/download/")[-1].strip()
             if not token:
@@ -3407,27 +3412,32 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(b"Order token missing")
                 return
 
-            prod_id = None
+            order_data = None
             try:
                 with sqlite3.connect(DB_PATH) as db:
                     db.row_factory = sqlite3.Row
                     order = db.execute("SELECT * FROM product_orders WHERE order_token = ?", (token,)).fetchone()
                     if order:
-                        prod_id = dict(order).get("product_id")
+                        order_data = dict(order)
             except Exception as e:
                 logger.error(f"Error fetching order for download: {e}")
 
-            # Fallback: if token is directly a product_id (e.g. preview/direct)
-            if not prod_id:
-                if token in [p["id"] for p in DEFAULT_PRODUCTS]:
-                    prod_id = token
-
-            if not prod_id:
+            if not order_data:
                 self.send_response(404)
-                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(b"Order not found or invalid token")
+                self.wfile.write("<h3>❌ ऑर्डर सापडली नाही (Order Not Found)</h3><p>कृपया अधिकृत स्टोअरवरून खरेदी करा किंवा योग्य ऑर्डर टोकन वापरा.</p>".encode("utf-8"))
                 return
+
+            # STRICT SECURITY GATE: Enforce approved payment before serving digital product!
+            if order_data.get("status") != "approved":
+                self.send_response(403)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write("<h3>⛔ डाऊनलोड अनुमती नाही (Payment Not Approved)</h3><p>या ऑर्डरचे पेमेंट अद्याप कन्फर्म झालेले नाही. यशस्वी पेमेंटनंतरच डाऊनलोड लिंक उपलब्ध होते.</p>".encode("utf-8"))
+                return
+
+            prod_id = order_data.get("product_id")
 
             pdf_path = packaging_agent.ensure_product_pdf(prod_id, db_path=DB_PATH)
             if not pdf_path or not os.path.exists(pdf_path):
@@ -3522,16 +3532,21 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if path == "/api/verify":
-            order_token = data.get("order_token", "")
-            utr = data.get("utr", "")
-            if not utr or len(utr.strip()) < 3:
-                utr = f"AUTO_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            order_token = data.get("order_token", "").strip()
+            utr = data.get("utr", "").strip()
+            if not utr or len(utr) < 3:
+                utr = f"UPI_{datetime.now().strftime('%Y%m%d%H%M%S')}"
             success, msg, prod = fulfillment_agent.confirm_and_fulfill_order(order_token, utr, db_path=DB_PATH)
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            self.wfile.write(json.dumps({"success": success, "message": msg, "product": prod}).encode("utf-8"))
+            self.wfile.write(json.dumps({
+                "success": success,
+                "message": msg,
+                "product": prod,
+                "download_url": f"/download/{order_token}"
+            }).encode("utf-8"))
             return
 
         self.send_response(404)

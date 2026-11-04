@@ -1,3 +1,4 @@
+from .product_catalog_content import get_subject_specific_content
 """
 DigitalProductPackagingAgent: Senior Product Architect & Packaging Lead.
 Converts educational raw materials, response sheets, and faculty content
@@ -361,7 +362,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             row = db.execute("SELECT * FROM digital_products WHERE id = ?", (product_id,)).fetchone()
             return dict(row) if row else None
 
-    def ensure_product_pdf(self, product_id: str, output_dir: Optional[Path] = None, db_path: str = "bot.db") -> Path:
+    def ensure_product_pdf(self, product_id: str, output_dir: Optional[Path] = None, db_path: str = "bot.db", force_rebuild: bool = False) -> Path:
         """
         Dynamically synthesizes and ensures a publication-grade ReportLab PDF exists on disk.
         Returns the absolute Path to the ready-to-deliver PDF file.
@@ -374,7 +375,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         filename = prod.get("download_file") or f"{product_id}.pdf"
         target_path = output_dir / filename
 
-        if target_path.exists() and target_path.stat().st_size > 1024:
+        if not force_rebuild and target_path.exists() and target_path.stat().st_size > 1024:
             return target_path
 
         # Generate publication-grade PDF using ReportLab
@@ -516,31 +517,15 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         elements.append(Paragraph("<b>📖 भाग १: अतिसंभाव्य सराव प्रश्नसंच व सविस्तर स्पष्टीकरण</b>", sec_style))
         elements.append(Spacer(1, 8))
 
-        # Sample dynamic items
-        items = [
-            ("१. महाराष्ट्र शासनाने सुरू केलेल्या 'मुख्यमंत्री माझी लाडकी बहीण योजना' अंतर्गत लाभार्थी महिलांना दरमहा किती रक्कम दिली जाते?",
-             "A) ₹१,०००   B) ₹१,५००   C) ₹२,०००   D) ₹२,५००",
-             "बरोबर उत्तर: B) ₹१,५००",
-             "स्पष्टीकरण: अंतरिम अर्थसंकल्प २०२४-२५ मध्ये २१ ते ६५ वयोगटातील पात्र महिलांसाठी दरमहा ₹१,५०० थेट DBT द्वारे बँक खात्यात जमा केले जातात. कौटुंबिक वार्षिक उत्पन्न मर्यादा ₹२.५ लाख आहे."),
-            ("२. 'अनुराग' या शब्दाचा योग्य विरुद्धार्थी शब्द कोणता?",
-             "A) विराग   B) प्रेम   C) स्नेह   D) आसक्ती",
-             "बरोबर उत्तर: A) विराग",
-             "स्पष्टीकरण: अनुराग म्हणजे प्रेम किंवा प्रीती; त्याचा योग्य विरुद्धार्थी शब्द 'विराग' (उदासीनता) हा होतो. TCS ने मागील तलाठी व नगरपरिषद परीक्षेत हा प्रश्न विचारला आहे."),
-            ("३. माहितीचा अधिकार कायदा २००५ (RTI Act) मधील कलम ६ कशाशी संबंधित आहे?",
-             "A) अर्ज करण्याची पद्धत   B) माहिती नाकारणे   C) दंड आकारणी   D) अपील",
-             "बरोबर उत्तर: A) अर्ज करण्याची पद्धत (Request for obtaining information)",
-             "स्पष्टीकरण: कलम ६ अन्वये नागरिक माहिती मिळवण्यासाठी जन माहिती अधिकाऱ्याकडे (PIO) लेखी किंवा ऑनलाइन अर्ज सादर करू शकतात."),
-            ("४. पॅरिस पॅरालिम्पिक २०२४ मध्ये भालाफेकीत सलग दुसरे सुवर्णपदक जिंकणारा भारतीय खेळाडू कोण?",
-             "A) नीरज चोप्रा   B) सुमित अंतिल   C) देवेंद्र झाझरिया   D) निषाद कुमार",
-             "बरोबर उत्तर: B) सुमित अंतिल",
-             "स्पष्टीकरण: सुमित अंतिल यांनी ७०.५९ मीटर भाला फेकून F64 प्रकारात जागतिक विक्रमासह सलग दुसरे पॅरालिम्पिक सुवर्णपदक पटकावले."),
-            ("५. 'रामाने रावणास मारले' या वाक्यातील प्रयोग कोणता?",
-             "A) कर्तरी   B) कर्मणी   C) भावे   D) संकीर्ण",
-             "बरोबर उत्तर: C) भावे प्रयोग",
-             "स्पष्टीकरण: कर्त्याला 'ने' (तृतीया) आणि कर्माला 'स' (द्वितीया) प्रत्यय असून क्रियापद तृतीयपुरुषी नपुंसकलिंगी एकावचनी आहे. म्हणून हा भावे प्रयोग आहे.")
-        ]
+        # Authentic, Subject-Specific Questions & In-Depth Analyses
+        items, tricks_data, infographic_cols = get_subject_specific_content(product_id, prod.get("title", ""), prod.get("subject", ""))
 
-        for q_txt, opts_txt, ans_txt, exp_txt in items:
+        for item_tuple in items:
+            q_txt, opts_txt, ans_txt = item_tuple[0], item_tuple[1], item_tuple[2]
+            ana_txt = item_tuple[3] if len(item_tuple) > 3 else ""
+            trk_txt = item_tuple[4] if len(item_tuple) > 4 else ""
+            trp_txt = item_tuple[5] if len(item_tuple) > 5 else ""
+
             q_flow = [
                 Paragraph(f"<b>{q_txt}</b>", q_style),
                 Spacer(1, 2),
@@ -548,47 +533,21 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
                 Spacer(1, 2),
                 Paragraph(f"<b>{ans_txt}</b>", ans_style),
                 Spacer(1, 2),
-                Paragraph(f"<i>{exp_txt}</i>", exp_style),
-                Spacer(1, 8)
             ]
+            if ana_txt:
+                q_flow.extend([Paragraph(f"<i>🔍 {ana_txt}</i>", exp_style), Spacer(1, 2)])
+            if trk_txt:
+                q_flow.extend([Paragraph(f"<b>⚡ {trk_txt}</b>", ans_style), Spacer(1, 2)])
+            if trp_txt:
+                q_flow.extend([Paragraph(f"<i>⚠️ {trp_txt}</i>", exp_style), Spacer(1, 2)])
+            q_flow.append(Spacer(1, 8))
             elements.extend(q_flow)
 
-        # Section 2: High-Yield Tricks, Mnemonics & Shortcuts
-        elements.append(Spacer(1, 12))
+        # Section 2: Subject-Specific High-Yield Tricks, Mnemonics & Shortcuts
+        elements.append(Spacer(1, 10))
         elements.append(HRFlowable(width="100%", thickness=1.2, color=colors.HexColor("#0284c7"), spaceAfter=12))
-        elements.append(Paragraph("<b>⚡ भाग २: हमखास लक्षात ठेवण्याच्या स्मरण क्लृप्त्या व शॉर्टकट ट्रिक्स (Tricks & Mnemonics)</b>", sec_style))
+        elements.append(Paragraph(f"<b>⚡ भाग २: {prod.get('subject', 'विषय')} - हमखास लक्षात ठेवण्याच्या शॉर्टकट ट्रिक्स व क्लृप्त्या</b>", sec_style))
         elements.append(Spacer(1, 6))
-
-        tricks_data = [
-            ("💡 प्रयोग ओळखण्याची ३-सेकंद क्लृप्ती (मराठी व्याकरण):",
-             "• नियम १: कर्त्याला कोणताही प्रत्यय नाही? ➔ १००% 'कर्तरी प्रयोग'!\n"
-             "• नियम २: कर्त्याला तृतीया प्रत्यय (ने, नी, ई, शी) + कर्माला प्रत्यय नाही? ➔ १००% 'कर्मणी प्रयोग'!\n"
-             "• नियम ३: कर्त्याला व कर्माला दोघांनाही प्रत्यय असल्यास? ➔ १००% 'भावे प्रयोग'!"),
-            ("💡 समास ओळखण्याचे जलद कोडवर्ड्स (मराठी व्याकरण):",
-             "• पहिले पद प्रधान / उपसर्ग (प्रति, यथा, गैर, बे, दर)? ➔ 'अव्ययीभाव समास'\n"
-             "• दुसरे पद प्रधान / विभक्ती प्रत्ययाचा लोप? ➔ 'तत्पुरुष समास'\n"
-             "• दोन्ही पदे महत्त्वाची (आणि, व, किंवा, अथवा)? ➔ 'द्वंद्व समास'\n"
-             "• दोन्ही पदे गौण असून तिसऱ्याच घटकाचा बोध? ➔ 'बहुव्रीहि समास'"),
-            ("💡 Subject-Verb Agreement 'E-E-E-N' Shortcut (English):",
-             "• 'Each, Every, Either, Neither, None' या शब्दांनंतर नाम अनेकवचनी असले तरी क्रियापद नेहमी SINGULAR (एकवचनी) वापरावे!\n"
-             "  उदा. 'Each of the candidates IS qualified' (ARE नाही)."),
-            ("💡 Conjunction Traps (TCS/IBPS English):",
-             "• 'No sooner' नंतर नेहमी 'than' येतो ('when' किंवा 'then' कधीही नाही).\n"
-             "• 'Hardly / Scarcely' नंतर नेहमी 'when' येतो ('than' कधीही नाही).\n"
-             "• 'Although / Though' सोबत कधीही 'but' येत नाही ('yet' किंवा स्वल्पविराम वापरावा)."),
-            ("💡 बैठक व्यवस्था (Seating Arrangement) वर्तुळाकार दिशा ट्रिक:",
-             "• केंद्राकडे तोंड (Facing Centre): घड्याळाच्या दिशेने (Clockwise) = डावीकडे (Left) | विरुद्ध (Anticlockwise) = उजवीकडे (Right).\n"
-             "• केंद्राबाहेर तोंड (Facing Outside): वरील दिशा तंतोतंत उलट होतात!"),
-            ("💡 कामाचे दिवस शॉर्टकट सूत्र (Work & Time Formula):",
-             "• A एक काम x दिवसात व B तेच काम y दिवसात करत असल्यास दोघे मिळून ते काम:\n"
-             "  एकूण दिवस = (x × y) / (x + y) दिवसात पूर्ण करतील. (उदा. १० व १५ दिवस = १५०/२५ = ६ दिवस!)."),
-            ("💡 भारतातील ११ अभिजात भाषा (Classical Languages) स्मरण कोडवर्ड:",
-             "• कोडवर्ड: 'ता-सं-क-ते-म-ओ + म-पा-प्रा-आ-ब'\n"
-             "  (तमिळ, संस्कृत, कन्नड, तेलगू, मल्याळम, ओडिया + ऑक्टोबर २०२४ च्या नव्या ५ भाषा: मराठी, पाली, प्राकृत, आसामी, बंगाली)."),
-            ("💡 माहितीचा अधिकार (RTI Act 2005) मुख्य कलमे ट्रिक:",
-             "• कलम ४: माहितीचे स्वयंस्फूर्त प्रकटन (Proactive Disclosure)\n"
-             "• कलम ६: अर्ज सादर करणे | कलम ७: ३० दिवसांत माहिती देणे | कलम १९: अपील | कलम २०: दररोज ₹२५० दंड.")
-        ]
 
         trick_box_style = ParagraphStyle(
             "TBX",

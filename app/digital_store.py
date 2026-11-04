@@ -1003,10 +1003,17 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
             const userUtr = utrEl ? utrEl.value.trim() : "";
             const finalUtr = userUtr || ("PAID_" + Date.now().toString(36).toUpperCase());
             const email = document.getElementById('customerEmail').value.trim();
+            const confirmBtn = document.querySelector('#modalStep2 button.btn-buy');
+            const origText = confirmBtn ? confirmBtn.innerText : '✅ मी पेमेंट केले आहे';
 
-            // Verify via backend API and trigger email delivery
+            if (confirmBtn) {{
+                confirmBtn.disabled = true;
+                confirmBtn.innerText = 'व्हेरिफाय करत आहे... ⏳';
+            }}
+
+            // Verify via backend API and only unlock download if approved
             try {{
-                await fetch('/api/verify', {{
+                const res = await fetch('/api/verify', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
                     body: JSON.stringify({{
@@ -1014,14 +1021,24 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
                         utr: finalUtr
                     }})
                 }});
-            }} catch (e) {{}}
-
-            document.getElementById('finalEmailSpan').innerText = email;
-            document.getElementById('finalOrderToken').innerText = currentOrderToken;
-            document.getElementById('instantDownloadBtn').href = `/download/${{currentOrderToken}}`;
-
-            document.getElementById('modalStep2').style.display = 'none';
-            document.getElementById('modalStep3').style.display = 'block';
+                const data = await res.json();
+                if (data.success) {{
+                    document.getElementById('finalEmailSpan').innerText = email;
+                    document.getElementById('finalOrderToken').innerText = currentOrderToken;
+                    document.getElementById('instantDownloadBtn').href = data.download_url || `/download/${{currentOrderToken}}`;
+                    document.getElementById('modalStep2').style.display = 'none';
+                    document.getElementById('modalStep3').style.display = 'block';
+                }} else {{
+                    alert('❌ पेमेंट व्हेरिफाय होऊ शकले नाही: ' + (data.message || 'कृपया पुन्हा प्रयत्न करा.'));
+                }}
+            }} catch (e) {{
+                alert('❌ सर्व्हरशी संपर्क होऊ शकला नाही. कृपया इंटरनेट तपासा व पुन्हा प्रयत्न करा.');
+            }} finally {{
+                if (confirmBtn) {{
+                    confirmBtn.disabled = false;
+                    confirmBtn.innerText = origText;
+                }}
+            }}
         }}
 
         function openSampleModal(id) {{
