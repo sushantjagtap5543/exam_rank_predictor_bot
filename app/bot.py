@@ -8,6 +8,7 @@ import re
 import asyncio
 import zipfile
 import http.server
+import urllib.parse
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -78,10 +79,34 @@ from .monetization import (
     approve_and_generate_invite,
     get_paid_channel_link,
 )
+from .digital_store import (
+    render_nano_banana_store_html,
+    packaging_agent,
+    fulfillment_agent,
+    SAMPLE_PREVIEWS,
+    DEFAULT_PRODUCTS
+)
+from .agents import (
+    ChannelBrandingAgent,
+    MarathiSeniorFaculty,
+    EnglishSeniorFaculty,
+    MathsReasoningSeniorFaculty,
+    CurrentAffairsSeniorEditor,
+    DigitalProductPackagingAgent,
+    MarketingSalesAgent,
+    FulfillmentEmailAgent
+)
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+# Senior Force Agents Autonomous Instances
+channel_branding_agent = ChannelBrandingAgent()
+marketing_sales_agent = MarketingSalesAgent()
+current_affairs_agent = CurrentAffairsSeniorEditor()
+marathi_faculty_agent = MarathiSeniorFaculty()
+english_faculty_agent = EnglishSeniorFaculty()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 DB_PATH = os.getenv("DATABASE_PATH", "bot.db")
@@ -99,6 +124,21 @@ def get_youtube_link() -> str:
 def get_youtube_button_text() -> str:
     """Returns the custom or default YouTube subscribe button text."""
     return os.getenv("YOUTUBE_BUTTON_TEXT", "🔴 अधिकृत YouTube चॅनेल (Subscribe)").strip()
+
+def get_store_web_url() -> str:
+    """Returns the live Nano Banana digital products storefront URL."""
+    url = (
+        os.getenv("RENDER_EXTERNAL_URL")
+        or os.getenv("SELF_PING_URL")
+        or os.getenv("STORE_URL")
+    )
+    if not url:
+        hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+        if hostname:
+            url = f"https://{hostname}"
+    if not url:
+        url = "https://t.me/ExamRankersIndiaBot?start=store"
+    return url.rstrip("/")
 
 def update_env_channel_id(channel_id: str):
     """Updates PAID_CHANNEL_ID in .env file, environment variables, and in-memory global."""
@@ -187,6 +227,7 @@ def get_category_keyboard(prefix="cat"):
     yt_link = get_youtube_link()
     if yt_link:
         rows.append([InlineKeyboardButton(get_youtube_button_text(), url=yt_link)])
+    rows.append([InlineKeyboardButton("🛒 डिजिटल ई-बुक्स स्टोअर (₹१० ते ₹९९)", url=get_store_web_url())])
     return rows
 
 def get_persistent_menu_keyboard():
@@ -194,7 +235,7 @@ def get_persistent_menu_keyboard():
     return ReplyKeyboardMarkup(
         [
             [KeyboardButton("🚀 सुरू करा (Start)"), KeyboardButton("✍️ रँक कॅल्क्युलेटर")],
-            [KeyboardButton("📋 मुख्य मेनू (Main Menu)"), KeyboardButton("ℹ️ मदत (Help)")]
+            [KeyboardButton("🛒 ई-बुक्स स्टोअर (₹१०)"), KeyboardButton("📋 मुख्य मेनू (Main Menu)")]
         ],
         resize_keyboard=True,
         is_persistent=True,
@@ -829,6 +870,49 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.message.edit_text(last_card, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(last_kb), disable_web_page_preview=True)
         else:
             await q.message.reply_text("Send /start to view menu.")
+
+    elif data in ("store", "open_store"):
+        await store_cmd(update, context)
+
+    elif data.startswith("buy_prod:"):
+        prod_id = data.split(":", 1)[1]
+        prod = packaging_agent.get_product_by_id(prod_id, DB_PATH) or DEFAULT_PRODUCTS[0]
+        context.user_data["buying_product_id"] = prod_id
+        context.user_data["buying_product_price"] = prod.get("price_inr", 19)
+        context.user_data["awaiting_store_utr"] = True
+
+        upi_id = os.getenv("UPI_ID", "examrankers@upi").strip()
+        upi_name = os.getenv("UPI_NAME", "ExamRankers India").strip()
+        price = prod.get("price_inr", 19)
+        upi_uri = f"upi://pay?pa={upi_id}&pn={urllib.parse.quote(upi_name)}&am={price}&cu=INR&tn=Store_{prod_id[:8]}"
+        qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=280x280&data={urllib.parse.quote(upi_uri)}"
+
+        pay_msg = (
+            f"🛒 <b>{prod.get('title')}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"💰 <b>किंमत:</b> <s>₹{prod.get('original_price_inr', 99)}</s> <b>फक्त ₹{price}/-</b>\n\n"
+            f"📱 <b>पेमेंट पद्धत (Any UPI App):</b>\n"
+            f"• UPI ID: <code>{upi_id}</code> <i>(कॉपी करण्यासाठी टॅप करा)</i>\n"
+            f"• Name: <b>{upi_name}</b>\n"
+            f"• Amount: <b>₹{price}</b>\n\n"
+            f"👇 <b>पेमेंट केल्यानंतर खाली मेसेज बॉक्समध्ये तुमचा Email ID व 12-अंकी UTR नंबर पाठवा:</b>\n"
+            f"उदा: <code>student@gmail.com 431289456789</code>\n\n"
+            f"⚡ <i>पेमेंट कन्फर्म होताच पुस्तक तात्काळ येथे PDF स्वरूपात व तुमच्या Email वर पाठवले जाईल!</i>"
+        )
+        kb = [
+            [InlineKeyboardButton("⚡ थेट UPI ॲपमध्ये उघडा", url=upi_uri)],
+            [InlineKeyboardButton("🌐 वेब स्टोअरवरून खरेदी करा", url=f"{get_store_web_url()}#checkoutModal")],
+            [InlineKeyboardButton("🔙 मागे जा (Back to Store)", callback_data="store")]
+        ]
+        try:
+            await q.message.reply_photo(
+                photo=qr_url,
+                caption=pay_msg,
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(kb)
+            )
+        except Exception:
+            await q.message.reply_text(pay_msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb), disable_web_page_preview=True)
 
     elif data.startswith("review_wrong"):
         parts = data.split(":")
@@ -1519,6 +1603,9 @@ async def complete_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     # Background quiz publisher: extracts all questions and posts 1-by-1 continuously to channel
     asyncio.create_task(auto_post_quizzes_background(context.bot, raw_text, exam_display_name, records=records))
 
+    # Automatic Channel Name & Branding Synchronizer according to latest active government exam
+    asyncio.create_task(auto_sync_channel_name_background(context.bot))
+
     # Gated access: Only after candidate submits response sheet, generate single-use VIP channel invite
     channel_join_url = PAID_CHANNEL_LINK or "https://t.me/+EjtGp-pH4hMxZDM1"
     if PAID_CHANNEL_ID:
@@ -1548,6 +1635,7 @@ async def complete_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     if result.get("incorrect", 0) > 0:
         keyboard.append([InlineKeyboardButton(f"📑 डाऊनलोड चुकीचे प्रश्न विश्लेषण ({result['incorrect']} प्रश्न)", callback_data="download_wrong_report")])
 
+    keyboard.append([InlineKeyboardButton("🛒 डिजिटल ई-बुक स्टोअर (₹१० ते ₹९९)", url=get_store_web_url())])
     keyboard.append([InlineKeyboardButton("🔄 दुसरी रिस्पॉन्स शीट तपासा (Analyze Another)", callback_data="analyze")])
 
     context.user_data["last_scorecard_text"] = full_card
@@ -1633,6 +1721,51 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
     clean_text = raw_text.lower()
     if any(k in clean_text for k in ["start", "सुरू करा", "main menu", "मुख्य मेनू", "मेनू", "menu"]) or raw_text in ("/start", "/menu"):
         await start(update, context)
+        return
+    elif any(k in clean_text for k in ["store", "ई-बुक्स स्टोअर", "ई-बुक", "books", "products", "स्टोअर"]):
+        await store_cmd(update, context)
+        return
+
+    # Check if user is submitting payment for a digital store product
+    if context.user_data.get("awaiting_store_utr") or (context.user_data.get("buying_product_id") and re.search(r"\b\d{6,16}\b", raw_text)):
+        prod_id = context.user_data.get("buying_product_id", "prod_ca_monthly_top200")
+        price = context.user_data.get("buying_product_price", 19)
+
+        email_match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", raw_text)
+        customer_email = email_match.group(0) if email_match else f"user_{user.id}@telegram.com"
+
+        utr_match = re.search(r"\b\d{6,16}\b", raw_text)
+        utr_val = utr_match.group(0) if utr_match else raw_text.strip()[:16]
+
+        order_res = fulfillment_agent.create_order(prod_id, customer_email, float(price), customer_telegram_id=user.id, db_path=DB_PATH)
+        order_token = order_res["order_token"]
+
+        success, msg, prod_data = fulfillment_agent.confirm_and_fulfill_order(order_token, utr_val, db_path=DB_PATH)
+
+        context.user_data["awaiting_store_utr"] = False
+        context.user_data["buying_product_id"] = None
+
+        pdf_path = packaging_agent.ensure_product_pdf(prod_id)
+
+        confirm_msg = (
+            f"🎉 <b>पेमेंट यशस्वीरित्या कन्फर्म झाले!</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📖 <b>पुस्तक:</b> {prod_data.get('title')}\n"
+            f"🎫 <b>Order ID:</b> <code>{order_token}</code>\n"
+            f"📧 <b>Email:</b> <code>{customer_email}</code>\n\n"
+            f"👇 <b>तुमचे खरेदी केलेले ई-बुक खाली पाठवले आहे, लगेच डाऊनलोड करा:</b>"
+        )
+        await safe_send_message(context.bot, update.effective_chat.id, confirm_msg, parse_mode="HTML")
+
+        # Send physical PDF file directly into Telegram!
+        if pdf_path.exists():
+            with open(pdf_path, "rb") as f:
+                await context.bot.send_document(
+                    chat_id=update.effective_chat.id,
+                    document=f,
+                    filename=pdf_path.name,
+                    caption=f"📘 {prod_data.get('title')} — अधिकृत प्रत\n© ExamRankers India"
+                )
         return
     elif any(k in clean_text for k in ["daily questions", "आजचे प्रश्न", "विचारलेले प्रश्न", "daily_questions", "questions"]) or raw_text == "/daily_questions":
         await daily_questions_cmd(update, context)
@@ -3094,6 +3227,7 @@ async def set_bot_commands(application: Application):
     """Configures the official Telegram chat menu button [≡], command scopes, and launches background schedulers."""
     user_commands = [
         BotCommand("start", "🚀 सुरू करा (Start Bot & Select Category)"),
+        BotCommand("store", "🛒 डिजिटल ई-बुक्स स्टोअर (₹10 - ₹99)"),
         BotCommand("wrong", "❌ चुकीचे प्रश्न व सविस्तर स्पष्टीकरण"),
         BotCommand("responses", "📄 रिस्पॉन्स शीट निकाल (HTML Report)"),
         BotCommand("channels", "📢 Telegram व YouTube अधिकृत चॅनेल्स"),
@@ -3103,6 +3237,9 @@ async def set_bot_commands(application: Application):
     ]
     admin_commands = [
         BotCommand("start", "🚀 सुरू करा (Start Bot)"),
+        BotCommand("store", "🛒 डिजिटल ई-बुक्स स्टोअर (₹10 - ₹99)"),
+        BotCommand("sync_channel", "🔄 चॅनेलचे नाव ताज्या परीक्षेनुसार बदला (Admin)"),
+        BotCommand("post_store_promo", "🛒 स्टोअर ॲड चॅनेलवर पोस्ट करा (Admin)"),
         BotCommand("wrong", "❌ चुकीचे प्रश्न व सविस्तर स्पष्टीकरण"),
         BotCommand("responses", "📄 रिस्पॉन्स शीट निकाल व फाईल्स"),
         BotCommand("channels", "📢 Telegram व YouTube अधिकृत चॅनेल्स"),
@@ -3143,36 +3280,135 @@ async def set_bot_commands(application: Application):
         # Launch automated background schedulers (Quiz schedule removed; all quizzes posted on-demand via /postquizes)
         asyncio.create_task(three_hour_promo_scheduler_loop(application))
         asyncio.create_task(daily_mindmap_scheduler_loop(application))
-        logger.info("Background Schedulers launched: 3-Hr Promo, Daily Mindmap (Hourly quiz scheduler removed)!")
+        asyncio.create_task(auto_channel_branding_scheduler_loop(application))
+        logger.info("Background Schedulers launched: 3-Hr Promo, Daily Mindmap, 6-Hr Auto Channel Branding!")
     except Exception as e:
         logger.warning(f"Could not set bot commands or description: {e}")
 
 class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path.rstrip("/")
+
+        # 1. API: Products list
+        if path == "/api/products":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            prods = packaging_agent.get_all_products(DB_PATH)
+            self.wfile.write(json.dumps(prods).encode("utf-8"))
+            return
+
+        # 2. API: Health Check for Render pinger
+        if path in ("/health", "/ping"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"OK")
+            return
+
+        # 3. Download Endpoint: /download/<order_token>
+        if path.startswith("/download/"):
+            token = path.split("/download/")[-1].strip()
+            if not token:
+                self.send_response(400)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"Order token missing")
+                return
+
+            prod_id = None
+            try:
+                with sqlite3.connect(DB_PATH) as db:
+                    db.row_factory = sqlite3.Row
+                    order = db.execute("SELECT * FROM product_orders WHERE order_token = ?", (token,)).fetchone()
+                    if order:
+                        prod_id = dict(order).get("product_id")
+            except Exception as e:
+                logger.error(f"Error fetching order for download: {e}")
+
+            # Fallback: if token is directly a product_id (e.g. preview/direct)
+            if not prod_id:
+                if token in [p["id"] for p in DEFAULT_PRODUCTS]:
+                    prod_id = token
+
+            if not prod_id:
+                self.send_response(404)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"Order not found or invalid token")
+                return
+
+            pdf_path = packaging_agent.ensure_product_pdf(prod_id, db_path=DB_PATH)
+            if not pdf_path or not os.path.exists(pdf_path):
+                self.send_response(404)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"Product file not found on server")
+                return
+
+            filename = os.path.basename(str(pdf_path))
+            file_size = os.path.getsize(str(pdf_path))
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+            self.send_header("Content-Length", str(file_size))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            with open(pdf_path, "rb") as f:
+                self.wfile.write(f.read())
+            return
+
+        if path == "/favicon.ico":
+            self.send_response(204)
+            self.end_headers()
+            return
+
+        # 4. Default Root / Store: Serve Nano Banana Digital Products Storefront!
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.end_headers()
-        html = (
-            "<!DOCTYPE html><html><head><title>ExamRankers India Bot — 24/7 Live</title>"
-            "<meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>"
-            "<style>body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#f8fafc;"
-            "display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px;box-sizing:border-box;text-align:center;}"
-            ".card{background:#1e293b;padding:32px;border-radius:16px;box-shadow:0 10px 25px rgba(0,0,0,0.5);max-width:480px;border:1px solid #334155;}"
-            "h1{color:#38bdf8;font-size:22px;margin:0 0 10px;}"
-            ".status{background:#166534;color:#4ade80;display:inline-block;padding:6px 16px;border-radius:20px;font-weight:bold;font-size:14px;margin:12px 0;}"
-            "p{color:#94a3b8;line-height:1.6;font-size:14px;margin:10px 0;}"
-            "a.btn{display:inline-block;margin-top:16px;background:#0284c7;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:bold;transition:0.2s;}"
-            "a.btn:hover{background:#0369a1;}"
-            "</style></head><body>"
-            "<div class='card'>"
-            "<h1>🚀 ExamRankers India Bot</h1>"
-            "<div class='status'>🟢 24/7 LIVE & RUNNING</div>"
-            "<p>Official Maharashtra Saralsewa TCS & IBPS Rank Predictor & 1-by-1 Interactive Quiz Channel Bot.</p>"
-            f"<p><b>Uptime Health:</b> 100% OK<br><b>Cloud Port:</b> {self.server.server_address[1]}</p>"
-            "<a class='btn' href='https://t.me/ExamRankersIndiaBot' target='_blank'>Open Telegram Bot</a>"
-            "</div></body></html>"
-        )
+        html = render_nano_banana_store_html()
         self.wfile.write(html.encode("utf-8"))
+
+    def do_POST(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path.rstrip("/")
+
+        content_len = int(self.headers.get("Content-Length", 0))
+        post_body = self.rfile.read(content_len).decode("utf-8") if content_len > 0 else "{}"
+        data = {}
+        try:
+            data = json.loads(post_body)
+        except Exception:
+            pass
+
+        if path == "/api/checkout":
+            prod_id = data.get("product_id", "prod_ca_monthly_top200")
+            email = data.get("email", "")
+            amount = float(data.get("amount", 19))
+            res = fulfillment_agent.create_order(prod_id, email, amount, db_path=DB_PATH)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps(res).encode("utf-8"))
+            return
+
+        if path == "/api/verify":
+            order_token = data.get("order_token", "")
+            utr = data.get("utr", "")
+            success, msg, prod = fulfillment_agent.confirm_and_fulfill_order(order_token, utr, db_path=DB_PATH)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({"success": success, "message": msg, "product": prod}).encode("utf-8"))
+            return
+
+        self.send_response(404)
+        self.end_headers()
 
     def log_message(self, format, *args):
         pass  # Keep terminal logs clean from ping health-checks
@@ -3224,6 +3460,127 @@ async def deals_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML",
         reply_markup=get_deals_keyboard()
     )
+
+async def store_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Displays the Nano Banana digital products store link and highlights."""
+    store_url = get_store_web_url()
+    products = packaging_agent.get_all_products(DB_PATH)
+
+    lines = [
+        "🍌 <b>ExamRankers™ अधिकृत डिजिटल ई-स्टोअर (Nano Banana Store)</b>",
+        "══════════════════════════",
+        "🎯 <b>TCS व IBPS पॅटर्ननुसार ₹१० ते ₹९९ मधील दर्जेदार डिजिटल ई-बुक्स!</b>\n",
+        "आमचे ई-बुक्स स्टोअर हे <b>स्वतंत्र वेबपेजवर</b> उपलब्ध आहे. तेथे आपण:",
+        "  ✨ <b>विनामूल्य सॅम्पल पेजेस</b> थेट वाचू शकता",
+        "  🔍 <b>विषयवार व महिनावार</b> सर्च करू शकता",
+        "  ⚡ <b>GPay / PhonePe / Paytm / Any UPI</b> द्वारे १-क्लिक पेमेन्ट करू शकता",
+        "  📩 पेमेन्ट होताच <b>ब्राऊझरमध्ये त्वरित PDF डाऊनलोड</b> व आपल्या <b>ईमेलवर</b> प्रत प्राप्त होते!\n",
+        "🔥 <b>सध्याची टॉप सेलर पुस्तके:</b>"
+    ]
+    keyboard = []
+    for p in products[:5]:
+        lines.append(f"{p['icon']} <b>{p['title']}</b>")
+        lines.append(f"   ↳ <s>₹{p['original_price_inr']}</s> <b>फक्त ₹{p['price_inr']}/-</b> ({p['badge']})\n")
+        keyboard.append([InlineKeyboardButton(f"📖 {p['title'][:22]}... (₹{p['price_inr']})", url=f"{store_url}?prod={p['id']}")])
+
+    lines.append(f"🌐 <b>स्टोअर उघडण्यासाठी खालील बटणावर क्लिक करा:</b>\n🔗 <a href=\"{store_url}\">{store_url}</a>")
+
+    keyboard.append([InlineKeyboardButton("🛒 अधिकृत डिजिटल वेब स्टोअर उघडा (Open Store)", url=store_url)])
+    keyboard.append([InlineKeyboardButton(get_youtube_button_text(), url=get_youtube_link())])
+    keyboard.append([InlineKeyboardButton("🔙 मुख्य मेनू (Main Menu)", callback_data="main_menu")])
+
+    msg_text = "\n".join(lines)
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.reply_text(
+            msg_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True
+        )
+    elif update.message:
+        await update.message.reply_text(
+            msg_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True
+        )
+
+async def sync_channel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: Force syncs channel name according to latest government exam."""
+    user = update.effective_user
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to administrators only.")
+        return
+
+    channel = os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID
+    if not channel or channel.startswith("http"):
+        await update.message.reply_text("⚠️ कृपया आधी .env मध्ये PAID_CHANNEL_ID सेट करा.")
+        return
+
+    status_msg = await update.message.reply_text("⏳ <i>Brand Strategist Agent ताज्या परीक्षेचे विश्लेषण करून चॅनेलचे नाव बदलत आहे...</i>", parse_mode="HTML")
+    res = await channel_branding_agent.sync_telegram_channel_title(context.bot, channel, DB_PATH)
+
+    reply = (
+        f"🏆 <b>चॅनेल ब्रँडिंग अपडेट अहवाल:</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📌 <b>सक्रिय परीक्षा:</b> {res.get('exam_name')}\n"
+        f"🏷️ <b>नवीन नाव:</b> <code>{res.get('title')}</code>\n"
+        f"📝 <b>स्थिती:</b> {res.get('message')}\n"
+    )
+    await status_msg.edit_text(reply, parse_mode="HTML")
+
+async def post_store_promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: Uses Marketing Sales Agent to drop a high-converting digital product promo in the channel."""
+    user = update.effective_user
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to administrators only.")
+        return
+
+    channel = os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID
+    if not channel or channel.startswith("http"):
+        await update.message.reply_text("⚠️ कृपया आधी .env मध्ये PAID_CHANNEL_ID सेट करा.")
+        return
+
+    target_chat = int(channel) if channel.lstrip("-").isdigit() else channel
+    store_url = get_store_web_url()
+    products = packaging_agent.get_all_products(DB_PATH)
+    target_prod = products[0] if products else DEFAULT_PRODUCTS[0]
+
+    sample_q = SAMPLE_PREVIEWS.get(target_prod["id"], {}).get("samples", [None])[0]
+    promo_text = await marketing_sales_agent.generate_product_promo_post(target_prod, store_url, sample_q)
+
+    kb = [
+        [InlineKeyboardButton(f"🛒 खरेदी करा (फक्त ₹{target_prod.get('price_inr', 19)})", url=store_url)],
+        [InlineKeyboardButton("🌐 सर्व ई-बुक्स स्टोअर पहा (Nano Banana)", url=store_url)]
+    ]
+    await context.bot.send_message(
+        chat_id=target_chat,
+        text=promo_text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(kb),
+        disable_web_page_preview=True
+    )
+    await update.message.reply_text(f"✅ Digital Product ॲड चॅनेलवर यशस्वीरित्या पोस्ट केली! (Product: {target_prod['title']})")
+
+async def auto_sync_channel_name_background(bot):
+    """Background helper to update Telegram Channel title automatically when response sheets arrive."""
+    channel = os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID
+    if not channel or channel.startswith("http"):
+        return
+    try:
+        res = await channel_branding_agent.sync_telegram_channel_title(bot, channel, DB_PATH)
+        if res.get("success"):
+            logger.info(f"🏆 Auto-Synced Channel Title: {res.get('title')}")
+    except Exception as e:
+        logger.warning(f"Auto-sync channel title note: {e}")
+
+async def auto_channel_branding_scheduler_loop(application: Application):
+    """Background Scheduler: Checks trending government exams every 6 hours and updates channel branding."""
+    await asyncio.sleep(60)
+    while True:
+        try:
+            channel = os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID
+            if channel and not channel.startswith("http"):
+                res = await channel_branding_agent.sync_telegram_channel_title(application.bot, channel, DB_PATH)
+                logger.info(f"6-Hour Channel Branding Check: {res.get('message')}")
+        except Exception as e:
+            logger.warning(f"Error in auto_channel_branding_scheduler_loop: {e}")
+        await asyncio.sleep(6 * 3600)
 
 def start_keep_alive_pinger():
     """
@@ -3288,6 +3645,8 @@ def main():
     start_keep_alive_pinger()
     init_db()
     init_quiz_db(DB_PATH)
+    packaging_agent.init_products_db(DB_PATH)
+    threading.Thread(target=lambda: [packaging_agent.ensure_product_pdf(p['id']) for p in DEFAULT_PRODUCTS], daemon=True).start()
     logger.info("Initializing Telegram application...")
     app = (
         Application.builder()
@@ -3302,6 +3661,7 @@ def main():
 
     # Core user commands (100% Free rank prediction & subject analysis)
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler(["store", "products", "ebooks", "books"], store_cmd))
     app.add_handler(CommandHandler("menu", start))
     app.add_handler(CommandHandler("help", start))
     app.add_handler(CommandHandler(["channels", "channel", "youtube", "yt", "socials"], channels_cmd))
@@ -3312,6 +3672,8 @@ def main():
 
     # Admin commands (Response sheets, ZIP export, Channel, Quizzes, QBank, Schedulers)
     app.add_handler(CommandHandler("stats", stats))
+    app.add_handler(CommandHandler(["sync_channel", "update_channel_name", "rename_channel"], sync_channel_cmd))
+    app.add_handler(CommandHandler(["post_store_promo", "promote_store"], post_store_promo_cmd))
     app.add_handler(CommandHandler(["master_report", "exam_report", "analytics_report", "generate_report"], master_report_cmd))
     app.add_handler(CommandHandler(["qbank", "question_bank", "oneliner"], question_bank_cmd))
     app.add_handler(CommandHandler(["post_mindmap", "mindmap"], post_mindmap_cmd))

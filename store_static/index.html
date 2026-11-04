@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="mr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ExamRankers™ Store — TCS & IBPS Digital Micro-Books (₹10 - ₹99)</title>
+    <meta name="description" content="महाराष्ट्र सरळसेवा, तलाठी, ZP, पोलीस भरती, TCS व IBPS परीक्षेसाठी अधिकृत डिजिटल ई-बुक्स, चालू घडामोडी Top 200 MCQs व वनलायनर प्रश्नसंच — अवघ्या ₹१० ते ₹९९ मध्ये!">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #080c14;
+            --bg-surface: #0f172a;
+            --bg-card: #151f32;
+            --bg-card-hover: #1c2840;
+            --border: #23324a;
+            --border-highlight: #3b82f6;
+            --accent-banana: #facc15;
+            --accent-banana-hover: #eab308;
+            --accent-emerald: #10b981;
+            --accent-cyan: #38bdf8;
+            --accent-rose: #f43f5e;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --radius-lg: 16px;
+            --radius-md: 10px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            font-family: 'Plus Jakarta Sans', 'Noto Sans Devanagari', -apple-system, sans-serif;
+            min-height: 100vh;
+            line-height: 1.5;
+            overflow-x: hidden;
+        }
+        /* Live Top Alert Ticker */
+        .top-ticker {
+            background: linear-gradient(90deg, #1e1b4b 0%, #1e3a8a 50%, #1e1b4b 100%);
+            border-bottom: 1px solid rgba(59, 130, 246, 0.3);
+            color: #93c5fd;
+            font-size: 13px;
+            font-weight: 600;
+            padding: 8px 16px;
+            text-align: center;
+        }
+        .top-ticker span {
+            color: var(--accent-banana);
+            font-weight: 700;
+        }
+        /* Navigation Bar */
+        .navbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px 24px;
+            position: relative;
+            z-index: 20;
+        }
+        .brand-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: #ffffff;
+        }
+        .brand-icon {
+            background: linear-gradient(135deg, var(--accent-banana) 0%, #f97316 100%);
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            box-shadow: 0 4px 15px rgba(250, 204, 21, 0.3);
+        }
+        .brand-title {
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+        }
+        .brand-title span {
+            color: var(--accent-banana);
+        }
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .nav-btn-tg {
+            background: rgba(56, 189, 248, 0.12);
+            color: var(--accent-cyan);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            text-decoration: none;
+            padding: 8px 16px;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .nav-btn-tg:hover {
+            background: var(--accent-cyan);
+            color: #0f172a;
+        }
+        /* Hero Section */
+        .hero {
+            position: relative;
+            padding: 40px 20px 30px;
+            text-align: center;
+            max-width: 900px;
+            margin: 0 auto;
+            z-index: 10;
+        }
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(250, 204, 21, 0.1);
+            color: var(--accent-banana);
+            border: 1px solid rgba(250, 204, 21, 0.3);
+            padding: 6px 18px;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+        .hero h1 {
+            font-size: clamp(28px, 4.5vw, 48px);
+            font-weight: 800;
+            line-height: 1.25;
+            letter-spacing: -0.5px;
+            margin-bottom: 16px;
+        }
+        .hero h1 span {
+            background: linear-gradient(135deg, var(--accent-banana) 0%, #fb923c 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .hero p {
+            font-size: clamp(15px, 2.2vw, 18px);
+            color: var(--text-muted);
+            max-width: 720px;
+            margin: 0 auto 28px;
+            line-height: 1.6;
+        }
+        /* Trust Badges Bar */
+        .trust-bar {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            flex-wrap: wrap;
+            margin-bottom: 30px;
+        }
+        .trust-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #cbd5e1;
+        }
+        .trust-item span {
+            color: var(--accent-emerald);
+        }
+        /* Search Box */
+        .search-container {
+            max-width: 600px;
+            margin: 0 auto 30px;
+            position: relative;
+        }
+        .search-input {
+            width: 100%;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            color: #ffffff;
+            padding: 14px 20px 14px 44px;
+            border-radius: 999px;
+            font-size: 15px;
+            outline: none;
+            transition: all 0.2s;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        }
+        .search-input:focus {
+            border-color: var(--accent-banana);
+            box-shadow: 0 4px 25px rgba(250, 204, 21, 0.25);
+        }
+        .search-icon {
+            position: absolute;
+            left: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 16px;
+            pointer-events: none;
+        }
+        /* Filter Navigation */
+        .filter-nav {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 40px;
+        }
+        .filter-btn {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 9px 18px;
+            border-radius: 999px;
+            cursor: pointer;
+            font-size: 13.5px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .filter-btn:hover, .filter-btn.active {
+            background: var(--accent-banana);
+            color: #0f172a;
+            border-color: var(--accent-banana);
+            box-shadow: 0 4px 14px rgba(250, 204, 21, 0.3);
+        }
+        /* Products Grid */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px 80px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+            gap: 24px;
+        }
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+            position: relative;
+        }
+        .card:hover {
+            transform: translateY(-4px);
+            background: var(--bg-card-hover);
+            border-color: rgba(250, 204, 21, 0.4);
+            box-shadow: 0 14px 30px rgba(0, 0, 0, 0.5);
+        }
+        .card-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 14px;
+        }
+        .card-icon {
+            font-size: 32px;
+            background: rgba(255, 255, 255, 0.04);
+            width: 54px;
+            height: 54px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .card-badge {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-emerald);
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            text-transform: uppercase;
+        }
+        .card-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 8px;
+            line-height: 1.4;
+        }
+        .card-sub {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
+        .card-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 18px;
+            padding: 10px 0;
+            border-top: 1px dashed var(--border);
+            border-bottom: 1px dashed var(--border);
+        }
+        .price-row {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            margin-bottom: 18px;
+        }
+        .current-price {
+            font-size: 30px;
+            font-weight: 800;
+            color: var(--accent-banana);
+        }
+        .original-price {
+            font-size: 15px;
+            color: #64748b;
+            text-decoration: line-through;
+        }
+        .discount-tag {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .btn-group {
+            display: grid;
+            grid-template-columns: 1fr 1.4fr;
+            gap: 10px;
+        }
+        .btn-sample {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 11px 14px;
+            border-radius: var(--radius-md);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+        .btn-sample:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: #64748b;
+        }
+        .btn-buy {
+            background: linear-gradient(135deg, var(--accent-banana) 0%, #eab308 100%);
+            color: #0f172a;
+            border: none;
+            padding: 11px 16px;
+            border-radius: var(--radius-md);
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            box-shadow: 0 4px 14px rgba(250, 204, 21, 0.25);
+        }
+        .btn-buy:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(250, 204, 21, 0.4);
+            filter: brightness(1.05);
+        }
+        /* Modal System */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .modal {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            width: 100%;
+            max-width: 540px;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 30px;
+            position: relative;
+            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.7);
+        }
+        .modal-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 24px;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .modal-close:hover { color: #ffffff; }
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: #cbd5e1;
+            margin: 16px 0 6px;
+        }
+        .form-input {
+            width: 100%;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: #ffffff;
+            padding: 13px 15px;
+            border-radius: var(--radius-md);
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .form-input:focus {
+            border-color: var(--accent-banana);
+        }
+        .qr-card {
+            background: #ffffff;
+            padding: 16px;
+            border-radius: 14px;
+            display: inline-block;
+            margin: 16px auto;
+            text-align: center;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+        }
+        .qr-card img {
+            width: 210px;
+            height: 210px;
+            display: block;
+        }
+        .copy-pill {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        .btn-full {
+            width: 100%;
+            margin-top: 16px;
+            padding: 14px;
+            font-size: 15px;
+        }
+        /* Sample Preview Cards */
+        .sample-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 18px;
+            border-radius: var(--radius-md);
+            margin-bottom: 14px;
+            text-align: left;
+        }
+        .sample-q { font-weight: 700; color: #ffffff; margin-bottom: 8px; font-size: 14px; line-height: 1.4; }
+        .sample-opts { font-size: 13px; color: var(--text-muted); margin-bottom: 10px; line-height: 1.6; }
+        .sample-exp { font-size: 12.5px; color: var(--accent-emerald); line-height: 1.5; }
+        /* FAQ Section */
+        .faq-section {
+            max-width: 800px;
+            margin: 60px auto 40px;
+            padding: 0 20px;
+        }
+        .faq-title {
+            font-size: 24px;
+            font-weight: 800;
+            text-align: center;
+            margin-bottom: 24px;
+            color: #ffffff;
+        }
+        .faq-item {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 18px 20px;
+            margin-bottom: 12px;
+        }
+        .faq-q {
+            font-size: 15px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 6px;
+        }
+        .faq-a {
+            font-size: 13.5px;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+            font-size: 13px;
+            border-top: 1px solid var(--border);
+        }
+        .footer a { color: var(--accent-banana); text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="top-ticker">
+        ⚡ <span>TCS व IBPS चालू परीक्षा:</span> तलाठी, ZP, पोलीस भरती, वनरक्षक व आरोग्य विभाग विशेष ई-बुक्स <b>(सर्व पुस्तके अवघ्या ₹१० ते ₹९९ मध्ये!)</b>
+    </div>
+
+    <nav class="navbar">
+        <a href="/" class="brand-logo">
+            <div class="brand-icon">⚡</div>
+            <div class="brand-title">ExamRankers<span>.Store</span></div>
+        </a>
+        <div class="nav-actions">
+            <a href="https://t.me/ExamRankersIndiaBot" target="_blank" class="nav-btn-tg">
+                ✈️ Open Telegram Bot
+            </a>
+        </div>
+    </nav>
+
+    <header class="hero">
+        <div class="hero-badge">NANO BANANA OFFICIAL STANDALONE DIGITAL STORE</div>
+        <h1>महाराष्ट्र शासकीय परीक्षा <span>डिजिटल ई-बुक स्टोअर</span></h1>
+        <p>TCS व IBPS च्या चालू शिफ्ट्सवर आधारित मासिक चालू घडामोडी Top 200 MCQs, रिस्पॉन्स शीट प्रश्नसंच आणि विषयनिहाय शॉर्टकट ट्रिक्स — थेट तुमच्या Email वर तात्काळ मिळवा!</p>
+
+        <div class="trust-bar">
+            <div class="trust-item"><span>✓</span> १००% अधिकृत TCS/IBPS पॅटर्न</div>
+            <div class="trust-item"><span>✓</span> अवघ्या ₹१० ते ₹९९ मध्ये</div>
+            <div class="trust-item"><span>✓</span> तात्काळ Email व Web डाऊनलोड</div>
+            <div class="trust-item"><span>✓</span> ५०,०००+ समाधानी विद्यार्थी</div>
+        </div>
+
+        <div class="search-container">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="searchInput" class="search-input" placeholder="कोणतेही पुस्तक किंवा विषय शोधा (उदा. चालू घडामोडी, प्रयोग, RTI, गणित)..." onkeyup="handleSearch()">
+        </div>
+
+        <div class="filter-nav">
+            <button class="filter-btn active" onclick="filterCategory('All')">सर्व ई-बुक्स (All)</button>
+            <button class="filter-btn" onclick="filterCategory('Current Affairs')">📰 चालू घडामोडी</button>
+            <button class="filter-btn" onclick="filterCategory('PYQ & Response Sheets')">📑 रिस्पॉन्स शीट Q-Bank</button>
+            <button class="filter-btn" onclick="filterCategory('Marathi')">✍️ मराठी व्याकरण</button>
+            <button class="filter-btn" onclick="filterCategory('English')">📖 English Mastery</button>
+            <button class="filter-btn" onclick="filterCategory('Maths & Reasoning')">🔢 गणित व बुद्धिमत्ता</button>
+            <button class="filter-btn" onclick="filterCategory('General Knowledge')">🗺️ महाराष्ट्र GS</button>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="grid" id="productGrid">
+            <!-- Dynamic Cards Populated by JS -->
+        </div>
+    </main>
+
+    <section class="faq-section">
+        <h2 class="faq-title">नेहमी विचारले जाणारे प्रश्न (FAQ)</h2>
+        <div class="faq-item">
+            <div class="faq-q">❓ पेमेंट केल्यानंतर ई-बुक कसे मिळेल?</div>
+            <div class="faq-a">पेमेंटचा UTR नंबर टाकून 'कन्फर्म' करताच अवघ्या ३ सेकंदात तुमच्या ईमेलवर PDF ई-बुक पाठवले जाते आणि याच स्क्रीनवरही थेट १-क्लिक 'Download PDF' बटण मिळते!</div>
+        </div>
+        <div class="faq-item">
+            <div class="faq-q">📱 हे ई-बुक मोबाईलवर वाचता येईल का?</div>
+            <div class="faq-a">होय! सर्व ई-बुक्स हाय-डेफिनिशन (High-Res) PDF फॉरमॅटमध्ये असून मोबाईल, टॅबलेट, लॅपटॉप आणि प्रिंट काढण्यासाठी १००% सुसंगत आहेत.</div>
+        </div>
+        <div class="faq-item">
+            <div class="faq-q">💡 चालू TCS व IBPS परीक्षांसाठी हे उपयुक्त आहे का?</div>
+            <div class="faq-a">होय, हे सर्व प्रश्न व ट्रिक्स थेट विद्यार्थ्यांनी सादर केलेल्या अधिकृत DigiALM रिस्पॉन्स शीट्समधून वरिष्ठ प्राध्यापकांनी संकलित केलेले आहेत.</div>
+        </div>
+    </section>
+
+    <!-- Checkout Modal -->
+    <div class="modal-overlay" id="checkoutModal">
+        <div class="modal">
+            <button class="modal-close" onclick="closeModal('checkoutModal')">&times;</button>
+            <div id="modalStep1">
+                <span class="card-badge" id="modalBadge">INSTANT DELIVERY IN 5 SECONDS</span>
+                <h2 id="modalTitle" style="margin-top:10px; font-size:21px; color:#fff;">ई-बुक खरेदी करा</h2>
+                <p id="modalSub" style="color:var(--text-muted); font-size:13px; margin-bottom:12px;"></p>
+
+                <div class="price-row">
+                    <span class="current-price" id="modalPrice">₹19</span>
+                    <span class="original-price" id="modalOrigPrice">₹99</span>
+                    <span class="discount-tag">सवलत दर</span>
+                </div>
+
+                <label class="form-label">१. तुमचा ईमेल आयडी टाका (यावर PDF पाठवली जाईल) *</label>
+                <input type="email" id="customerEmail" class="form-input" placeholder="name@example.com" required>
+
+                <label class="form-label">२. मोबाईल नंबर (ऐच्छिक)</label>
+                <input type="text" id="customerContact" class="form-input" placeholder="10-अंकी मोबाईल नंबर">
+
+                <button class="btn-buy btn-full" onclick="proceedToPayment()">👉 पेमेंटसाठी पुढे जा (Generate UPI QR)</button>
+            </div>
+
+            <div id="modalStep2" style="display:none; text-align:center;">
+                <h3 style="color:#ffffff; font-size:18px;">📲 UPI QR स्कॅन करून ₹<span id="qrAmountSpan">19</span> भरा</h3>
+                <p style="color:var(--text-muted); font-size:13px; margin-top:4px;">GPay, PhonePe, Paytm, BHIM किंवा Cred वरून स्कॅन करा:</p>
+
+                <div class="qr-card">
+                    <img id="upiQrImg" src="" alt="UPI QR Code">
+                    <div style="font-size:12px; font-weight:700; color:#0f172a; margin-top:6px;">ExamRankers India Verified</div>
+                </div>
+
+                <div class="copy-pill" onclick="copyUPI()">
+                    <span>UPI ID: <b style="color:var(--accent-banana);">9970095256-2@ybl</b></span>
+                    <span id="copyBtnText" style="color:#38bdf8; font-weight:700;">📋 Copy</span>
+                </div>
+
+                <div style="margin: 10px 0;">
+                    <a id="upiIntentBtn" href="#" class="btn-sample" style="display:inline-block; width:100%; padding:10px; background:rgba(250,204,21,0.1); border-color:var(--accent-banana); color:var(--accent-banana); text-decoration:none;">⚡ थेट मोबाईल UPI ॲपमध्ये उघडा (Open in GPay/PhonePe)</a>
+                </div>
+
+                <div style="text-align:left; margin-top:16px;">
+                    <label class="form-label">पेमेंट झाल्यानंतर 12-अंकी UTR / Ref No. टाका *</label>
+                    <input type="text" id="utrInput" class="form-input" placeholder="उदा. 431289456789">
+                </div>
+
+                <button class="btn-buy btn-full" onclick="confirmPayment()">✅ पेमेंट कन्फर्म करा व PDF मिळवा</button>
+                <button class="btn-sample btn-full" style="margin-top:8px;" onclick="backToStep1()">मागे जा</button>
+            </div>
+
+            <div id="modalStep3" style="display:none; text-align:center;">
+                <div style="font-size:52px; margin-bottom:10px;">🎉</div>
+                <h3 style="color:#ffffff; font-size:22px;">पेमेंट यशस्वी! अभिनंदन!</h3>
+                <p style="color:var(--accent-emerald); font-size:14.5px; margin: 10px 0;">तुमचे ई-बुक <b id="finalEmailSpan"></b> या ईमेलवर पाठवले आहे.</p>
+                <div style="background:var(--bg-card); padding:16px; border-radius:10px; border:1px solid var(--border); margin:16px 0; text-align:left;">
+                    <p style="font-size:13px; color:var(--text-muted); margin-bottom:4px;"><b>Order Reference:</b> <code id="finalOrderToken"></code></p>
+                    <p style="font-size:13px; color:var(--text-muted);"><b>Format:</b> High-Res Official PDF (Mobile & Print)</p>
+                </div>
+                <a id="instantDownloadBtn" href="#" target="_blank" class="btn-buy btn-full" style="text-decoration:none; display:inline-block; background:#10b981; color:#fff;">📥 Download PDF Now (तात्काळ डाऊनलोड करा)</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sample Preview Modal -->
+    <div class="modal-overlay" id="sampleModal">
+        <div class="modal" style="max-width: 640px;">
+            <button class="modal-close" onclick="closeModal('sampleModal')">&times;</button>
+            <span class="card-badge" style="color:var(--accent-banana); border-color:var(--accent-banana);">FREE SAMPLE PREVIEW</span>
+            <h2 id="sampleModalTitle" style="margin-top:10px; font-size:19px; color:#fff;">नमुना प्रश्न व स्पष्टीकरण</h2>
+            <p style="color:var(--text-muted); font-size:13px; margin-bottom:16px;">पुस्तकातील दर्जा आणि स्पष्टीकरणे खालीलप्रमाणे आहेत:</p>
+
+            <div id="sampleContentArea">
+                <!-- Samples inserted via JS -->
+            </div>
+
+            <button class="btn-buy btn-full" id="sampleBuyBtn" onclick="buyFromSample()">👉 हे संपूर्ण ई-बुक खरेदी करा</button>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>© 2026 <b>ExamRankers™ India</b> — Maharashtra TCS & IBPS Government Exam Preparation Hub</p>
+        <p style="margin-top:6px;">Official Standalone Web Store | 100% Encrypted UPI Delivery | Support: support@examrankers.com</p>
+    </footer>
+
+    <script>
+        const PRODUCTS = [{"id": "prod_ca_monthly_top200", "title": "\u092e\u093e\u0938\u093f\u0915 \u091a\u093e\u0932\u0942 \u0918\u0921\u093e\u092e\u094b\u0921\u0940 Top 200 MCQs (\u0938\u0935\u093f\u0938\u094d\u0924\u0930 \u0938\u094d\u092a\u0937\u094d\u091f\u0940\u0915\u0930\u0923\u093e\u0938\u0939)", "subtitle": "TCS & IBPS \u092a\u0945\u091f\u0930\u094d\u0928\u0928\u0941\u0938\u093e\u0930 \u0928\u093f\u0935\u0921\u0915 \u0968\u0966\u0966 \u092a\u094d\u0930\u0936\u094d\u0928 + \u0907\u0928\u094d\u092b\u094b\u0917\u094d\u0930\u093e\u092b\u093f\u0915\u094d\u0938 \u0935 \u091f\u094d\u0930\u093f\u0915\u094d\u0938", "subject": "Current Affairs", "tier": "Monthly", "price_inr": 19, "original_price_inr": 99, "badge": "\ud83d\udd25 MOST POPULAR (\u20b919)", "rating": 4.9, "reviews_count": 1420, "pages": 48, "description": "\u091a\u093e\u0932\u0942 \u092e\u0939\u093f\u0928\u094d\u092f\u093e\u0924\u0940\u0932 \u092e\u0939\u093e\u0930\u093e\u0937\u094d\u091f\u094d\u0930 \u0935 \u0930\u093e\u0937\u094d\u091f\u094d\u0930\u0940\u092f \u0938\u094d\u0924\u0930\u093e\u0935\u0930\u0940\u0932 \u0938\u0930\u094d\u0935 \u092e\u0939\u0924\u094d\u0924\u094d\u0935\u093e\u091a\u094d\u092f\u093e \u0918\u0921\u093e\u092e\u094b\u0921\u0940\u0902\u091a\u0947 \u0968\u0966\u0966 \u0926\u0930\u094d\u091c\u0947\u0926\u093e\u0930 \u092c\u0939\u0941\u092a\u0930\u094d\u092f\u093e\u092f\u0940 \u092a\u094d\u0930\u0936\u094d\u0928, \u0938\u0935\u093f\u0938\u094d\u0924\u0930 \u0938\u094d\u092a\u0937\u094d\u091f\u0940\u0915\u0930\u0923\u0947 \u0906\u0923\u093f \u0930\u093f\u0935\u094d\u0939\u093f\u091c\u0928 \u091a\u093e\u0930\u094d\u091f\u094d\u0938.", "download_file": "current_affairs_monthly_top200.pdf", "icon": "\ud83d\udcf0", "is_active": 1, "sales_count": 1, "created_at": "2026-11-04 09:53:49"}, {"id": "prod_tcs_response_sheet_qbank", "title": "TCS/IBPS \u0938\u0930\u094d\u0935 \u0930\u093f\u0938\u094d\u092a\u0949\u0928\u094d\u0938 \u0936\u0940\u091f\u094d\u0938 \u0935\u0928\u0932\u093e\u092f\u0928\u0930 \u092e\u093e\u0938\u094d\u091f\u0930 \u092a\u094d\u0930\u0936\u094d\u0928\u0938\u0902\u091a", "subtitle": "\u091a\u093e\u0932\u0942 \u092a\u0930\u0940\u0915\u094d\u0937\u093e\u0902\u092e\u0927\u094d\u092f\u0947 \u0935\u093f\u091a\u093e\u0930\u0932\u0947\u0932\u0947 \u0967\u0966\u0966\u0966+ \u0913\u0930\u093f\u091c\u093f\u0928\u0932 \u092a\u094d\u0930\u0936\u094d\u0928 \u0935 \u0905\u0927\u093f\u0915\u0943\u0924 \u0909\u0924\u094d\u0924\u0930\u0947", "subject": "PYQ & Response Sheets", "tier": "Special", "price_inr": 29, "original_price_inr": 149, "badge": "\ud83c\udfaf 100% REAL EXAM QUESTIONS", "rating": 4.9, "reviews_count": 3410, "pages": 75, "description": "\u0935\u093f\u0926\u094d\u092f\u093e\u0930\u094d\u0925\u094d\u092f\u093e\u0902\u0928\u0940 \u092a\u093e\u0920\u0935\u0932\u0947\u0932\u094d\u092f\u093e DigiALM \u0930\u093f\u0938\u094d\u092a\u0949\u0928\u094d\u0938 \u0936\u0940\u091f\u094d\u0938\u092e\u0927\u0942\u0928 \u0915\u093e\u0922\u0932\u0947\u0932\u0947 \u0913\u0930\u093f\u091c\u093f\u0928\u0932 \u092a\u094d\u0930\u0936\u094d\u0928, \u0938\u093e\u092e\u093e\u0928\u094d\u092f \u091c\u094d\u091e\u093e\u0928, \u092e\u0930\u093e\u0920\u0940 \u0935 \u0907\u0902\u0917\u094d\u0930\u091c\u0940\u091a\u0947 \u0925\u0947\u091f \u0935\u0928\u0932\u093e\u092f\u0928\u0930 \u0938\u0902\u0915\u0932\u0928.", "download_file": "tcs_ibps_real_response_qbank.pdf", "icon": "\ud83d\udcd1", "is_active": 1, "sales_count": 0, "created_at": "2026-11-04 09:53:49"}, {"id": "prod_marathi_vyakaran_rules", "title": "\u092e\u0930\u093e\u0920\u0940 \u0935\u094d\u092f\u093e\u0915\u0930\u0923 \u096b\u0966\u0966+ \u091f\u094d\u0930\u093f\u0915\u094d\u0938, \u0928\u093f\u092f\u092e \u0935 \u0935\u093e\u0930\u0902\u0935\u093e\u0930 \u0935\u093f\u091a\u093e\u0930\u0932\u0947\u0932\u0947 \u092a\u094d\u0930\u0936\u094d\u0928", "subtitle": "\u0938\u0902\u0927\u0940, \u0938\u092e\u093e\u0938, \u092a\u094d\u0930\u092f\u094b\u0917, \u0915\u093e\u0933 \u0935 \u0935\u093e\u0915\u094d\u092f\u0930\u0942\u092a\u093e\u0902\u0924\u0930 - \u092a\u0948\u0915\u0940\u091a\u094d\u092f\u093e \u092a\u0948\u0915\u0940 \u0917\u0941\u0923 \u0939\u092e\u0940", "subject": "Marathi", "tier": "Subject Master", "price_inr": 29, "original_price_inr": 129, "badge": "\ud83c\udfc6 25/25 MARKS BOOSTER", "rating": 4.8, "reviews_count": 1240, "pages": 65, "description": "\u092e\u0930\u093e\u0920\u0940 \u0935\u094d\u092f\u093e\u0915\u0930\u0923\u093e\u0924\u0940\u0932 \u0938\u0930\u094d\u0935\u093e\u0924 \u0915\u093f\u091a\u0915\u091f \u0938\u0902\u0915\u0932\u094d\u092a\u0928\u093e \u0938\u094b\u092a\u094d\u092f\u093e \u092d\u093e\u0937\u0947\u0924, TCS \u091a\u094d\u092f\u093e \u091f\u094d\u0930\u0945\u092a \u092a\u094d\u0930\u0936\u094d\u0928\u093e\u0902\u091a\u0940 \u0909\u0924\u094d\u0924\u0930\u0947 \u0906\u0923\u093f \u0906\u0915\u094d\u0937\u0947\u092a (Objection) \u0928\u094b\u0902\u0926\u0935\u0923\u094d\u092f\u093e\u091a\u0947 \u0938\u0902\u0926\u0930\u094d\u092d.", "download_file": "marathi_vyakaran_master_guide.pdf", "icon": "\u270d\ufe0f", "is_active": 1, "sales_count": 0, "created_at": "2026-11-04 09:53:49"}, {"id": "prod_english_vocab_error_spotting", "title": "TCS/IBPS English 500+ Error Spotting & Vocab Mnemonics", "subtitle": "Score 20+ Marks in English Without Rote Memorization", "subject": "English", "tier": "Subject Master", "price_inr": 29, "original_price_inr": 149, "badge": "\ud83c\udfaf TOP SCORER PICK", "rating": 4.8, "reviews_count": 980, "pages": 60, "description": "Rules of Subject-Verb Agreement, Prepositions, Cloze Tests, and Visual Idioms/Phrases asked in recent TCS & IBPS exam shifts.", "download_file": "english_error_spotting_mastery.pdf", "icon": "\ud83d\udcd6", "is_active": 1, "sales_count": 0, "created_at": "2026-11-04 09:53:49"}, {"id": "prod_maharashtra_gk_gs_1000", "title": "\u092e\u0939\u093e\u0930\u093e\u0937\u094d\u091f\u094d\u0930 \u0938\u093e\u092e\u093e\u0928\u094d\u092f \u091c\u094d\u091e\u093e\u0928 \u0935 GS \u0967\u0966\u0966\u0966+ \u0935\u0928\u0932\u093e\u092f\u0928\u0930 \u0930\u093e\u092e\u092c\u093e\u0923 \u092c\u0941\u0932\u0947\u091f\u093f\u0928", "subtitle": "\u0907\u0924\u093f\u0939\u093e\u0938, \u092d\u0942\u0917\u094b\u0932, \u0938\u092e\u093e\u091c\u0938\u0941\u0927\u093e\u0930\u0915, \u0930\u093e\u091c\u094d\u092f\u0918\u091f\u0928\u093e \u0935 \u0906\u0930\u094d\u0925\u093f\u0915 \u092a\u093e\u0939\u0923\u0940 \u0905\u0939\u0935\u093e\u0932", "subject": "General Knowledge", "tier": "Subject Master", "price_inr": 39, "original_price_inr": 149, "badge": "\ud83d\udca1 HIGH REPETITION RATE", "rating": 4.9, "reviews_count": 1820, "pages": 92, "description": "\u092e\u0939\u093e\u0930\u093e\u0937\u094d\u091f\u094d\u0930\u093e\u091a\u093e \u092d\u0942\u0917\u094b\u0932, \u0928\u0926\u094d\u092f\u093e, \u0915\u093f\u0932\u094d\u0932\u0947, \u0938\u092e\u093e\u091c\u0938\u0941\u0927\u093e\u0930\u0915, \u0906\u0930\u091f\u0940\u0906\u092f \u0968\u0966\u0966\u096b, \u0932\u094b\u0915\u0938\u0947\u0935\u093e \u0939\u0915\u094d\u0915 \u0968\u0966\u0967\u096b \u0906\u0923\u093f \u091a\u093e\u0932\u0942 \u092f\u094b\u091c\u0928\u093e\u0902\u091a\u0947 \u0938\u0941\u092a\u0930-\u092b\u093e\u0938\u094d\u091f \u0930\u093f\u0935\u094d\u0939\u093f\u091c\u0928 \u0928\u094b\u091f\u094d\u0938.", "download_file": "maharashtra_gk_1000_oneliner.pdf", "icon": "\ud83d\uddfa\ufe0f", "is_active": 1, "sales_count": 0, "created_at": "2026-11-04 09:53:49"}, {"id": "prod_maths_reasoning_shortcuts", "title": "\u0917\u0923\u093f\u0924 \u0935 \u092c\u0941\u0926\u094d\u0927\u093f\u092e\u0924\u094d\u0924\u093e \u0967\u096b-\u0938\u0947\u0915\u0902\u0926 \u0936\u0949\u0930\u094d\u091f\u0915\u091f \u091f\u094d\u0930\u093f\u0915\u094d\u0938 \u0935 \u092b\u0949\u0930\u094d\u092e\u094d\u092f\u0941\u0932\u093e \u092c\u0941\u0915", "subtitle": "\u0935\u0947\u0933 \u0935\u093e\u091a\u0935\u0942\u0928 \u0905\u091a\u0942\u0915 \u0909\u0924\u094d\u0924\u0930 \u0915\u093e\u0922\u0923\u094d\u092f\u093e\u091a\u0947 \u0938\u0941\u092a\u0930\u092b\u0949\u0938\u094d\u091f \u092b\u0949\u0930\u094d\u092e\u094d\u092f\u0941\u0932\u0947 \u0935 \u091f\u094d\u0930\u093f\u0915\u094d\u0938", "subject": "Maths & Reasoning", "tier": "Subject Master", "price_inr": 39, "original_price_inr": 169, "badge": "\u26a1 SPEED BOOSTER", "rating": 4.9, "reviews_count": 1650, "pages": 80, "description": "\u0905\u0902\u0915\u0917\u0923\u093f\u0924 \u0935 \u092c\u0941\u0926\u094d\u0927\u093f\u092e\u0924\u094d\u0924\u093e \u091a\u093e\u091a\u0923\u0940\u0924\u0940\u0932 \u0915\u0920\u0940\u0923 \u0917\u0923\u093f\u0924\u0947 \u0905\u0935\u0918\u094d\u092f\u093e \u0967\u096b \u0938\u0947\u0915\u0902\u0926\u093e\u0924 \u0938\u094b\u0921\u0935\u0923\u094d\u092f\u093e\u091a\u094d\u092f\u093e \u0915\u094d\u0932\u0943\u092a\u094d\u0924\u094d\u092f\u093e, \u0926\u093f\u0936\u093e\u091c\u094d\u091e\u093e\u0928, \u0928\u093e\u0924\u0947\u0938\u0902\u092c\u0902\u0927 \u0935 \u0938\u093f\u091f\u093f\u0902\u0917 \u0905\u0930\u0947\u0902\u091c\u092e\u0947\u0902\u091f \u0917\u094d\u0930\u093f\u0921\u094d\u0938.", "download_file": "maths_reasoning_shortcuts_handbook.pdf", "icon": "\ud83d\udd22", "is_active": 1, "sales_count": 0, "created_at": "2026-11-04 09:53:49"}, {"id": "prod_ca_half_yearly", "title": "\u0938\u0939\u093e\u092e\u093e\u0939\u0940 \u091a\u093e\u0932\u0942 \u0918\u0921\u093e\u092e\u094b\u0921\u0940 \u092e\u0947\u0917\u093e \u0915\u0945\u092a\u094d\u0938\u0942\u0932 (\u096c \u092e\u0939\u093f\u0928\u0947 - \u096c\u0966\u0966 \u092a\u094d\u0930\u0936\u094d\u0928)", "subtitle": "\u091c\u093e\u0928\u0947\u0935\u093e\u0930\u0940 \u0924\u0947 \u091c\u0942\u0928 / \u091c\u0941\u0932\u0948 \u0924\u0947 \u0921\u093f\u0938\u0947\u0902\u092c\u0930 \u0938\u0902\u092a\u0942\u0930\u094d\u0923 \u091a\u093e\u0932\u0942 \u0918\u0921\u093e\u092e\u094b\u0921\u0940 \u0935\u0928-\u0938\u094d\u091f\u0949\u092a \u0930\u093f\u0935\u094d\u0939\u093f\u091c\u0928", "subject": "Current Affairs", "tier": "Half-Yearly", "price_inr": 49, "original_price_inr": 199, "badge": "\u26a1 BEST VALUE (\u20b949)", "rating": 4.9, "reviews_count": 890, "pages": 130, "description": "\u092e\u093e\u0917\u0940\u0932 \u096c \u092e\u0939\u093f\u0928\u094d\u092f\u093e\u0902\u0924\u0940\u0932 \u0938\u0930\u094d\u0935 \u0936\u093e\u0938\u0915\u0940\u092f \u092f\u094b\u091c\u0928\u093e, \u092a\u0941\u0930\u0938\u094d\u0915\u093e\u0930, \u0928\u093f\u092f\u0941\u0915\u094d\u0924\u094d\u092f\u093e, \u0915\u094d\u0930\u0940\u0921\u093e \u0935 \u0905\u0930\u094d\u0925\u0938\u0902\u0915\u0932\u094d\u092a\u093e\u091a\u0947 \u092a\u0930\u093f\u092a\u0942\u0930\u094d\u0923 \u0938\u0902\u0915\u0932\u0928. \u0938\u0930\u0933\u0938\u0947\u0935\u093e \u092a\u0930\u0940\u0915\u094d\u0937\u093e\u0902\u0938\u093e\u0920\u0940 \u0967\u0966\u0966% \u0916\u093e\u0924\u094d\u0930\u0940\u0936\u0940\u0930 \u0930\u093f\u0935\u094d\u0939\u093f\u091c\u0928 \u092c\u0941\u0915.", "download_file": "current_affairs_half_yearly_mega.pdf", "icon": "\ud83c\udf1f", "is_active": 1, "sales_count": 0, "created_at": "2026-11-04 09:53:49"}, {"id": "prod_ca_yearly_master", "title": "\u0935\u093e\u0930\u094d\u0937\u093f\u0915 \u091a\u093e\u0932\u0942 \u0918\u0921\u093e\u092e\u094b\u0921\u0940 \u092e\u093e\u0938\u094d\u091f\u0930 \u0921\u093e\u092f\u091c\u0947\u0938\u094d\u091f (\u0967 \u0935\u0930\u094d\u0937 - \u0967\u0968\u0966\u0966+ \u092a\u094d\u0930\u0936\u094d\u0928)", "subtitle": "\u0938\u0902\u092a\u0942\u0930\u094d\u0923 \u0935\u0930\u094d\u0937\u093e\u091a\u093e \u092e\u0939\u093e\u0938\u0902\u0917\u094d\u0930\u0939: TCS/IBPS \u0938\u0930\u094d\u0935 \u091a\u093e\u0932\u0942 \u092a\u0930\u0940\u0915\u094d\u0937\u093e\u0902\u0938\u093e\u0920\u0940 \u0938\u0941\u0935\u0930\u094d\u0923\u0938\u0902\u0927\u0940", "subject": "Current Affairs", "tier": "Yearly", "price_inr": 99, "original_price_inr": 399, "badge": "\ud83d\udc51 MASTER COMPENDIUM (\u20b999)", "rating": 5.0, "reviews_count": 2150, "pages": 260, "description": "\u0935\u0930\u094d\u0937\u092d\u0930\u093e\u0924\u0940\u0932 \u0938\u0930\u094d\u0935 \u092e\u0939\u0924\u094d\u0924\u094d\u0935\u093e\u091a\u094d\u092f\u093e \u0918\u0921\u093e\u092e\u094b\u0921\u0940\u0902\u091a\u0947 \u092e\u0939\u093f\u0928\u093e\u0928\u093f\u0939\u093e\u092f \u0935\u0930\u094d\u0917\u0940\u0915\u0930\u0923, \u096b\u0966+ \u0907\u0928\u094d\u092b\u094b\u0917\u094d\u0930\u093e\u092b\u093f\u0915\u094d\u0938, \u091f\u0947\u092c\u0932 \u0935 \u091a\u093e\u0932\u0942 \u092a\u0930\u0940\u0915\u094d\u0937\u093e\u0902\u092e\u0927\u094d\u092f\u0947 \u0935\u093f\u091a\u093e\u0930\u0932\u0947\u0932\u0947 \u092a\u094d\u0930\u0936\u094d\u0928.", "download_file": "current_affairs_yearly_master.pdf", "icon": "\ud83d\udcda", "is_active": 1, "sales_count": 0, "created_at": "2026-11-04 09:53:49"}];
+        const SAMPLES = {"prod_ca_monthly_top200": {"title": "\u092e\u093e\u0938\u093f\u0915 \u091a\u093e\u0932\u0942 \u0918\u0921\u093e\u092e\u094b\u0921\u0940 Top 200 MCQs (Sample Preview)", "samples": [{"q": "\u0967. \u092e\u0939\u093e\u0930\u093e\u0937\u094d\u091f\u094d\u0930 \u0936\u093e\u0938\u0928\u093e\u0928\u0947 \u092e\u0939\u093f\u0932\u093e \u0938\u0915\u094d\u0937\u092e\u0940\u0915\u0930\u0923\u093e\u0938\u093e\u0920\u0940 \u0938\u0941\u0930\u0942 \u0915\u0947\u0932\u0947\u0932\u094d\u092f\u093e '\u0932\u093e\u0921\u0915\u0940 \u092c\u0939\u0940\u0923 \u092f\u094b\u091c\u0928\u0947'\u0905\u0902\u0924\u0930\u094d\u0917\u0924 \u0926\u0930\u092e\u0939\u093e \u0915\u093f\u0924\u0940 \u092e\u0926\u0924 \u0926\u093f\u0932\u0940 \u091c\u093e\u0924\u0947?", "options": ["A) \u20b9\u0967,\u0966\u0966\u0966", "B) \u20b9\u0967,\u096b\u0966\u0966 (\u092f\u094b\u0917\u094d\u092f \u0909\u0924\u094d\u0924\u0930)", "C) \u20b9\u0968,\u0966\u0966\u0966", "D) \u20b9\u0968,\u096b\u0966\u0966"], "explanation": "\u0938\u094d\u092a\u0937\u094d\u091f\u0940\u0915\u0930\u0923: \u0905\u0902\u0924\u0930\u093f\u092e \u0905\u0930\u094d\u0925\u0938\u0902\u0915\u0932\u094d\u092a \u0968\u0966\u0968\u096a-\u0968\u096b \u092e\u0927\u094d\u092f\u0947 \u0968\u0967 \u0924\u0947 \u096c\u096b \u0935\u092f\u094b\u0917\u091f\u093e\u0924\u0940\u0932 \u092e\u0939\u093f\u0932\u093e\u0902\u0938\u093e\u0920\u0940 \u0939\u0940 \u092f\u094b\u091c\u0928\u093e \u092e\u0902\u091c\u0942\u0930 \u0915\u0930\u0923\u094d\u092f\u093e\u0924 \u0906\u0932\u0940 \u0905\u0938\u0942\u0928 \u0926\u0930\u092e\u0939\u093e \u20b9\u0967,\u096b\u0966\u0966 \u0925\u0947\u091f DBT \u0926\u094d\u0935\u093e\u0930\u0947 \u092c\u0901\u0915 \u0916\u093e\u0924\u094d\u092f\u093e\u0924 \u0926\u093f\u0932\u0947 \u091c\u093e\u0924\u093e\u0924.", "tip": "\ud83d\udca1 \u091f\u0940\u092a: \u0935\u093e\u0930\u094d\u0937\u093f\u0915 \u0915\u094c\u091f\u0941\u0902\u092c\u093f\u0915 \u0909\u0924\u094d\u092a\u0928\u094d\u0928 \u092e\u0930\u094d\u092f\u093e\u0926\u093e \u20b9\u0968.\u096b \u0932\u093e\u0916 \u0906\u0939\u0947."}, {"q": "\u0968. \u092a\u0945\u0930\u093f\u0938 \u0911\u0932\u093f\u092e\u094d\u092a\u093f\u0915 \u0968\u0966\u0968\u096a \u092e\u0927\u094d\u092f\u0947 \u092d\u093e\u0930\u0924\u093e\u0928\u0947 \u090f\u0915\u0942\u0923 \u0915\u093f\u0924\u0940 \u092a\u0926\u0915\u0947 \u091c\u093f\u0902\u0915\u0932\u0940?", "options": ["A) \u096b \u092a\u0926\u0915\u0947", "B) \u096c \u092a\u0926\u0915\u0947 (\u092f\u094b\u0917\u094d\u092f \u0909\u0924\u094d\u0924\u0930)", "C) \u096d \u092a\u0926\u0915\u0947", "D) \u096e \u092a\u0926\u0915\u0947"], "explanation": "\u0938\u094d\u092a\u0937\u094d\u091f\u0940\u0915\u0930\u0923: \u092d\u093e\u0930\u0924\u093e\u0928\u0947 \u0967 \u0930\u094c\u092a\u094d\u092f \u0906\u0923\u093f \u096b \u0915\u093e\u0902\u0938\u094d\u092f \u0905\u0936\u0940 \u090f\u0915\u0942\u0923 \u096c \u092a\u0926\u0915\u0947 \u092a\u091f\u0915\u093e\u0935\u0932\u0940. \u0928\u0940\u0930\u091c \u091a\u094b\u092a\u094d\u0930\u093e \u092f\u093e\u0902\u0928\u0940 \u092d\u093e\u0932\u093e\u092b\u0947\u0915\u0940\u0924 \u0930\u094c\u092a\u094d\u092f \u092a\u0926\u0915 \u091c\u093f\u0902\u0915\u0932\u0947.", "tip": "\ud83d\udca1 \u091f\u0940\u092a: \u092e\u0928\u0942 \u092d\u093e\u0915\u0930 \u092f\u093e\u0902\u0928\u0940 \u090f\u0915\u093e\u091a \u0911\u0932\u093f\u092e\u094d\u092a\u093f\u0915\u092e\u0927\u094d\u092f\u0947 \u0968 \u0915\u093e\u0902\u0938\u094d\u092f \u092a\u0926\u0915\u0947 \u091c\u093f\u0902\u0915\u0942\u0928 \u0928\u0935\u093e \u0907\u0924\u093f\u0939\u093e\u0938 \u0930\u091a\u0932\u093e."}, {"q": "\u0969. \u096c\u096f \u0935\u094d\u092f\u093e \u0930\u093e\u0937\u094d\u091f\u094d\u0930\u0940\u092f \u091a\u093f\u0924\u094d\u0930\u092a\u091f \u092a\u0941\u0930\u0938\u094d\u0915\u093e\u0930\u093e\u0902\u092e\u0927\u094d\u092f\u0947 '\u0938\u0930\u094d\u0935\u094b\u0924\u094d\u0915\u0943\u0937\u094d\u091f \u092e\u0930\u093e\u0920\u0940 \u091a\u093f\u0924\u094d\u0930\u092a\u091f' \u091a\u093e \u092a\u0941\u0930\u0938\u094d\u0915\u093e\u0930 \u0915\u094b\u0923\u093e\u0932\u093e \u092e\u093f\u0933\u093e\u0932\u093e?", "options": ["A) \u0935\u093e\u0933\u0935\u0940", "B) \u090f\u0915\u0926\u094b\u0928 \u0924\u0940\u0928", "C) \u0917\u094b\u0926\u093e\u0935\u0930\u0940", "D) \u092c\u093e\u0908\u092a\u0923 \u092d\u093e\u0930\u0940 \u0926\u0947\u0935\u093e"], "explanation": "\u0938\u094d\u092a\u0937\u094d\u091f\u0940\u0915\u0930\u0923: \u092a\u0930\u0947\u0936 \u092e\u094b\u0915\u093e\u0936\u0940 \u0926\u093f\u0917\u094d\u0926\u0930\u094d\u0936\u093f\u0924 '\u090f\u0915\u0926\u093e \u0915\u093e\u092f \u091d\u093e\u0932\u0902' \u092f\u093e \u091a\u093f\u0924\u094d\u0930\u092a\u091f\u093e\u0932\u093e \u0938\u0930\u094d\u0935\u094b\u0924\u094d\u0915\u0943\u0937\u094d\u091f \u092e\u0930\u093e\u0920\u0940 \u091a\u093f\u0924\u094d\u0930\u092a\u091f\u093e\u091a\u093e \u0930\u093e\u0937\u094d\u091f\u094d\u0930\u0940\u092f \u092a\u0941\u0930\u0938\u094d\u0915\u093e\u0930 \u092e\u093f\u0933\u093e\u0932\u093e.", "tip": "\ud83d\udca1 \u091f\u0940\u092a: TCS \u0938\u093e\u0902\u0938\u094d\u0915\u0943\u0924\u093f\u0915 \u0935 \u0915\u0932\u093e \u092a\u0941\u0930\u0938\u094d\u0915\u093e\u0930\u093e\u0902\u0935\u0930 \u0935\u093e\u0930\u0902\u0935\u093e\u0930 \u092a\u094d\u0930\u0936\u094d\u0928 \u0935\u093f\u091a\u093e\u0930\u0924\u0947."}]}, "prod_ca_half_yearly": {"title": "\u0938\u0939\u093e\u092e\u093e\u0939\u0940 \u091a\u093e\u0932\u0942 \u0918\u0921\u093e\u092e\u094b\u0921\u0940 \u092e\u0947\u0917\u093e \u0915\u0945\u092a\u094d\u0938\u0942\u0932 (Sample Preview)", "samples": [{"q": "\u0967. \u0928\u0940\u0924\u093f \u0906\u092f\u094b\u0917\u093e\u091a\u094d\u092f\u093e \u0936\u093e\u0936\u094d\u0935\u0924 \u0935\u093f\u0915\u093e\u0938 \u0909\u0926\u094d\u0926\u093f\u0937\u094d\u091f\u0947 (SDG) \u092d\u093e\u0930\u0924 \u0928\u093f\u0930\u094d\u0926\u0947\u0936\u093e\u0902\u0915 \u0968\u0966\u0968\u0969-\u0968\u096a \u092e\u0927\u094d\u092f\u0947 \u0915\u094b\u0923\u0924\u094d\u092f\u093e \u0930\u093e\u091c\u094d\u092f\u093e\u0928\u0947 \u0905\u0935\u094d\u0935\u0932 \u0938\u094d\u0925\u093e\u0928 \u092a\u091f\u0915\u093e\u0935\u0932\u0947?", "options": ["A) \u092e\u0939\u093e\u0930\u093e\u0937\u094d\u091f\u094d\u0930", "B) \u0915\u0947\u0930\u0933 (\u092f\u094b\u0917\u094d\u092f \u0909\u0924\u094d\u0924\u0930)", "C) \u0924\u092e\u093f\u0933\u0928\u093e\u0921\u0942", "D) \u0915\u0930\u094d\u0928\u093e\u091f\u0915"], "explanation": "\u0938\u094d\u092a\u0937\u094d\u091f\u0940\u0915\u0930\u0923: \u0915\u0947\u0930\u0933\u0928\u0947 \u096d\u096f \u0917\u0941\u0923\u093e\u0902\u0938\u0939 \u0926\u0947\u0936\u093e\u0924 \u092a\u094d\u0930\u0925\u092e \u0915\u094d\u0930\u092e\u093e\u0902\u0915 \u092a\u091f\u0915\u093e\u0935\u0932\u093e \u0905\u0938\u0942\u0928 \u092e\u0939\u093e\u0930\u093e\u0937\u094d\u091f\u094d\u0930 \u092a\u0939\u093f\u0932\u094d\u092f\u093e \u096b \u0930\u093e\u091c\u094d\u092f\u093e\u0902\u092e\u0927\u094d\u092f\u0947 \u0906\u0939\u0947.", "tip": "\ud83d\udca1 \u091f\u0940\u092a: \u0928\u093f\u0930\u094d\u0926\u0947\u0936\u093e\u0902\u0915 \u0935 \u0930\u0901\u0915\u093f\u0902\u0917\u0935\u0930 TCS/IBPS \u091a\u0947 \u0939\u0915\u094d\u0915\u093e\u091a\u0947 \u0917\u0941\u0923 \u0905\u0938\u0924\u093e\u0924."}, {"q": "\u0968. \u092e\u0939\u093e\u0930\u093e\u0937\u094d\u091f\u094d\u0930\u093e\u0924\u0940\u0932 \u0915\u094b\u0923\u0924\u094d\u092f\u093e \u0935\u094d\u092f\u093e\u0918\u094d\u0930 \u092a\u094d\u0930\u0915\u0932\u094d\u092a\u093e\u0932\u093e \u0928\u0941\u0915\u0924\u093e\u091a \u096b\u0966 \u0935\u0930\u094d\u0937\u0947 \u092a\u0942\u0930\u094d\u0923 \u091d\u093e\u0932\u094d\u092f\u093e\u0928\u093f\u092e\u093f\u0924\u094d\u0924 \u0935\u093f\u0936\u0947\u0937 \u0938\u0928\u094d\u092e\u093e\u0928 \u092e\u093f\u0933\u093e\u0932\u093e?", "options": ["A) \u0924\u093e\u0921\u094b\u092c\u093e-\u0905\u0902\u0927\u093e\u0930\u0940", "B) \u092e\u0947\u0933\u0918\u093e\u091f (\u092f\u094b\u0917\u094d\u092f \u0909\u0924\u094d\u0924\u0930)", "C) \u092a\u0947\u0902\u091a", "D) \u0938\u0939\u094d\u092f\u093e\u0926\u094d\u0930\u0940"], "explanation": "\u0938\u094d\u092a\u0937\u094d\u091f\u0940\u0915\u0930\u0923: \u092e\u0947\u0933\u0918\u093e\u091f \u0935\u094d\u092f\u093e\u0918\u094d\u0930 \u092a\u094d\u0930\u0915\u0932\u094d\u092a (\u0905\u092e\u0930\u093e\u0935\u0924\u0940) \u0939\u093e \u092e\u0939\u093e\u0930\u093e\u0937\u094d\u091f\u094d\u0930\u093e\u0924\u0940\u0932 \u092a\u0939\u093f\u0932\u093e \u0935\u094d\u092f\u093e\u0918\u094d\u0930 \u092a\u094d\u0930\u0915\u0932\u094d\u092a \u0905\u0938\u0942\u0928 \u0967\u096f\u096d\u0969-\u096d\u096a \u092e\u0927\u094d\u092f\u0947 \u0918\u094b\u0937\u093f\u0924 \u091d\u093e\u0932\u093e \u0939\u094b\u0924\u093e.", "tip": "\ud83d\udca1 \u091f\u0940\u092a: \u092a\u0930\u094d\u092f\u093e\u0935\u0930\u0923 \u0935 \u0935\u0928\u0947 \u0935\u093f\u0937\u092f\u093e\u0935\u0930 \u0939\u093e \u0905\u0924\u093f\u0938\u0902\u092d\u093e\u0935\u094d\u092f \u092a\u094d\u0930\u0936\u094d\u0928 \u0906\u0939\u0947."}]}, "prod_ca_yearly_master": {"title": "\u0935\u093e\u0930\u094d\u0937\u093f\u0915 \u091a\u093e\u0932\u0942 \u0918\u0921\u093e\u092e\u094b\u0921\u0940 \u092e\u093e\u0938\u094d\u091f\u0930 \u0921\u093e\u092f\u091c\u0947\u0938\u094d\u091f (Sample Preview)", "samples": [{"q": "\u0967. \u092d\u093e\u0930\u0924\u093e\u091a\u094d\u092f\u093e \u092e\u0941\u0916\u094d\u092f \u0928\u093f\u0935\u0921\u0923\u0942\u0915 \u0906\u092f\u0941\u0915\u094d\u0924\u092a\u0926\u0940 (CEC) \u0938\u0927\u094d\u092f\u093e \u0915\u094b\u0923 \u0915\u093e\u0930\u094d\u092f\u0930\u0924 \u0906\u0939\u0947\u0924?", "options": ["A) \u0930\u093e\u091c\u0940\u0935 \u0915\u0941\u092e\u093e\u0930 (\u092f\u094b\u0917\u094d\u092f \u0909\u0924\u094d\u0924\u0930)", "B) \u091c\u094d\u091e\u093e\u0928\u0947\u0936 \u0915\u0941\u092e\u093e\u0930", "C) \u0938\u0941\u0916\u092c\u0940\u0930 \u0938\u0902\u0927\u0942", "D) \u0938\u0941\u0928\u0940\u0932 \u0905\u0930\u094b\u0930\u093e"], "explanation": "\u0938\u094d\u092a\u0937\u094d\u091f\u0940\u0915\u0930\u0923: \u0930\u093e\u091c\u0940\u0935 \u0915\u0941\u092e\u093e\u0930 \u0939\u0947 \u092d\u093e\u0930\u0924\u093e\u091a\u0947 \u0968\u096b \u0935\u0947 \u092e\u0941\u0916\u094d\u092f \u0928\u093f\u0935\u0921\u0923\u0942\u0915 \u0906\u092f\u0941\u0915\u094d\u0924 \u0906\u0939\u0947\u0924.", "tip": "\ud83d\udca1 \u091f\u0940\u092a: \u092d\u093e\u0930\u0924\u0940\u092f \u0930\u093e\u091c\u094d\u092f\u0918\u091f\u0928\u0947\u091a\u0947 \u0915\u0932\u092e \u0969\u0968\u096a \u0928\u093f\u0935\u0921\u0923\u0942\u0915 \u0906\u092f\u094b\u0917\u093e\u0936\u0940 \u0938\u0902\u092c\u0902\u0927\u093f\u0924 \u0906\u0939\u0947."}, {"q": "\u0968. \u0907\u0938\u094d\u0930\u094b\u091a\u094d\u092f\u093e '\u0906\u0926\u093f\u0924\u094d\u092f-L1' \u092f\u093e \u092a\u0939\u093f\u0932\u094d\u092f\u093e \u0938\u094c\u0930 \u092e\u094b\u0939\u093f\u092e\u0947\u091a\u0947 \u0909\u092a\u0917\u094d\u0930\u0939 \u0915\u094b\u0923\u0924\u094d\u092f\u093e \u092c\u093f\u0902\u0926\u0942\u092d\u094b\u0935\u0924\u0940 \u0915\u0915\u094d\u0937\u0947\u0924 \u0938\u094d\u0925\u093e\u092a\u093f\u0924 \u0915\u0930\u0923\u094d\u092f\u093e\u0924 \u0906\u0932\u093e?", "options": ["A) L1 \u0932\u0945\u0917\u094d\u0930\u0947\u0902\u091c \u092c\u093f\u0902\u0926\u0942 (\u092f\u094b\u0917\u094d\u092f \u0909\u0924\u094d\u0924\u0930)", "B) L2 \u092c\u093f\u0902\u0926\u0942", "C) \u092d\u0942\u0938\u094d\u0925\u093f\u0930 \u0915\u0915\u094d\u0937\u093e", "D) \u0927\u094d\u0930\u0941\u0935\u0940\u092f \u0915\u0915\u094d\u0937\u093e"], "explanation": "\u0938\u094d\u092a\u0937\u094d\u091f\u0940\u0915\u0930\u0923: \u0906\u0926\u093f\u0924\u094d\u092f-L1 \u0939\u093e \u092a\u0943\u0925\u094d\u0935\u0940\u092a\u093e\u0938\u0942\u0928 \u0938\u0941\u092e\u093e\u0930\u0947 \u0967\u096b \u0932\u093e\u0916 \u0915\u093f\u092e\u0940 \u0905\u0902\u0924\u0930\u093e\u0935\u0930\u0940\u0932 \u0938\u0942\u0930\u094d\u092f-\u092a\u0943\u0925\u094d\u0935\u0940 \u0932\u0945\u0917\u094d\u0930\u0947\u0902\u091c \u092c\u093f\u0902\u0926\u0942 \u0967 (L1) \u092d\u094b\u0935\u0924\u0940\u091a\u094d\u092f\u093e \u0915\u0915\u094d\u0937\u0947\u0924 \u0920\u0947\u0935\u0923\u094d\u092f\u093e\u0924 \u0906\u0932\u093e \u0906\u0939\u0947.", "tip": "\ud83d\udca1 \u091f\u0940\u092a: \u0907\u0938\u094d\u0930\u094b\u091a\u094d\u092f\u093e \u0938\u0930\u094d\u0935 \u092e\u094b\u0939\u093f\u092e\u093e\u0902\u0935\u0930 (\u091a\u0902\u0926\u094d\u0930\u092f\u093e\u0928, \u0906\u0926\u093f\u0924\u094d\u092f, \u0917\u0917\u0928\u092f\u093e\u0928) TCS \u092a\u094d\u0930\u0936\u094d\u0928 \u0939\u092e\u0916\u093e\u0938 \u092f\u0947\u0924\u093e\u0924."}]}, "prod_tcs_response_sheet_qbank": {"title": "TCS/IBPS \u0938\u0930\u094d\u0935 \u0930\u093f\u0938\u094d\u092a\u0949\u0928\u094d\u0938 \u0936\u0940\u091f\u094d\u0938 \u0935\u0928\u0932\u093e\u092f\u0928\u0930 (Sample Preview)", "samples": [{"q": "\u092a\u094d\u0930\u0936\u094d\u0928: '\u0905\u0928\u0941\u0930\u093e\u0917' \u092f\u093e \u0936\u092c\u094d\u0926\u093e\u091a\u093e \u092f\u094b\u0917\u094d\u092f \u0935\u093f\u0930\u0941\u0926\u094d\u0927\u093e\u0930\u094d\u0925\u0940 \u0936\u092c\u094d\u0926 \u0915\u094b\u0923\u0924\u093e?", "options": ["A) \u0935\u093f\u0930\u093e\u0917 (\u092f\u094b\u0917\u094d\u092f \u0909\u0924\u094d\u0924\u0930)", "B) \u092a\u094d\u0930\u0947\u092e", "C) \u0938\u094d\u0928\u0947\u0939", "D) \u0930\u093e\u0917"], "explanation": "\u0928\u093f\u092f\u092e: \u0905\u0928\u0941\u0930\u093e\u0917 \u092e\u094d\u0939\u0923\u091c\u0947 \u092a\u094d\u0930\u0947\u092e \u0915\u093f\u0902\u0935\u093e \u092a\u094d\u0930\u0940\u0924\u0940; \u0924\u094d\u092f\u093e\u091a\u093e \u092f\u094b\u0917\u094d\u092f \u0935\u093f\u0930\u0941\u0926\u094d\u0927\u093e\u0930\u094d\u0925\u0940 \u0936\u092c\u094d\u0926 '\u0935\u093f\u0930\u093e\u0917' (\u0909\u0926\u093e\u0938\u0940\u0928\u0924\u093e) \u0939\u093e \u0906\u0939\u0947.", "tip": "\ud83c\udfaf TCS \u0928\u0947 \u0928\u0917\u0930\u092a\u0930\u093f\u0937\u0926 \u0906\u0923\u093f \u0924\u0932\u093e\u0920\u0940 \u092a\u0930\u0940\u0915\u094d\u0937\u0947\u0924 \u0939\u093e \u092a\u094d\u0930\u0936\u094d\u0928 \u0969 \u0935\u0947\u0933\u093e \u0935\u093f\u091a\u093e\u0930\u0932\u093e \u0906\u0939\u0947."}, {"q": "\u092a\u094d\u0930\u0936\u094d\u0928: \u092e\u093e\u0939\u093f\u0924\u0940\u091a\u093e \u0905\u0927\u093f\u0915\u093e\u0930 \u0915\u093e\u092f\u0926\u093e \u0968\u0966\u0966\u096b (RTI Act) \u092e\u0927\u0940\u0932 \u0915\u0932\u092e \u096c \u0915\u0936\u093e\u0936\u0940 \u0938\u0902\u092c\u0902\u0927\u093f\u0924 \u0906\u0939\u0947?", "options": ["A) \u092e\u093e\u0939\u093f\u0924\u0940 \u092e\u093f\u0933\u0935\u0923\u094d\u092f\u093e\u0938\u093e\u0920\u0940 \u0905\u0930\u094d\u091c (\u092f\u094b\u0917\u094d\u092f \u0909\u0924\u094d\u0924\u0930)", "B) \u092e\u093e\u0939\u093f\u0924\u0940 \u0909\u0918\u0921 \u0915\u0930\u0923\u094d\u092f\u093e\u092c\u093e\u092c\u0924 \u0938\u0942\u091f", "C) \u0926\u0902\u0921 \u0906\u0915\u093e\u0930\u0923\u0940", "D) \u0905\u092a\u0940\u0932\u0940\u092f \u092a\u094d\u0930\u093e\u0927\u093f\u0915\u093e\u0930\u0940"], "explanation": "\u0928\u093f\u092f\u092e: \u0915\u0932\u092e \u096c \u0905\u0928\u094d\u0935\u092f\u0947 \u0928\u093e\u0917\u0930\u093f\u0915 \u092e\u093e\u0939\u093f\u0924\u0940 \u092e\u093f\u0933\u0935\u0923\u094d\u092f\u093e\u0938\u093e\u0920\u0940 \u0932\u0947\u0916\u0940 \u0915\u093f\u0902\u0935\u093e \u0907\u0932\u0947\u0915\u094d\u091f\u094d\u0930\u0949\u0928\u093f\u0915 \u092e\u093e\u0927\u094d\u092f\u092e\u093e\u0924\u0942\u0928 \u0905\u0930\u094d\u091c \u0915\u0930\u0942 \u0936\u0915\u0924\u093e\u0924.", "tip": "\ud83c\udfaf \u0938\u0930\u0933\u0938\u0947\u0935\u093e \u092a\u0930\u0940\u0915\u094d\u0937\u093e\u0902\u092e\u0927\u094d\u092f\u0947 RTI \u0915\u0932\u092e \u096c, \u096d, \u096e \u0906\u0923\u093f \u0967\u096f \u0935\u0930 \u0938\u0930\u094d\u0935\u093e\u0927\u093f\u0915 \u092a\u094d\u0930\u0936\u094d\u0928 \u092f\u0947\u0924\u093e\u0924."}, {"q": "\u092a\u094d\u0930\u0936\u094d\u0928: \u0938\u093e\u0924\u0935\u093e\u0939\u0928 \u0918\u0930\u093e\u0923\u094d\u092f\u093e\u091a\u0940 \u0930\u093e\u091c\u0927\u093e\u0928\u0940 \u0915\u094b\u0923\u0924\u0940 \u0939\u094b\u0924\u0940?", "options": ["A) \u092a\u094d\u0930\u0924\u093f\u0937\u094d\u0920\u093e\u0928 / \u092a\u0948\u0920\u0923 (\u092f\u094b\u0917\u094d\u092f \u0909\u0924\u094d\u0924\u0930)", "B) \u0915\u094b\u0932\u094d\u0939\u093e\u092a\u0942\u0930", "C) \u092a\u0941\u0923\u0947", "D) \u0924\u0917\u0930"], "explanation": "\u0928\u093f\u092f\u092e: \u0938\u093e\u0924\u0935\u093e\u0939\u0928 \u0930\u093e\u091c\u093e \u0938\u093f\u092e\u0941\u0915 \u092f\u093e\u0928\u0947 \u092a\u0948\u0920\u0923 (\u092a\u094d\u0930\u0924\u093f\u0937\u094d\u0920\u093e\u0928) \u0939\u0940 \u0906\u092a\u0932\u0940 \u0930\u093e\u091c\u0927\u093e\u0928\u0940 \u092c\u0928\u0935\u0932\u0940 \u0939\u094b\u0924\u0940.", "tip": "\ud83c\udfaf \u092a\u094d\u0930\u093e\u091a\u0940\u0928 \u092e\u0939\u093e\u0930\u093e\u0937\u094d\u091f\u094d\u0930 \u0907\u0924\u093f\u0939\u093e\u0938\u093e\u0924\u0940\u0932 TCS \u091a\u093e \u0938\u0930\u094d\u0935\u093e\u0924 \u0906\u0935\u0921\u0924\u093e \u092a\u094d\u0930\u0936\u094d\u0928."}]}, "prod_marathi_vyakaran_rules": {"title": "\u092e\u0930\u093e\u0920\u0940 \u0935\u094d\u092f\u093e\u0915\u0930\u0923 \u096b\u0966\u0966+ \u091f\u094d\u0930\u093f\u0915\u094d\u0938 \u0935 \u0928\u093f\u092f\u092e (Sample Preview)", "samples": [{"q": "\u092a\u094d\u0930\u0936\u094d\u0928: '\u0930\u093e\u092e\u093e\u0928\u0947 \u0930\u093e\u0935\u0923\u093e\u0938 \u092e\u093e\u0930\u0932\u0947' \u092f\u093e \u0935\u093e\u0915\u094d\u092f\u093e\u0924\u0940\u0932 \u092a\u094d\u0930\u092f\u094b\u0917 \u0913\u0933\u0916\u093e.", "options": ["A) \u0915\u0930\u094d\u0924\u0930\u0940 \u092a\u094d\u0930\u092f\u094b\u0917", "B) \u0915\u0930\u094d\u092e\u0923\u0940 \u092a\u094d\u0930\u092f\u094b\u0917", "C) \u092d\u093e\u0935\u0947 \u092a\u094d\u0930\u092f\u094b\u0917 (\u092f\u094b\u0917\u094d\u092f \u0909\u0924\u094d\u0924\u0930)", "D) \u0938\u0902\u0915\u0940\u0930\u094d\u0923 \u092a\u094d\u0930\u092f\u094b\u0917"], "explanation": "\u0915\u094d\u0932\u0943\u092a\u094d\u0924\u0940: \u0915\u0930\u094d\u0924\u094d\u092f\u093e\u0932\u093e \u0924\u0943\u0924\u0940\u092f\u093e \u0935\u093f\u092d\u0915\u094d\u0924\u0940 (\u0928\u0947) \u0906\u0923\u093f \u0915\u0930\u094d\u092e\u093e\u0932\u093e \u0926\u094d\u0935\u093f\u0924\u0940\u092f\u093e \u0935\u093f\u092d\u0915\u094d\u0924\u0940 (\u0938) \u092a\u094d\u0930\u0924\u094d\u092f\u092f \u0905\u0938\u0947\u0932 \u0906\u0923\u093f \u0915\u094d\u0930\u093f\u092f\u093e\u092a\u0926 \u0924\u0943\u0924\u0940\u092f\u092a\u0941\u0930\u0941\u0937\u0940 \u0928\u092a\u0941\u0902\u0938\u0915\u0932\u093f\u0902\u0917\u0940 \u090f\u0915\u093e\u0935\u091a\u0928\u0940 \u0905\u0938\u0947\u0932 \u0924\u0930 \u0924\u094b \u092d\u093e\u0935\u0947 \u092a\u094d\u0930\u092f\u094b\u0917 \u0905\u0938\u0924\u094b.", "tip": "\u26a1 \u0967\u096b-\u0938\u0947\u0915\u0902\u0926 \u091f\u094d\u0930\u093f\u0915: \u0915\u0930\u094d\u0924\u093e + \u0915\u0930\u094d\u092e \u0926\u094b\u0918\u093e\u0902\u0928\u093e\u0939\u0940 \u092a\u094d\u0930\u0924\u094d\u092f\u092f = \u0967\u0966\u0966% \u092d\u093e\u0935\u0947 \u092a\u094d\u0930\u092f\u094b\u0917!"}, {"q": "\u092a\u094d\u0930\u0936\u094d\u0928: '\u0938\u0942\u0930\u094d\u092f\u094b\u0926\u092f' \u092f\u093e \u0936\u092c\u094d\u0926\u093e\u091a\u093e \u092f\u094b\u0917\u094d\u092f \u0938\u0902\u0927\u0940 \u0935\u093f\u0917\u094d\u0930\u0939 \u0913\u0933\u0916\u093e.", "options": ["A) \u0938\u0942\u0930\u094d\u092f + \u0909\u0926\u092f (\u092f\u094b\u0917\u094d\u092f \u0909\u0924\u094d\u0924\u0930)", "B) \u0938\u0942\u0930\u094d\u092f\u094b + \u0926\u092f", "C) \u0938\u0942\u0930\u094d\u092f\u093e + \u0909\u0926\u092f", "D) \u0938\u0942\u0930\u094d\u092f + \u0926\u092f"], "explanation": "\u0928\u093f\u092f\u092e: \u0905/\u0906 + \u0909/\u090a = \u0913 (\u0917\u0941\u0923\u093e\u0926\u0947\u0936 \u0938\u094d\u0935\u0930 \u0938\u0902\u0927\u0940). \u0938\u0942\u0930\u094d\u092f (\u0905) + \u0909\u0926\u092f (\u0909) = \u0938\u0942\u0930\u094d\u092f\u094b\u0926\u092f.", "tip": "\u26a1 \u0938\u0902\u0927\u0940 \u0928\u093f\u092f\u092e: \u0905 + \u0907 = \u090f, \u0905 + \u0909 = \u0913, \u0905 + \u090b = \u0905\u0930\u094d."}]}, "prod_english_vocab_error_spotting": {"title": "TCS/IBPS English 500+ Error Spotting (Sample Preview)", "samples": [{"q": "Question: Identify the error in the sentence: 'Neither of the two students (A) / were present (B) / in the classroom (C) / No error (D)'", "options": ["A) Part A", "B) Part B (Correct Answer)", "C) Part C", "D) Part D"], "explanation": "Rule: 'Neither of', 'Either of', 'Each of', 'One of' always take a PLURAL noun but a SINGULAR verb. 'Were' must be replaced with 'was'.", "tip": "\u26a1 Golden Rule: Neither of + Plural Noun + Singular Verb!"}, {"q": "Question: Choose the correct idiom meaning for 'To burn the candle at both ends':", "options": ["A) To work very hard without enough rest (Correct Answer)", "B) To waste wax", "C) To celebrate happily", "D) To be in danger"], "explanation": "Explanation: 'To burn the candle at both ends' means to exhaust oneself by working excessively late at night and early in the morning.", "tip": "\ud83c\udfaf TCS repeats this idiom across almost every examination shift."}]}, "prod_maharashtra_gk_gs_1000": {"title": "\u092e\u0939\u093e\u0930\u093e\u0937\u094d\u091f\u094d\u0930 \u0938\u093e\u092e\u093e\u0928\u094d\u092f \u091c\u094d\u091e\u093e\u0928 \u0935 GS \u0967\u0966\u0966\u0966+ \u0935\u0928\u0932\u093e\u092f\u0928\u0930 (Sample Preview)", "samples": [{"q": "\u092a\u094d\u0930\u0936\u094d\u0928: \u092e\u0939\u093e\u0930\u093e\u0937\u094d\u091f\u094d\u0930\u093e\u0924\u0940\u0932 \u0938\u0930\u094d\u0935\u093e\u0924 \u0909\u0902\u091a \u0936\u093f\u0916\u0930 '\u0915\u0933\u0938\u0942\u092c\u093e\u0908' \u091a\u0940 \u0909\u0902\u091a\u0940 \u0915\u093f\u0924\u0940 \u092e\u0940\u091f\u0930 \u0906\u0939\u0947?", "options": ["A) \u0967,\u096c\u096a\u096c \u092e\u0940\u091f\u0930 (\u092f\u094b\u0917\u094d\u092f \u0909\u0924\u094d\u0924\u0930)", "B) \u0967,\u096b\u096c\u096d \u092e\u0940\u091f\u0930", "C) \u0967,\u096a\u0969\u096e \u092e\u0940\u091f\u0930", "D) \u0967,\u0968\u096b\u0966 \u092e\u0940\u091f\u0930"], "explanation": "\u092e\u093e\u0939\u093f\u0924\u0940: \u0915\u0933\u0938\u0942\u092c\u093e\u0908 \u0939\u0947 \u0938\u0939\u094d\u092f\u093e\u0926\u094d\u0930\u0940 \u092a\u0930\u094d\u0935\u0924\u0930\u093e\u0902\u0917\u0947\u0924\u0940\u0932 \u0938\u0930\u094d\u0935\u093e\u0924 \u0909\u0902\u091a \u0936\u093f\u0916\u0930 \u0905\u0938\u0942\u0928 \u0905\u0939\u092e\u0926\u0928\u0917\u0930 \u091c\u093f\u0932\u094d\u0939\u094d\u092f\u093e\u0924\u0940\u0932 \u0905\u0915\u094b\u0932\u0947 \u0924\u093e\u0932\u0941\u0915\u094d\u092f\u093e\u0924 \u0906\u0939\u0947.", "tip": "\u26a1 \u091f\u094d\u0930\u093f\u0915: '\u0915\u0933\u0938\u0942\u092c\u093e\u0908 (\u0967\u096c\u096a\u096c) > \u0938\u093e\u0932\u094d\u0939\u0947\u0930 (\u0967\u096b\u096c\u096d) > \u092e\u0939\u093e\u092c\u0933\u0947\u0936\u094d\u0935\u0930 (\u0967\u096a\u0969\u096e)'"}, {"q": "\u092a\u094d\u0930\u0936\u094d\u0928: '\u0938\u0924\u094d\u092f\u0936\u094b\u0927\u0915 \u0938\u092e\u093e\u091c' \u091a\u0940 \u0938\u094d\u0925\u093e\u092a\u0928\u093e \u092e\u0939\u093e\u0924\u094d\u092e\u093e \u091c\u094b\u0924\u0940\u0930\u093e\u0935 \u092b\u0941\u0932\u0947 \u092f\u093e\u0902\u0928\u0940 \u0915\u094b\u0923\u0924\u094d\u092f\u093e \u0935\u0930\u094d\u0937\u0940 \u0915\u0947\u0932\u0940?", "options": ["A) \u0968\u096a \u0938\u092a\u094d\u091f\u0947\u0902\u092c\u0930 \u0967\u096e\u096d\u0969 (\u092f\u094b\u0917\u094d\u092f \u0909\u0924\u094d\u0924\u0930)", "B) \u0967\u096e\u096b\u096d", "C) \u0967\u096e\u096e\u096b", "D) \u0967\u096e\u096f\u0969"], "explanation": "\u092e\u093e\u0939\u093f\u0924\u0940: \u092e\u0939\u093e\u0924\u094d\u092e\u093e \u092b\u0941\u0932\u0947 \u092f\u093e\u0902\u0928\u0940 \u0968\u096a \u0938\u092a\u094d\u091f\u0947\u0902\u092c\u0930 \u0967\u096e\u096d\u0969 \u0930\u094b\u091c\u0940 \u092a\u0941\u0923\u094d\u092f\u093e\u0924 \u0938\u0924\u094d\u092f\u0936\u094b\u0927\u0915 \u0938\u092e\u093e\u091c\u093e\u091a\u0940 \u0938\u094d\u0925\u093e\u092a\u0928\u093e \u0915\u0947\u0932\u0940. '\u0938\u0930\u094d\u0935\u0938\u093e\u0915\u094d\u0937\u0940 \u091c\u0917\u0924\u094d\u092a\u0924\u0940 \u0924\u094d\u092f\u093e\u0932\u093e \u0928\u0915\u094b\u091a \u092e\u0927\u094d\u092f\u0938\u094d\u0925\u0940' \u0939\u0947 \u0924\u094d\u092f\u093e\u091a\u0947 \u092c\u094d\u0930\u0940\u0926\u0935\u093e\u0915\u094d\u092f \u0939\u094b\u0924\u0947.", "tip": "\ud83c\udfaf \u0938\u092e\u093e\u091c\u0938\u0941\u0927\u093e\u0930\u0915\u093e\u0902\u0935\u0930 TCS \u091a\u093e \u0939\u092e\u0916\u093e\u0938 \u0967 \u0924\u0947 \u0968 \u0917\u0941\u0923\u093e\u0902\u091a\u093e \u092a\u094d\u0930\u0936\u094d\u0928 \u0905\u0938\u0924\u094b."}]}, "prod_maths_reasoning_shortcuts": {"title": "\u0917\u0923\u093f\u0924 \u0935 \u092c\u0941\u0926\u094d\u0927\u093f\u092e\u0924\u094d\u0924\u093e \u0967\u096b-\u0938\u0947\u0915\u0902\u0926 \u0936\u0949\u0930\u094d\u091f\u0915\u091f \u091f\u094d\u0930\u093f\u0915\u094d\u0938 (Sample Preview)", "samples": [{"q": "\u092a\u094d\u0930\u0936\u094d\u0928: \u090f\u0915\u093e \u0935\u0938\u094d\u0924\u0942\u091a\u0940 \u0915\u093f\u0902\u092e\u0924 \u0968\u0966% \u0935\u093e\u0922\u0935\u0932\u0940 \u0935 \u0928\u0902\u0924\u0930 \u0968\u0966% \u0918\u091f\u0935\u0932\u0940, \u0924\u0930 \u090f\u0915\u0942\u0923 \u0935\u094d\u092f\u0935\u0939\u093e\u0930\u093e\u0924 \u0915\u093e\u092f \u092a\u0930\u093f\u0923\u093e\u092e \u0939\u094b\u0908\u0932?", "options": ["A) \u0915\u093e\u0939\u0940\u091a \u092b\u0930\u0915 \u092a\u0921\u0923\u093e\u0930 \u0928\u093e\u0939\u0940", "B) \u096a% \u0924\u094b\u091f\u093e (\u092f\u094b\u0917\u094d\u092f \u0909\u0924\u094d\u0924\u0930)", "C) \u096a% \u0928\u092b\u093e", "D) \u0968% \u0924\u094b\u091f\u093e"], "explanation": "\u0936\u0949\u0930\u094d\u091f\u0915\u091f \u092b\u0949\u0930\u094d\u092e\u094d\u092f\u0941\u0932\u093e: \u091c\u0947\u0935\u094d\u0939\u093e \u0938\u092e\u093e\u0928 \u091f\u0915\u094d\u0915\u094d\u092f\u093e\u0902\u0928\u0940 \u0935\u093e\u0922 \u0935 \u0918\u091f \u0939\u094b\u0924\u0947, \u0924\u0947\u0935\u094d\u0939\u093e \u0928\u0947\u0939\u092e\u0940 \u0924\u094b\u091f\u093e\u091a \u0939\u094b\u0924\u094b. \u0924\u094b\u091f\u093e = (x/\u0967\u0966)^\u0968 % = (\u0968\u0966/\u0967\u0966)^\u0968 = \u0968^\u0968 = \u096a% \u0924\u094b\u091f\u093e!", "tip": "\u26a1 \u0935\u0947\u0933\u0947\u091a\u0940 \u092c\u091a\u0924: \u092a\u093e\u0930\u0902\u092a\u0930\u093f\u0915 \u0938\u092e\u0940\u0915\u0930\u0923 \u0938\u094b\u0921\u0935\u0923\u094d\u092f\u093e\u0910\u0935\u091c\u0940 \u0925\u0947\u091f (x/\u0967\u0966)^\u0968 \u0935\u093e\u092a\u0930\u093e!"}, {"q": "\u092a\u094d\u0930\u0936\u094d\u0928: \u0918\u0921\u094d\u092f\u093e\u0933\u093e\u0924 \u0969 \u0935\u093e\u091c\u0942\u0928 \u096a\u0966 \u092e\u093f\u0928\u093f\u091f\u0947 \u091d\u093e\u0932\u0940 \u0905\u0938\u0924\u093e\u0928\u093e \u0924\u093e\u0938 \u0915\u093e\u091f\u093e \u0935 \u092e\u093f\u0928\u093f\u091f \u0915\u093e\u091f\u093e \u092f\u093e\u0902\u092e\u0927\u094d\u092f\u0947 \u0915\u093f\u0924\u0940 \u0905\u0902\u0936\u093e\u091a\u093e \u0915\u094b\u0928 \u0939\u094b\u0908\u0932?", "options": ["A) \u0967\u0969\u0966\u00b0 (\u092f\u094b\u0917\u094d\u092f \u0909\u0924\u094d\u0924\u0930)", "B) \u0967\u0968\u0966\u00b0", "C) \u0967\u096a\u0966\u00b0", "D) \u0967\u0968\u096b\u00b0"], "explanation": "\u0936\u0949\u0930\u094d\u091f\u0915\u091f \u092b\u0949\u0930\u094d\u092e\u094d\u092f\u0941\u0932\u093e: Angle = |(\u0969\u0966 \u00d7 H) - (\u0967\u0967/\u0968 \u00d7 M)| = |(\u0969\u0966 \u00d7 \u0969) - (\u0967\u0967/\u0968 \u00d7 \u096a\u0966)| = |\u096f\u0966 - \u0968\u0968\u0966| = \u0967\u0969\u0966\u00b0.", "tip": "\u26a1 \u0918\u0921\u094d\u092f\u093e\u0933 \u0915\u094b\u0928 \u092b\u0949\u0930\u094d\u092e\u094d\u092f\u0941\u0932\u093e: \u0928\u0947\u0939\u092e\u0940 |30H - 5.5M| \u0939\u0947 \u0938\u0942\u0924\u094d\u0930 \u0935\u093e\u092a\u0930\u093e."}]}};
+        const MERCHANT_UPI = "9970095256-2@ybl";
+        const MERCHANT_NAME = "ExamRankers India";
+
+        let currentProduct = null;
+        let currentOrderToken = null;
+
+        function renderProducts(items) {
+            const grid = document.getElementById('productGrid');
+            if (!items || items.length === 0) {
+                grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px;">कोणतेही पुस्तक आढळले नाही. कृपया दुसरा शब्द शोधा.</div>';
+                return;
+            }
+            grid.innerHTML = items.map(p => `
+                <div class="card" data-category="${p.subject}">
+                    <div>
+                        <div class="card-top">
+                            <div class="card-icon">${p.icon || '📚'}</div>
+                            <span class="card-badge">${p.badge || 'HOT SELLER'}</span>
+                        </div>
+                        <h2 class="card-title">${p.title}</h2>
+                        <p class="card-sub">${p.subtitle || p.description}</p>
+                        <div class="card-meta">
+                            <span>⭐ ${p.rating} (${p.reviews_count})</span>
+                            <span>📄 ${p.pages} पृष्ठे</span>
+                            <span>⚡ ${p.tier || 'Micro-Book'}</span>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="price-row">
+                            <span class="current-price">₹${p.price_inr}</span>
+                            <span class="original-price">₹${p.original_price_inr}</span>
+                            <span class="discount-tag">${Math.round((1 - p.price_inr/p.original_price_inr)*100)}% OFF</span>
+                        </div>
+                        <div class="btn-group">
+                            <button class="btn-sample" onclick="openSampleModal('${p.id}')">👀 नमुना पहा</button>
+                            <button class="btn-buy" onclick="openCheckoutModal('${p.id}')">🛒 खरेदी करा (₹${p.price_inr})</button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function filterCategory(cat) {
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            if (cat === 'All') {
+                renderProducts(PRODUCTS);
+            } else {
+                renderProducts(PRODUCTS.filter(p => p.subject.toLowerCase().includes(cat.toLowerCase())));
+            }
+        }
+
+        function handleSearch() {
+            const term = document.getElementById('searchInput').value.trim().toLowerCase();
+            if (!term) {
+                renderProducts(PRODUCTS);
+                return;
+            }
+            const filtered = PRODUCTS.filter(p => 
+                p.title.toLowerCase().includes(term) || 
+                (p.subtitle && p.subtitle.toLowerCase().includes(term)) ||
+                (p.subject && p.subject.toLowerCase().includes(term)) ||
+                (p.description && p.description.toLowerCase().includes(term))
+            );
+            renderProducts(filtered);
+        }
+
+        function openCheckoutModal(id) {
+            currentProduct = PRODUCTS.find(p => p.id === id);
+            if (!currentProduct) return;
+
+            document.getElementById('modalTitle').innerText = currentProduct.title;
+            document.getElementById('modalSub').innerText = currentProduct.subtitle || currentProduct.description;
+            document.getElementById('modalPrice').innerText = '₹' + currentProduct.price_inr;
+            document.getElementById('modalOrigPrice').innerText = '₹' + currentProduct.original_price_inr;
+            document.getElementById('qrAmountSpan').innerText = currentProduct.price_inr;
+
+            document.getElementById('modalStep1').style.display = 'block';
+            document.getElementById('modalStep2').style.display = 'none';
+            document.getElementById('modalStep3').style.display = 'none';
+            document.getElementById('checkoutModal').classList.add('active');
+        }
+
+        async function proceedToPayment() {
+            const email = document.getElementById('customerEmail').value.trim();
+            if (!email || !email.includes('@')) {
+                alert('कृपया तुमचा वैध Email ID टाका.');
+                return;
+            }
+
+            const amount = currentProduct.price_inr;
+            const note = encodeURIComponent('Store_' + currentProduct.id.slice(0,8));
+            const upiUri = `upi://pay?pa=${MERCHANT_UPI}&pn=${encodeURIComponent(MERCHANT_NAME)}&am=${amount}&cu=INR&tn=${note}`;
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(upiUri)}`;
+
+            document.getElementById('upiQrImg').src = qrUrl;
+            document.getElementById('upiIntentBtn').href = upiUri;
+
+            // Register pending order via backend API
+            try {
+                const res = await fetch('/api/checkout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_id: currentProduct.id,
+                        email: email,
+                        amount: amount
+                    })
+                });
+                const data = await res.json();
+                currentOrderToken = data.order_token || ('ORD_' + Math.random().toString(36).substring(2, 10).toUpperCase());
+            } catch (e) {
+                currentOrderToken = 'ORD_' + Math.random().toString(36).substring(2, 10).toUpperCase();
+            }
+
+            document.getElementById('modalStep1').style.display = 'none';
+            document.getElementById('modalStep2').style.display = 'block';
+        }
+
+        function backToStep1() {
+            document.getElementById('modalStep2').style.display = 'none';
+            document.getElementById('modalStep1').style.display = 'block';
+        }
+
+        function copyUPI() {
+            navigator.clipboard.writeText(MERCHANT_UPI);
+            const btn = document.getElementById('copyBtnText');
+            btn.innerText = '✅ Copied!';
+            setTimeout(() => { btn.innerText = '📋 Copy'; }, 2500);
+        }
+
+        async function confirmPayment() {
+            const utr = document.getElementById('utrInput').value.trim();
+            if (utr.length < 6) {
+                alert('कृपया 12-अंकी UTR किंवा Transaction ID टाका.');
+                return;
+            }
+            const email = document.getElementById('customerEmail').value.trim();
+
+            // Verify via backend API and trigger email delivery
+            try {
+                await fetch('/api/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        order_token: currentOrderToken,
+                        utr: utr
+                    })
+                });
+            } catch (e) {}
+
+            document.getElementById('finalEmailSpan').innerText = email;
+            document.getElementById('finalOrderToken').innerText = currentOrderToken;
+            document.getElementById('instantDownloadBtn').href = `/download/${currentOrderToken}`;
+
+            document.getElementById('modalStep2').style.display = 'none';
+            document.getElementById('modalStep3').style.display = 'block';
+        }
+
+        function openSampleModal(id) {
+            const sampleData = SAMPLES[id] || SAMPLES['prod_ca_monthly_top200'];
+            currentProduct = PRODUCTS.find(p => p.id === id);
+
+            document.getElementById('sampleModalTitle').innerText = sampleData.title;
+            const container = document.getElementById('sampleContentArea');
+            container.innerHTML = sampleData.samples.map(s => `
+                <div class="sample-item">
+                    <div class="sample-q">${s.q}</div>
+                    <div class="sample-opts">${s.options.join('<br>')}</div>
+                    <div class="sample-exp">${s.explanation}</div>
+                    <div style="font-size:11.5px; color:#facc15; margin-top:6px; font-weight:600;">${s.tip || ''}</div>
+                </div>
+            `).join('');
+
+            document.getElementById('sampleBuyBtn').innerText = `👉 संपूर्ण ई-बुक खरेदी करा (₹${currentProduct.price_inr})`;
+            document.getElementById('sampleModal').classList.add('active');
+        }
+
+        function buyFromSample() {
+            closeModal('sampleModal');
+            if (currentProduct) {
+                openCheckoutModal(currentProduct.id);
+            }
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.remove('active');
+        }
+
+        // Render products on page load
+        renderProducts(PRODUCTS);
+
+        // Auto-open modal if URL query param 'prod' or 'product' is present
+        const urlParams = new URLSearchParams(window.location.search);
+        const autoProdId = urlParams.get('prod') || urlParams.get('product');
+        if (autoProdId) {
+            const targetProd = PRODUCTS.find(p => p.id === autoProdId);
+            if (targetProd) {
+                setTimeout(() => openCheckoutModal(autoProdId), 300);
+            }
+        }
+    </script>
+</body>
+</html>
