@@ -1,7 +1,7 @@
 """
 DigitalProductPackagingAgent: Senior Product Architect & Packaging Lead.
 Converts educational raw materials, response sheets, and faculty content
-into professional digital PDF products priced between ₹10 and ₹100 for the Nano Banana Store.
+into professional digital PDF products priced between ₹10 and ₹100 for the ExamRankers Official Store.
 """
 
 import os
@@ -380,8 +380,9 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         # Generate publication-grade PDF using ReportLab
         from reportlab.lib.pagesizes import A4
         from reportlab.lib import colors
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from PIL import Image as PILImage, ImageDraw as PILDraw, ImageFont as PILFont
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
         from reportlab.pdfbase.pdfmetrics import registerFontFamily
@@ -427,7 +428,10 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         q_style = ParagraphStyle("TQ", parent=styles["Normal"], fontName=font_bold, fontSize=10, leading=14, textColor=colors.HexColor("#1e293b"))
         opt_style = ParagraphStyle("TO", parent=styles["Normal"], fontName=font_regular, fontSize=9, leading=13, textColor=colors.HexColor("#334155"))
         ans_style = ParagraphStyle("TA", parent=styles["Normal"], fontName=font_bold, fontSize=9, leading=13, textColor=colors.HexColor("#15803d"))
-        exp_style = ParagraphStyle("TE", parent=styles["Normal"], fontName=font_regular, fontSize=8.5, leading=12, textColor=colors.HexColor("#64748b"))
+        exp_style = ParagraphStyle("TE", parent=styles["Normal"], fontName=font_regular, fontSize=8.5, leading=12, textColor=colors.HexColor("#475569"))
+        ana_style = ParagraphStyle("TANA", parent=styles["Normal"], fontName=font_regular, fontSize=8.5, leading=12, textColor=colors.HexColor("#0369a1"))
+        trk_style = ParagraphStyle("TTRK", parent=styles["Normal"], fontName=font_bold, fontSize=8.5, leading=12, textColor=colors.HexColor("#15803d"))
+        trp_style = ParagraphStyle("TTRP", parent=styles["Normal"], fontName=font_regular, fontSize=8.5, leading=12, textColor=colors.HexColor("#b91c1c"))
 
         elements = []
 
@@ -458,7 +462,55 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
         ]))
         elements.append(meta_table)
-        elements.append(Spacer(1, 15))
+        elements.append(Spacer(1, 10))
+
+        # Infographic Visual Diagram Card (100% Light View Theme)
+        info_dir = output_dir / "assets"
+        info_dir.mkdir(parents=True, exist_ok=True)
+        info_img_path = info_dir / f"diagram_{product_id}.png"
+        try:
+            pil_img = PILImage.new("RGB", (1040, 320), color=(255, 255, 255))
+            draw = PILDraw.Draw(pil_img)
+            draw.rounded_rectangle([8, 8, 1032, 312], radius=14, fill=(248, 250, 252), outline=(203, 213, 225), width=2)
+            draw.rounded_rectangle([8, 8, 1032, 65], radius=14, fill=(2, 132, 199))
+            draw.rectangle([8, 38, 1032, 65], fill=(2, 132, 199))
+            
+            f_head, f_body = None, None
+            for fp in ["C:/Windows/Fonts/NirmalaB.ttf", "C:/Windows/Fonts/Arialbd.ttf"]:
+                if os.path.exists(fp):
+                    try:
+                        f_head = PILFont.truetype(fp, 22)
+                        f_body = PILFont.truetype(fp.replace("B.ttf", ".ttf").replace("bd.ttf", ".ttf"), 16)
+                        break
+                    except Exception:
+                        pass
+            if not f_head:
+                f_head = PILFont.load_default()
+                f_body = PILFont.load_default()
+
+            draw.text((25, 20), "TCS / IBPS FAST REVISION CONCEPT MAP & FORMULA SUMMARY", fill=(255, 255, 255), font=f_head)
+            
+            cols = [
+                ("1. CORE RULES", "TCS / IBPS syllabus compliance & conceptual clarity."),
+                ("2. EXAM TRICKS", "Instant keyword-based elimination & memory mnemonics."),
+                ("3. TRAP CAUTION", "Avoid 0.5-mark cutoff loss & confusing distractors.")
+            ]
+            x_starts = [25, 365, 705]
+            for idx, (head_t, body_t) in enumerate(cols):
+                xs = x_starts[idx]
+                draw.rounded_rectangle([xs, 85, xs + 310, 290], radius=10, fill=(255, 255, 255), outline=(226, 232, 240), width=1)
+                draw.rounded_rectangle([xs, 85, xs + 310, 125], radius=10, fill=(14, 165, 233))
+                draw.rectangle([xs, 110, xs + 310, 125], fill=(14, 165, 233))
+                draw.text((xs + 15, 96), head_t, fill=(255, 255, 255), font=f_body)
+                draw.text((xs + 15, 145), body_t[:42], fill=(30, 41, 59), font=f_body)
+                if len(body_t) > 42:
+                    draw.text((xs + 15, 180), body_t[42:], fill=(71, 85, 105), font=f_body)
+            
+            pil_img.save(info_img_path)
+            elements.append(Image(str(info_img_path), width=520, height=160))
+            elements.append(Spacer(1, 10))
+        except Exception as e:
+            logger.warning(f"Infographic card skipped: {e}")
 
         # Curated Content / Questions
         elements.append(Paragraph("<b>📖 भाग १: अतिसंभाव्य सराव प्रश्नसंच व सविस्तर स्पष्टीकरण</b>", sec_style))

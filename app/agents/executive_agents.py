@@ -87,7 +87,7 @@ class ChiefExecutiveOfficer(BaseSeniorAgent):
             "top_strategic_priorities": [
                 "Accelerate TCS/IBPS real-response error-spotting compilations",
                 "Expand YouTube video explainers and community funneling",
-                "Maintain zero-friction 3-step checkout on the Nano Banana store"
+                "Maintain zero-friction 3-step checkout on the ExamRankers store"
             ],
             "pricing_and_revenue_directive": "Maintain micro-pricing (₹19 - ₹49) for high volume, low barrier digital entry.",
             "brand_reputation_index": 98,
@@ -238,7 +238,7 @@ class GrowthMarketingManager(BaseSeniorAgent):
 class CommerceOperationsManager(BaseSeniorAgent):
     """
     Commerce & Operations Department Manager.
-    Manages the Nano Banana digital store, product pricing (₹10 - ₹99),
+    Manages the ExamRankers digital store, product pricing (₹10 - ₹99),
     order status, and seamless automated email/download fulfillment.
     """
 
@@ -255,7 +255,7 @@ class CommerceOperationsManager(BaseSeniorAgent):
                 "Customer Happiness & Zero-Friction Downloads"
             ],
             system_instruction=(
-                "You govern the commercial engine of the Nano Banana store. You ensure every candidate gets their "
+                "You govern the commercial engine of the ExamRankers store. You ensure every candidate gets their "
                 "purchased PDF within 3 seconds of UTR submission with zero failures."
             )
         )

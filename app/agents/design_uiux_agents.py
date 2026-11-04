@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class UIUXDesignArchitect(BaseSeniorAgent):
     """
     Principal UI/UX Architect & Conversion Rate Optimization (CRO) Specialist.
-    Analyzes and enhances the standalone Nano Banana Web Storefront.
+    Analyzes and enhances the standalone ExamRankers Web Storefront.
     Ensures friction-free 3-step checkout, mobile speed, and elegant Devanagari typography.
     """
 
@@ -37,7 +37,7 @@ class UIUXDesignArchitect(BaseSeniorAgent):
             ],
             system_instruction=(
                 "You are obsessed with aesthetic beauty, speed, and conversion efficiency. "
-                "You treat the Nano Banana bookstore as a world-class digital storefront where every millisecond counts."
+                "You treat the ExamRankers bookstore as a world-class digital storefront where every millisecond counts."
             )
         )
 

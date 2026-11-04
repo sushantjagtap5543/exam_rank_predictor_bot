@@ -1,5 +1,5 @@
 """
-Digital Products Engine & Nano Banana Standalone Web Storefront:
+Digital Products Engine & ExamRankers Standalone Web Storefront:
 An independent, high-converting digital bookstore for Maharashtra TCS/IBPS exam aspirants (₹10 - ₹99).
 Includes real-time search, sample preview modals, dynamic UPI QR checkout, email capture, and automated file delivery.
 """
@@ -167,7 +167,7 @@ SAMPLE_PREVIEWS = {
 
 def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
     """
-    Renders the complete, ultra-refined standalone Nano Banana Digital Bookstore page.
+    Renders the complete, ultra-refined standalone ExamRankers Digital Bookstore page.
     Aesthetic: High-converting dark UI, live search, multi-tab sample preview, instant UPI checkout & download.
     """
     if products is None:
@@ -715,7 +715,7 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
     </nav>
 
     <header class="hero">
-        <div class="hero-badge">NANO BANANA OFFICIAL STANDALONE DIGITAL STORE</div>
+        <div class="hero-badge">EXAMRANKERS OFFICIAL STANDALONE DIGITAL STORE</div>
         <h1>महाराष्ट्र शासकीय परीक्षा <span>डिजिटल ई-बुक स्टोअर</span></h1>
         <p>TCS व IBPS च्या चालू शिफ्ट्सवर आधारित मासिक चालू घडामोडी Top 200 MCQs, रिस्पॉन्स शीट प्रश्नसंच आणि विषयनिहाय शॉर्टकट ट्रिक्स — थेट तुमच्या Email वर तात्काळ मिळवा!</p>
 

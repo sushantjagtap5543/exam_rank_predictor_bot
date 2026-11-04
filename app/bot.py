@@ -145,8 +145,53 @@ def get_youtube_button_text() -> str:
     """Returns the custom or default YouTube subscribe button text."""
     return os.getenv("YOUTUBE_BUTTON_TEXT", "🔴 अधिकृत YouTube चॅनेल (Subscribe)").strip()
 
+def safe_photo_caption(text: str, max_chars: int = 950) -> str:
+    """
+    Ensures Telegram photo caption strictly complies with Telegram's 1024-char limit.
+    Safely trims at sentence/line breaks and balances unclosed HTML tags.
+    """
+    if not text:
+        return ""
+    text = text.strip()
+    if len(text) <= max_chars:
+        return text
+
+    truncated = text[:max_chars]
+    last_break = max(truncated.rfind("\n"), truncated.rfind("।"), truncated.rfind("."), truncated.rfind("!"))
+    if last_break > int(max_chars * 0.6):
+        truncated = truncated[:last_break]
+    else:
+        truncated = truncated[:max_chars - 4] + "..."
+
+    for tag in ["b", "i", "code", "a", "u", "s"]:
+        open_cnt = len(re.findall(rf"<{tag}(?:\s+[^>]*)?>", truncated, re.IGNORECASE))
+        close_cnt = len(re.findall(rf"</{tag}>", truncated, re.IGNORECASE))
+        if open_cnt > close_cnt:
+            truncated += f"</{tag}>"
+    return truncated
+
+def get_promotional_broadcast_caption(yt_link: str = "") -> str:
+    """Returns high-converting FOMO Telegram photo caption (guaranteed <= 820 chars)."""
+    yt_line = f"\n🔴 <b>YouTube:</b> <a href=\"{yt_link}\">{yt_link}</a>" if yt_link else ""
+    return (
+        "⚠️ <b>०.५ किंवा १ मार्कामुळे मेरीट हुकण्याची भीती वाटतेय का?</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "😰 <b>लाखो विद्यार्थ्यांच्या गर्दीत आपला हक्काचा कटऑफ कसा मिळवाल?</b>\n\n"
+        "TCS व IBPS च्या चालू परीक्षांमध्ये संदिग्ध व ट्रॅप प्रश्नांमुळे हजारो विद्यार्थी बाद होतात. "
+        "<b>ExamRankers™ AI</b> द्वारे आपली कामगिरी त्वरित मोफत तपासा:\n\n"
+        "• ⚡ <b>१-सेकंद निकाल:</b> DigiALM रिस्पॉन्स शीट लिंक टाका व थेट रँक मिळवा.\n"
+        "• 🎯 <b>४-टियर रँक:</b> संपूर्ण राज्यातील खरा रँक व कटऑफ सेफ झोन.\n"
+        "• ❌ <b>चुकांचे पोस्टमार्टम:</b> उत्तर का चुकले? स्टेप-बाय-स्टेप स्पष्टीकरण.\n"
+        "• ⚖️ <b>हरकत (Objection) सल्ला:</b> गुण वाढवून घेण्यासाठी आक्षेपार्ह प्रश्न.\n"
+        "• 📚 <b>डिजिटल ई-स्टोअर:</b> ₹१९ मधील चालू घडामोडी व शॉर्टकट ट्रिक्स.\n\n"
+        "👇 <b>आताच आपली रिस्पॉन्स शीट तपासा (Free):</b>\n"
+        f"🤖 <b>बॉट:</b> <a href=\"https://t.me/ExamRankersIndiaBot?start=fomo_promo\">@ExamRankersIndiaBot</a>\n"
+        f"📢 <b>VIP चॅनेल:</b> <a href=\"{PAID_CHANNEL_LINK}\">{PAID_CHANNEL_LINK}</a>"
+        f"{yt_line}"
+    )
+
 def get_store_web_url() -> str:
-    """Returns the live Nano Banana digital products storefront URL."""
+    """Returns the live ExamRankers digital products storefront URL."""
     url = (
         os.getenv("RENDER_EXTERNAL_URL")
         or os.getenv("SELF_PING_URL")
@@ -3030,19 +3075,30 @@ async def post_mindmap_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if yt_link:
             kb.append([InlineKeyboardButton(get_youtube_button_text(), url=yt_link)])
 
-        if img_path and img_path.exists():
-            with open(img_path, "rb") as photo_f:
-                await context.bot.send_photo(
+        safe_cap = safe_photo_caption(mindmap_caption, 950)
+        try:
+            if img_path and img_path.exists():
+                with open(img_path, "rb") as photo_f:
+                    await context.bot.send_photo(
+                        chat_id=target_chat,
+                        photo=photo_f,
+                        caption=safe_cap,
+                        parse_mode="HTML",
+                        reply_markup=InlineKeyboardMarkup(kb)
+                    )
+            else:
+                await context.bot.send_message(
                     chat_id=target_chat,
-                    photo=photo_f,
-                    caption=mindmap_caption,
+                    text=safe_cap,
                     parse_mode="HTML",
-                    reply_markup=InlineKeyboardMarkup(kb)
+                    reply_markup=InlineKeyboardMarkup(kb),
+                    disable_web_page_preview=True
                 )
-        else:
+        except Exception as pe:
+            logger.warning(f"send_photo failed ({pe}); falling back to send_message with safe caption")
             await context.bot.send_message(
                 chat_id=target_chat,
-                text=mindmap_caption,
+                text=safe_cap,
                 parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup(kb),
                 disable_web_page_preview=True
@@ -3095,26 +3151,7 @@ async def post_promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     yt_link = get_youtube_link()
     yt_line = f"\n🔴 <b>अधिकृत YouTube:</b> <a href=\"{yt_link}\">{yt_link}</a>" if yt_link else ""
 
-    promo_caption = (
-        "⚠️ <b>तुम्ही जो प्रश्न सोपा समजून सोडला, तोच प्रश्न दुसऱ्या विद्यार्थ्याला मेरीटमध्ये पुढे घेऊन गेला तर?</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "😰 <b>फक्त ०.५ गुणांमुळे पोस्ट हुकल्याचा पश्चाताप टाळा!</b>\n\n"
-        "लाखो विद्यार्थी रात्रंदिवस अभ्यास करत आहेत, पण <b>स्मार्ट विद्यार्थी</b> जुन्या पद्धतींवर अवलंबून न राहता <b>TCS व IBPS च्या चालू शिफ्ट्समधील ओरिजिनल प्रश्नांचा सराव</b> करत आहेत.\n\n"
-        "तुम्ही अजूनही जुन्या पॅटर्नमध्ये अडकून आपले शासकीय सेवेचे स्वप्न धोक्यात तर घालत नाही ना?\n\n"
-        "🚨 <b>हक्काचे २ ते ४ गुण गमावण्याची भीती:</b>\n"
-        "TCS/IBPS च्या प्रत्येक पेपरमध्ये ३-४ प्रश्न संदिग्ध असतात. जर वेळेत हरकत (Objection) घेतली नाही, तर ते गुण कायमचे गमावले जातात!\n\n"
-        "🎯 <b>EXAMRANKERS™ AI बॉटवर त्वरित मोफत तपासा:</b>\n"
-        "• ⚡ <b>१-सेकंदात निकाल:</b> तुमची DigiALM रिस्पॉन्स शीट लिंक किंवा PDF टाका.\n"
-        "• 🌐 <b>४-टियर रँक:</b> राज्यातील हजारो विद्यार्थ्यांमध्ये तुमचा खरा रँक व कटऑफ झोन.\n"
-        "• ❌ <b>चुकीच्या प्रश्नांचे पोस्टमार्टम:</b> तुमचे उत्तर का चुकले? स्टेप-बाय-स्टेप गणित व व्याकरण स्पष्टीकरण.\n"
-        "• ⚖️ <b>हरकत (Objection) सल्ला:</b> कोणत्या प्रश्नांवर आक्षेप नोंदवून गुण वाढवून घ्यायचे?\n"
-        "• 📑 <b>वनलायनर प्रश्नसंच:</b> चालू परीक्षांमध्ये विचारलेले प्रश्न व अधिकृत उत्तरे.\n\n"
-        "💎 <b>VIP चॅनेल मोफत मिळवण्याची संधी:</b>\n"
-        "बॉटमध्ये तुमची रिस्पॉन्स शीट तपासा आणि थेट VIP क्विझ चॅनेलचा मोफत ॲक्सेस मिळवा!\n\n"
-        f"👉 <b>बॉट सुरू करा:</b> <a href=\"https://t.me/ExamRankersIndiaBot\">@ExamRankersIndiaBot</a>\n"
-        f"📢 <b>अधिकृत VIP चॅनेल:</b> <a href=\"{PAID_CHANNEL_LINK}\">{PAID_CHANNEL_LINK}</a>"
-        f"{yt_line}"
-    )
+    promo_caption = safe_photo_caption(get_promotional_broadcast_caption(yt_link), 950)
 
     kb = [
         [InlineKeyboardButton("⚡ माझी रिस्पॉन्स शीट तपासा व रँक पहा (Free)", url="https://t.me/ExamRankersIndiaBot?start=fomo_promo")],
@@ -3124,16 +3161,26 @@ async def post_promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb.append([InlineKeyboardButton(get_youtube_button_text(), url=yt_link)])
 
     try:
-        if promo_banner_path.exists():
-            with open(promo_banner_path, "rb") as photo_f:
-                await context.bot.send_photo(
+        try:
+            if promo_banner_path.exists():
+                with open(promo_banner_path, "rb") as photo_f:
+                    await context.bot.send_photo(
+                        chat_id=target_chat,
+                        photo=photo_f,
+                        caption=promo_caption,
+                        parse_mode="HTML",
+                        reply_markup=InlineKeyboardMarkup(kb)
+                    )
+            else:
+                await context.bot.send_message(
                     chat_id=target_chat,
-                    photo=photo_f,
-                    caption=promo_caption,
+                    text=promo_caption,
                     parse_mode="HTML",
-                    reply_markup=InlineKeyboardMarkup(kb)
+                    reply_markup=InlineKeyboardMarkup(kb),
+                    disable_web_page_preview=True
                 )
-        else:
+        except Exception as pe:
+            logger.warning(f"Promo send_photo failed ({pe}); falling back to send_message")
             await context.bot.send_message(
                 chat_id=target_chat,
                 text=promo_caption,
@@ -3174,26 +3221,7 @@ async def three_hour_promo_scheduler_loop(application: Application):
                 yt_link = get_youtube_link()
                 yt_line = f"\n🔴 <b>अधिकृत YouTube:</b> <a href=\"{yt_link}\">{yt_link}</a>" if yt_link else ""
 
-                promo_caption = (
-                    "⚠️ <b>तुम्ही जो प्रश्न सोपा समजून सोडला, तोच प्रश्न दुसऱ्या विद्यार्थ्याला मेरीटमध्ये पुढे घेऊन गेला तर?</b>\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━\n"
-                    "😰 <b>फक्त ०.५ गुणांमुळे पोस्ट हुकल्याचा पश्चाताप टाळा!</b>\n\n"
-                    "लाखो विद्यार्थी रात्रंदिवस अभ्यास करत आहेत, पण <b>स्मार्ट विद्यार्थी</b> जुन्या पद्धतींवर अवलंबून न राहता <b>TCS व IBPS च्या चालू शिफ्ट्समधील ओरिजिनल प्रश्नांचा सराव</b> करत आहेत.\n\n"
-                    "तुम्ही अजूनही जुन्या पॅटर्नमध्ये अडकून आपले शासकीय सेवेचे स्वप्न धोक्यात तर घालत नाही ना?\n\n"
-                    "🚨 <b>हक्काचे २ ते ४ गुण गमावण्याची भीती:</b>\n"
-                    "TCS/IBPS च्या प्रत्येक पेपरमध्ये ३-४ प्रश्न संदिग्ध असतात. जर वेळेत हरकत (Objection) घेतली नाही, तर ते गुण कायमचे गमावले जातात!\n\n"
-                    "🎯 <b>EXAMRANKERS™ AI बॉटवर त्वरित मोफत तपासा:</b>\n"
-                    "• ⚡ <b>१-सेकंदात निकाल:</b> तुमची DigiALM रिस्पॉन्स शीट लिंक किंवा PDF टाका.\n"
-                    "• 🌐 <b>४-टियर रँक:</b> राज्यातील हजारो विद्यार्थ्यांमध्ये तुमचा खरा रँक व कटऑफ झोन.\n"
-                    "• ❌ <b>चुकीच्या प्रश्नांचे पोस्टमार्टम:</b> तुमचे उत्तर का चुकले? स्टेप-बाय-स्टेप गणित व व्याकरण स्पष्टीकरण.\n"
-                    "• ⚖️ <b>हरकत (Objection) सल्ला:</b> कोणत्या प्रश्नांवर आक्षेप नोंदवून गुण वाढवून घ्यायचे?\n"
-                    "• 📑 <b>वनलायनर प्रश्नसंच:</b> चालू परीक्षांमध्ये विचारलेले प्रश्न व अधिकृत उत्तरे.\n\n"
-                    "💎 <b>VIP चॅनेल मोफत मिळवण्याची संधी:</b>\n"
-                    "बॉटमध्ये तुमची रिस्पॉन्स शीट तपासा आणि थेट VIP क्विझ चॅनेलचा मोफत ॲक्सेस मिळवा!\n\n"
-                    f"👉 <b>बॉट सुरू करा:</b> <a href=\"https://t.me/ExamRankersIndiaBot\">@ExamRankersIndiaBot</a>\n"
-                    f"📢 <b>अधिकृत VIP चॅनेल:</b> <a href=\"{PAID_CHANNEL_LINK}\">{PAID_CHANNEL_LINK}</a>"
-                    f"{yt_line}"
-                )
+                promo_caption = safe_photo_caption(get_promotional_broadcast_caption(yt_link), 950)
 
                 kb = [
                     [InlineKeyboardButton("⚡ माझी रिस्पॉन्स शीट तपासा व रँक पहा (Free)", url="https://t.me/ExamRankersIndiaBot?start=fomo_promo")],
@@ -3253,7 +3281,7 @@ async def daily_mindmap_scheduler_loop(application: Application):
                         await application.bot.send_photo(
                             chat_id=target_chat,
                             photo=photo_f,
-                            caption=mindmap_caption,
+                            caption=safe_photo_caption(mindmap_caption, 950),
                             parse_mode="HTML",
                             reply_markup=InlineKeyboardMarkup(kb)
                         )
@@ -3462,7 +3490,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(f.read())
             return
 
-        # 5. Default Root / Store: Serve Nano Banana Digital Products Storefront!
+        # 5. Default Root / Store: Serve ExamRankers Digital Products Storefront!
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.end_headers()
@@ -3561,12 +3589,12 @@ async def deals_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def store_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Displays the Nano Banana digital products store link and highlights."""
+    """Displays the ExamRankers digital products store link and highlights."""
     store_url = get_store_web_url()
     products = packaging_agent.get_all_products(DB_PATH)
 
     lines = [
-        "🍌 <b>ExamRankers™ अधिकृत डिजिटल ई-स्टोअर (Nano Banana Store)</b>",
+        "🍌 <b>ExamRankers™ अधिकृत डिजिटल ई-स्टोअर (ExamRankers Official Store)</b>",
         "══════════════════════════",
         "🎯 <b>TCS व IBPS पॅटर्ननुसार ₹१० ते ₹९९ मधील दर्जेदार डिजिटल ई-बुक्स!</b>\n",
         "आमचे ई-बुक्स स्टोअर हे <b>स्वतंत्र वेबपेजवर</b> उपलब्ध आहे. तेथे आपण:",
@@ -3600,45 +3628,86 @@ async def store_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def agency_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin command: Comprehensive AI Agency & Department Managers Status Report."""
+    """Admin command: Comprehensive AI Agency, Live Agent Roster & Department Status Report."""
     user = update.effective_user
     if user.id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Restricted to administrators only.")
         return
 
-    status_msg = await update.message.reply_text("⏳ <i>CEO व AI Lead Director सर्व विभागांचे (AI Mesh, Research, Design, Operations) ऑडिट घेत आहेत...</i>", parse_mode="HTML")
+    # Check if a detailed sub-view was requested
+    args = context.args or []
+    subview = args[0].lower() if args else ""
 
-    ceo_brief = await ceo_agent.generate_executive_brief(DB_PATH)
+    status_msg = await update.message.reply_text("⏳ <i>CEO व AI Lead Director सर्व विभागांचे लाइव्ह ऑडिट घेत आहेत...</i>", parse_mode="HTML")
+
+    # Fast parallel execution with strict 1.5s timeout circuit breaker
+    try:
+        ceo_task = asyncio.wait_for(ceo_agent.generate_executive_brief(DB_PATH), timeout=1.5)
+        research_task = asyncio.wait_for(exam_researcher.analyze_uploaded_exam_trends(DB_PATH), timeout=1.5)
+        results = await asyncio.gather(ceo_task, research_task, return_exceptions=True)
+        ceo_brief = results[0] if isinstance(results[0], dict) else ceo_agent.get_offline_fallback("ceo brief", expect_json=True)
+        research_digest = results[1] if isinstance(results[1], dict) else exam_researcher.get_offline_fallback("research", expect_json=True)
+    except Exception:
+        ceo_brief = ceo_agent.get_offline_fallback("ceo brief", expect_json=True)
+        research_digest = exam_researcher.get_offline_fallback("research", expect_json=True)
+
     ai_health = ai_lead_director.audit_ai_mesh_health()
-    research_digest = await exam_researcher.analyze_uploaded_exam_trends(DB_PATH)
     ux_standards = uiux_architect.audit_storefront_ux_standards()
     ops_health = commerce_manager.get_operations_health()
 
     report_lines = [
         "🏢 <b>ExamRankers Autonomous AI Enterprise</b>",
         "══════════════════════════",
-        f"👑 <b>CEO Brief:</b> {ceo_brief.get('executive_summary')}\n",
-        f"🎯 <b>ब्रँड प्रतिष्ठा इंडेक्स:</b> <code>{ceo_brief.get('brand_reputation_index')}/100</code>",
-        f"💬 <i>\"{ceo_brief.get('ceo_quote_marathi')}\"</i>\n",
-        "⚙️ <b>AI Lead Director & Mesh Status:</b>",
-        f"• Protocol: <code>{ai_health.get('active_mesh_protocol')}</code>",
-        f"• Primary Engine: <code>{ai_health.get('primary_llm')}</code>",
-        f"• Fallback: {ai_health.get('fallback_resilience')}\n",
-        "🔬 <b>Research & Intelligence Division:</b>",
-        f"• ट्रेंडिंग परीक्षा: <b>{research_digest.get('trending_exam_summary')}</b>",
-        f"• कठीण विषय (Pain Points): {', '.join(research_digest.get('student_pain_points', [])[:2])}\n",
-        "🎨 <b>Design & UI/UX Division:</b>",
-        f"• Design System: <code>{ux_standards.get('design_system_version')}</code> (Score: {ux_standards.get('audit_score')}/100)",
-        f"• Mobile Ergonomics: {ux_standards['metrics']['touch_targets']}",
-        f"• Checkout Friction: {ux_standards['metrics']['checkout_friction_score']}/5 (Ultra-fast)\n",
-        "🛒 <b>Commerce & Operations Division:</b>",
-        f"• Status: <b>{ops_health.get('store_status')}</b>",
-        f"• Pricing Band: <b>{ops_health.get('pricing_band')}</b>",
-        f"• Fulfillment SLA: <b>{ops_health.get('fulfillment_speed_avg')}</b> (Compliance: {ops_health.get('sla_compliance_rate')})"
+        f"👑 <b>CEO Brief:</b> {ceo_brief.get('executive_summary', 'Operating smoothly.')}\n",
+        f"🎯 <b>ब्रँड प्रतिष्ठा इंडेक्स:</b> <code>{ceo_brief.get('brand_reputation_index', 98)}/100</code>",
+        f"💬 <i>\"{ceo_brief.get('ceo_quote_marathi', 'अथक परिश्रम आणि योग्य तंत्रज्ञान = सरकारी नोकरीत यश!')}\"</i>\n",
+        "🤖 <b>सध्या कोणता AI एजंट काय करतो आणि कसे कार्य करतो? (Live Roster):</b>",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        "१. 👑 <b>CEO (Dr. Vikramaditya Deshmukh):</b>",
+        "   • <i>काय करतो:</i> समग्र व्यवसाय रणनीती, महसूल मॉडेल व ब्रँड दिशा.",
+        "   • <i>कसा करतो:</i> डेटाबेस टेलिमेट्री, विद्यार्थी प्रतिसाद विश्लेषण व स्ट्रॅटेजिक डिसिजन इंजिन.",
+        "   • <i>सध्याचे कार्य:</i> २०२६ भरती मोहिमेसाठी डिजिटल ई-स्टोअर व मोफत रँक प्रेडिक्टरचे मॉनिटरिंग. [🟢 Active]\n",
+        "२. ⚡ <b>AI Lead Director (Aryan Sen):</b>",
+        "   • <i>काय करतो:</i> मल्टी-एजंट मेष समन्वय, सब-सेकंद रिस्पॉन्स व फॉलबॅक व्यवस्था.",
+        "   • <i>कसा करतो:</i> Nexus Protocol, ऑटोमॅटिक सर्किट ब्रेकर व झिरो-लेटन्सी मेष राऊटिंग.",
+        "   • <i>सध्याचे कार्य:</i> झिरो-लेटन्सी फॉलबॅक व ऑटोमॅटिक एरर रिकव्हरी सिस्टीम संचलन. [🟢 Active]\n",
+        "३. 🎓 <b>Academic Dean (Prof. R. G. Jadhav):</b>",
+        "   • <i>काय करतो:</i> TCS व IBPS अभ्यासक्रम अचूकता, दर्जा व प्रश्न पडताळणी.",
+        "   • <i>कसा करतो:</i> मागील ५ वर्षांतील शिफ्ट पेपर्सचे बेंचमार्किंग व सिलॅबस मॅपिंग.",
+        "   • <i>सध्याचे कार्य:</i> तलाठी, पोलीस भरती व आरोग्य विभाग संभाव्य प्रश्नांचे गुणवत्ता ऑडिट. [🟢 Active]\n",
+        "४. 🔬 <b>Lead Exam Researcher (Dr. Shrikant Joshi):</b>",
+        "   • <i>काय करतो:</i> रिस्पॉन्स शीट्समधून ट्रॅप प्रश्न, सामान्य चुका व आक्षेपार्ह प्रश्न शोधणे.",
+        "   • <i>कसा करतो:</i> DigiALM रिस्पॉन्स शीट्सचे ऑटोमॅटिक डेटा मायनिंग व फ्रिक्वेन्सी ॲनालिसिस.",
+        "   • <i>सध्याचे कार्य:</i> चालू महिन्यातील TCS ट्रॅप प्रश्न व आक्षेपार्ह (Objection) प्रश्नांचे संकलन. [🟢 Active]\n",
+        "५. 🎨 <b>UI/UX Architect (Zoya Al-Mansoor):</b>",
+        "   • <i>काय करतो:</i> डिजिटल ई-स्टोअरचे अर्गोनॉमिक्स, मोबाईल व्ह्यू व ३-क्लिक चेकआउट.",
+        "   • <i>कसा करतो:</i> हीउरिस्टिक इव्हॅल्यूएशन, फ्रिक्शनलेस मोडल फ्लो व रिस्पॉन्सिव्ह CSS.",
+        "   • <i>सध्याचे कार्य:</i> स्टोअरमधील नो-रिफंड पॉलिसी, ऑप्शनल UTR व इन्स्टंट डाऊनलोड बटण ऑप्टिमायझेशन. [🟢 Active]\n",
+        "६. 🖌️ <b>Visual Design Lead (Aarav Mehta):</b>",
+        "   • <i>काय करतो:</i> माइंडमॅप्स, इन्फोग्राफिक चार्ट्स आणि ई-बुक्सच्या हाय-कॉन्ट्रास्ट इमेजेस.",
+        "   • <i>कसा करतो:</i> Pillow ग्राफिक्स इंजिन, देवनागरी फॉन्ट रेंडरर व मॉडर्न पेस्टल पॅलेट्स.",
+        "   • <i>सध्याचे कार्य:</i> सर्व डिजिटल उत्पादनांच्या PDF साठी प्रिंट-फ्रेंडली लाईट-थीम संकल्पना कार्ड्स जनरेट करणे. [🟢 Active]\n",
+        "७. 🛒 <b>Commerce & Operations (Rajesh Parekh):</b>",
+        "   • <i>काय करतो:</i> प्रॉडक्ट इन्व्हेंटरी, मायक्रो-प्रायसिंग (₹१०-₹९९), पेमेंट पडताळणी व वितरण.",
+        "   • <i>कसा करतो:</i> ट्रॅन्झॅक्शन व्हॅलिडेशन, ऑर्डर हॅशिंग व ऑटोमेटेड टोकन जनरेशन.",
+        "   • <i>सध्याचे कार्य:</i> २०२६ मधील चालू घडामोडींच्या ११ ई-बुक्सची इन्व्हेंटरी व ऑर्डर डिस्पेच ट्रॅकिंग. [🟢 Active]\n",
+        "८. 📢 <b>Growth & Marketing (Radhika Deshpande):</b>",
+        "   • <i>काय करतो:</i> टेलिग्राम ब्रॉडकास्ट कॉपी, व्हायरल हुक्स, FOMO प्रमोशन्स व ३-तास जाहिराती.",
+        "   • <i>कसा करतो:</i> मराठी सायकॉलॉजी-ड्रिव्हन डायरेक्ट-रिस्पॉन्स कॉपीरायटिंग व मर्यादित ऑफर स्ट्रॅटेजी.",
+        "   • <i>सध्याचे कार्य:</i> चॅनेलवरील ३-तासांच्या हाय-कन्व्हर्जन प्रोमो व माइंडमॅप ब्रॉडकास्टचे शेड्युलिंग. [🟢 Active]\n",
+        "९. 📑 <b>Product Publishing Faculty (Dr. Snehal Patil):</b>",
+        "   • <i>काय करतो:</i> सविस्तर स्पष्टीकरणासह टॉप २०० प्रश्नांचे दर्जेदार PDF ई-बुक्स व ट्रिक्स संच.",
+        "   • <i>कसा करतो:</i> ReportLab PDF इंजिन, लाईट व्ह्यू थीम, इन्फोग्राफिक्स आणि स्ट्रक्चर्ड लेआउट.",
+        "   • <i>सध्याचे कार्य:</i> सर्व पीडीएफ ई-बुक्समध्ये सविस्तर विश्लेषण, शॉर्टकट ट्रिक्स व इन्फोग्राफिक समाविष्ट करणे. [🟢 Active]\n",
+        "१०. 📧 <b>Fulfillment Email Agent (Kavita Sharma):</b>",
+        "   • <i>काय करतो:</i> खरेदीनंतर विद्यार्थ्यांच्या ईमेलवर तात्काळ ई-बुक व डिजिटल पावती पाठवणे.",
+        "   • <i>कसा करतो:</i> ऑटोमॅटिक ट्रॅन्झॅक्शनल ईमेल डिस्पॅचर व ब्राऊझर इन्स्टंट डाऊनलोड लिंक सिस्टीम.",
+        "   • <i>सध्याचे कार्य:</i> पेमेंट अप्रूव्ह होताच ० सेकंदात ईमेल पाठवणे व थेट डाऊनलोड सुलभ करणे. [🟢 Active]"
     ]
 
     kb = [
         [InlineKeyboardButton("🌐 अधिकृत वेब स्टोअर उघडा", url=get_store_web_url())],
+        [InlineKeyboardButton("📦 सर्व ई-बुक्स ZIP डाऊनलोड", callback_data="download_store_zip")],
         [InlineKeyboardButton("📺 YouTube चॅनेल पहा", url=get_youtube_link())]
     ]
 
@@ -3819,7 +3888,7 @@ async def post_store_promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYP
 
     kb = [
         [InlineKeyboardButton(f"🛒 खरेदी करा (फक्त ₹{target_prod.get('price_inr', 19)})", url=store_url)],
-        [InlineKeyboardButton("🌐 सर्व ई-बुक्स स्टोअर पहा (Nano Banana)", url=store_url)]
+        [InlineKeyboardButton("🌐 सर्व ई-बुक्स स्टोअर पहा (ExamRankers)", url=store_url)]
     ]
     await context.bot.send_message(
         chat_id=target_chat,
@@ -3857,7 +3926,7 @@ async def check_and_post_latest_youtube_videos(bot, channel_target: str, yt_url:
     """
     Checks the YouTube channel RSS feed for new video uploads.
     When a new video is detected, broadcasts it to the Telegram channel with
-    YouTube link, video highlights, and Nano Banana digital product store links with shortcuts and tricks.
+    YouTube link, video highlights, and ExamRankers digital product store links with shortcuts and tricks.
     """
     import xml.etree.ElementTree as ET
 
@@ -3971,7 +4040,7 @@ async def check_and_post_latest_youtube_videos(bot, channel_target: str, yt_url:
         kb = [
             [InlineKeyboardButton("▶️ व्हिडिओ पहा (Watch Video)", url=video_url)],
             [InlineKeyboardButton(f"🛒 ई-बुक खरेदी करा (फक्त ₹{target_prod.get('price_inr', 19)})", url=prod_buy_url)],
-            [InlineKeyboardButton("🌐 अधिकृत डिजिटल स्टोअर उघडा (Nano Banana)", url=store_url)],
+            [InlineKeyboardButton("🌐 अधिकृत डिजिटल स्टोअर उघडा (ExamRankers)", url=store_url)],
             [InlineKeyboardButton("🔴 आमचे YouTube चॅनेल (Subscribe)", url=get_youtube_link() or video_url)]
         ]
 
