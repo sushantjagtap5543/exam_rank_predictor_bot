@@ -1043,16 +1043,6 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
 
         // Render products on page load
         renderProducts(PRODUCTS);
-
-        // Auto-open modal if URL query param 'prod' or 'product' is present
-        const urlParams = new URLSearchParams(window.location.search);
-        const autoProdId = urlParams.get('prod') || urlParams.get('product');
-        if (autoProdId) {{
-            const targetProd = PRODUCTS.find(p => p.id === autoProdId);
-            if (targetProd) {{
-                setTimeout(() => openCheckoutModal(autoProdId), 300);
-            }}
-        }}
     </script>
 </body>
 </html>

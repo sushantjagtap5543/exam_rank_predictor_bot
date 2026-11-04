@@ -94,14 +94,33 @@ from .agents import (
     CurrentAffairsSeniorEditor,
     DigitalProductPackagingAgent,
     MarketingSalesAgent,
-    FulfillmentEmailAgent
+    FulfillmentEmailAgent,
+    ChiefExecutiveOfficer,
+    AILeadDirector,
+    AcademicDeanManager,
+    GrowthMarketingManager,
+    CommerceOperationsManager,
+    ExamIntelligenceResearcher,
+    CurriculumResearchSynthesist,
+    UIUXDesignArchitect,
+    BrandVisualsDesigner,
 )
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Senior Force Agents Autonomous Instances
+# Senior Force Agents Autonomous Instances (NEXUS Doctrine)
+ceo_agent = ChiefExecutiveOfficer()
+ai_lead_director = AILeadDirector()
+academic_dean = AcademicDeanManager()
+growth_manager = GrowthMarketingManager()
+commerce_manager = CommerceOperationsManager()
+exam_researcher = ExamIntelligenceResearcher()
+curriculum_researcher = CurriculumResearchSynthesist()
+uiux_architect = UIUXDesignArchitect()
+brand_designer = BrandVisualsDesigner()
+
 channel_branding_agent = ChannelBrandingAgent()
 marketing_sales_agent = MarketingSalesAgent()
 current_affairs_agent = CurrentAffairsSeniorEditor()
@@ -3239,6 +3258,7 @@ async def set_bot_commands(application: Application):
         BotCommand("start", "🚀 सुरू करा (Start Bot)"),
         BotCommand("store", "🛒 डिजिटल ई-बुक्स स्टोअर (₹10 - ₹99)"),
         BotCommand("sync_channel", "🔄 चॅनेलचे नाव ताज्या परीक्षेनुसार बदला (Admin)"),
+        BotCommand("agency", "🏢 AI Agency व सर्व मॅनेजर्स अहवाल (Admin)"),
         BotCommand("post_store_promo", "🛒 स्टोअर ॲड चॅनेलवर पोस्ट करा (Admin)"),
         BotCommand("wrong", "❌ चुकीचे प्रश्न व सविस्तर स्पष्टीकरण"),
         BotCommand("responses", "📄 रिस्पॉन्स शीट निकाल व फाईल्स"),
@@ -3500,6 +3520,51 @@ async def store_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True
         )
 
+async def agency_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: Comprehensive AI Agency & Department Managers Status Report."""
+    user = update.effective_user
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to administrators only.")
+        return
+
+    status_msg = await update.message.reply_text("⏳ <i>CEO व AI Lead Director सर्व विभागांचे (AI Mesh, Research, Design, Operations) ऑडिट घेत आहेत...</i>", parse_mode="HTML")
+
+    ceo_brief = await ceo_agent.generate_executive_brief(DB_PATH)
+    ai_health = ai_lead_director.audit_ai_mesh_health()
+    research_digest = await exam_researcher.analyze_uploaded_exam_trends(DB_PATH)
+    ux_standards = uiux_architect.audit_storefront_ux_standards()
+    ops_health = commerce_manager.get_operations_health()
+
+    report_lines = [
+        "🏢 <b>ExamRankers Autonomous AI Enterprise</b>",
+        "══════════════════════════",
+        f"👑 <b>CEO Brief:</b> {ceo_brief.get('executive_summary')}\n",
+        f"🎯 <b>ब्रँड प्रतिष्ठा इंडेक्स:</b> <code>{ceo_brief.get('brand_reputation_index')}/100</code>",
+        f"💬 <i>\"{ceo_brief.get('ceo_quote_marathi')}\"</i>\n",
+        "⚙️ <b>AI Lead Director & Mesh Status:</b>",
+        f"• Protocol: <code>{ai_health.get('active_mesh_protocol')}</code>",
+        f"• Primary Engine: <code>{ai_health.get('primary_llm')}</code>",
+        f"• Fallback: {ai_health.get('fallback_resilience')}\n",
+        "🔬 <b>Research & Intelligence Division:</b>",
+        f"• ट्रेंडिंग परीक्षा: <b>{research_digest.get('trending_exam_summary')}</b>",
+        f"• कठीण विषय (Pain Points): {', '.join(research_digest.get('student_pain_points', [])[:2])}\n",
+        "🎨 <b>Design & UI/UX Division:</b>",
+        f"• Design System: <code>{ux_standards.get('design_system_version')}</code> (Score: {ux_standards.get('audit_score')}/100)",
+        f"• Mobile Ergonomics: {ux_standards['metrics']['touch_targets']}",
+        f"• Checkout Friction: {ux_standards['metrics']['checkout_friction_score']}/5 (Ultra-fast)\n",
+        "🛒 <b>Commerce & Operations Division:</b>",
+        f"• Status: <b>{ops_health.get('store_status')}</b>",
+        f"• Pricing Band: <b>{ops_health.get('pricing_band')}</b>",
+        f"• Fulfillment SLA: <b>{ops_health.get('fulfillment_speed_avg')}</b> (Compliance: {ops_health.get('sla_compliance_rate')})"
+    ]
+
+    kb = [
+        [InlineKeyboardButton("🌐 अधिकृत वेब स्टोअर उघडा", url=get_store_web_url())],
+        [InlineKeyboardButton("📺 YouTube चॅनेल पहा", url=get_youtube_link())]
+    ]
+
+    await status_msg.edit_text("\n".join(report_lines), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb), disable_web_page_preview=True)
+
 async def sync_channel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin command: Force syncs channel name according to latest government exam."""
     user = update.effective_user
@@ -3672,6 +3737,7 @@ def main():
 
     # Admin commands (Response sheets, ZIP export, Channel, Quizzes, QBank, Schedulers)
     app.add_handler(CommandHandler("stats", stats))
+    app.add_handler(CommandHandler(["agency", "agents", "team", "ai_status", "force_agents"], agency_cmd))
     app.add_handler(CommandHandler(["sync_channel", "update_channel_name", "rename_channel"], sync_channel_cmd))
     app.add_handler(CommandHandler(["post_store_promo", "promote_store"], post_store_promo_cmd))
     app.add_handler(CommandHandler(["master_report", "exam_report", "analytics_report", "generate_report"], master_report_cmd))
