@@ -17,6 +17,13 @@ OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash")
 FALLBACK_MODELS = [
     "google/gemini-2.5-flash",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "recursive/flint-v1.0:free",
+    "cohere/north-mini-code:free",
+    "dots-studio/dots-3-note-preview:free",
+    "nvidia/nemotron-3.5-lightning:free",
+    "google/gemma-4-26b-a4b-it:free",
+    "google/gemma-4-31b-it:free",
     "google/gemini-3.7-flash",
     "google/gemini-2.5-pro"
 ]
@@ -109,7 +116,8 @@ class BaseSeniorAgent:
                         response = await client.post(OPENROUTER_API_URL, json=payload, headers=headers)
                         if response.status_code == 200:
                             data = response.json()
-                            raw_content = data["choices"][0]["message"]["content"].strip()
+                            msg = data["choices"][0].get("message", {})
+                            raw_content = (msg.get("content") or msg.get("reasoning") or "").strip()
                             if expect_json:
                                 try:
                                     return self._extract_json(raw_content)
