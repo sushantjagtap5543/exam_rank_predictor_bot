@@ -50,7 +50,7 @@ def extract_pdf_text(path: str, max_ocr_pages: int = None) -> str:
 
         ocr_pages = []
         total_pages = len(doc)
-        limit = min(max_ocr_pages, total_pages) if max_ocr_pages else total_pages
+        limit = min(max_ocr_pages, total_pages) if max_ocr_pages else min(total_pages, 25)
         for i in range(limit):
             page = doc[i]
             pix = page.get_pixmap(dpi=150)

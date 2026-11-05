@@ -1,3 +1,4 @@
+import html
 import os
 import json
 import sqlite3
@@ -130,8 +131,9 @@ marathi_faculty_agent = MarathiSeniorFaculty()
 english_faculty_agent = EnglishSeniorFaculty()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-DB_PATH = os.getenv("DATABASE_PATH", "bot.db")
-STORAGE_DIR = Path(os.getenv("ADMIN_STORAGE_DIR", "admin_storage")).resolve()
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DB_PATH = os.getenv("DATABASE_PATH", str(PROJECT_ROOT / "bot.db"))
+STORAGE_DIR = Path(os.getenv("ADMIN_STORAGE_DIR", str(PROJECT_ROOT / "admin_storage"))).resolve()
 RESPONSE_DIR = STORAGE_DIR / "response_sheets"
 REPORT_DIR = STORAGE_DIR / "reports"
 ADMIN_IDS = {int(x.strip()) for x in (os.getenv("ADMIN_TELEGRAM_IDS") or os.getenv("ADMIN_USER_IDS") or "").split(",") if x.strip().isdigit()}
@@ -377,15 +379,39 @@ def init_db():
     except Exception as e:
         logger.warning(f"Could not initialize monetization tables: {e}")
 
+async def _send_single_msg(bot, chat_id, chunk: str, parse_mode, reply_markup, disable_web_page_preview):
+    try:
+        return await bot.send_message(
+            chat_id=chat_id,
+            text=chunk,
+            parse_mode=parse_mode,
+            reply_markup=reply_markup,
+            disable_web_page_preview=disable_web_page_preview
+        )
+    except Exception as e:
+        err_str = str(e).lower()
+        if any(k in err_str for k in ["parse entities", "entity", "start tag", "end tag", "badrequest"]):
+            logger.warning(f"Telegram entity parse error, stripping HTML entities and retrying as plain text: {e}")
+            clean_text = re.sub(r"<[^>]+>", "", chunk)
+            return await bot.send_message(
+                chat_id=chat_id,
+                text=clean_text,
+                parse_mode=None,
+                reply_markup=reply_markup,
+                disable_web_page_preview=disable_web_page_preview
+            )
+        raise
+
 async def safe_send_message(bot, chat_id, text: str, parse_mode="HTML", reply_markup=None, disable_web_page_preview=True):
     """
     Safely sends messages without exceeding Telegram's 4096-character limit.
-    Splits long messages at natural newlines.
+    Splits long messages at natural newlines and auto-falls back to plain text on entity errors.
     """
     if len(text) <= 3900:
-        return await bot.send_message(
+        return await _send_single_msg(
+            bot=bot,
             chat_id=chat_id,
-            text=text,
+            chunk=text,
             parse_mode=parse_mode,
             reply_markup=reply_markup,
             disable_web_page_preview=disable_web_page_preview
@@ -408,9 +434,10 @@ async def safe_send_message(bot, chat_id, text: str, parse_mode="HTML", reply_ma
     last_msg = None
     for i, chunk in enumerate(chunks):
         markup = reply_markup if i == len(chunks) - 1 else None
-        last_msg = await bot.send_message(
+        last_msg = await _send_single_msg(
+            bot=bot,
             chat_id=chat_id,
-            text=chunk,
+            chunk=chunk,
             parse_mode=parse_mode,
             reply_markup=markup,
             disable_web_page_preview=disable_web_page_preview
@@ -475,7 +502,9 @@ def format_score_card(exam_name: str, category: str, result: dict, rank_data: di
     neg = result.get("negative_marks", 0.0)
     correct_pts = round(result["correct"] * pos, 2)
     incorrect_pts = round(result["incorrect"] * neg, 2)
-    post_name = rank_data.get("post_name", "General (सर्वसाधारण)")
+    post_name = html.escape(str(rank_data.get("post_name", "General (सर्वसाधारण)")))
+    exam_name = html.escape(str(exam_name))
+    category = html.escape(str(category))
 
     lines = [
         "🎯 <b>FREE EXAM SCORE & 4-TIER RANK REPORT</b>",
@@ -748,22 +777,23 @@ async def send_question_review_page(update: Update, context: ContextTypes.DEFAUL
 
     for item in sample:
         qnum = item.get("question_number", "?")
-        sec = item.get("section", "General")
-        qtext = item.get("question_text", "Question Text")
+        sec = html.escape(str(item.get("section", "General")))
+        qtext = html.escape(str(item.get("question_text", "Question Text")))
         eval_status = item.get("evaluation", "unanswered")
         chosen_num = str(item.get("chosen_option_number") or "-")
-        chosen_txt = item.get("chosen_option_text", "").strip()
+        chosen_txt = html.escape(str(item.get("chosen_option_text", "")).strip())
         correct_num = str(item.get("correct_option_number") or "-")
-        correct_txt = item.get("correct_option_text", "").strip()
+        correct_txt = html.escape(str(item.get("correct_option_text", "")).strip())
         options = item.get("options", {})
-        explanation = generate_smart_explanation(item)
+        raw_expl = generate_smart_explanation(item)
+        explanation = html.escape(str(raw_expl))
 
         status_icon = "✅ बरोबर (Correct)" if eval_status == "correct" else ("❌ चुकीचे (Incorrect)" if eval_status == "incorrect" else "⚪ अनुत्तरित (Unanswered)")
 
         opts_lines = []
         for ok in ["1", "2", "3", "4"]:
             if ok in options:
-                oval = options[ok]
+                oval = html.escape(str(options[ok]))
                 if ok == correct_num and ok == chosen_num:
                     opts_lines.append(f"  <b>{ok})</b> {oval}  ✅ <i>(तुमचे उत्तर - बरोबर)</i>")
                 elif ok == correct_num:
@@ -1432,6 +1462,28 @@ async def process_uploaded_pdf(update: Update, context: ContextTypes.DEFAULT_TYP
     """Processes downloaded PDF document without arbitrary size limits (up to 2GB via MTProto)."""
     status_msg = await update.effective_chat.send_message("📥 <i>Downloading response sheet, analyzing subject performance, and detecting questions...</i>", parse_mode="HTML")
 
+    try:
+        await _process_uploaded_pdf_impl(update, context, doc, status_msg)
+    except Exception as e:
+        logger.error(f"Error processing uploaded PDF: {e}", exc_info=True)
+        keyboard = [
+            [InlineKeyboardButton("✍️ Quick Score & Rank Calculator", callback_data="manual_calc")],
+            [InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]
+        ]
+        try:
+            await status_msg.edit_text(
+                f"⚠️ <b>रिस्पॉन्स शीट तपासताना त्रुटी आली:</b>\n"
+                f"<i>{html.escape(str(e)[:200])}</i>\n\n"
+                "💡 <b>सोपे पर्याय:</b>\n"
+                "1️⃣ तुमच्या DigiALM / परीक्षा पोर्टलची <b>थेट वेब लिंक</b> येथे चॅटमध्ये पेस्ट करा.\n"
+                "2️⃣ किंवा खालील बटणावर क्लिक करून तुमचे गुण नोंदवा व संभाव्य रँक तपासा:",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except Exception:
+            pass
+
+async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAULT_TYPE, doc, status_msg):
     with tempfile.TemporaryDirectory() as tmp:
         safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", getattr(doc, "file_name", None) or "response_sheet.pdf")
         path = str(Path(tmp) / safe_name)
@@ -1620,6 +1672,25 @@ async def process_uploaded_pdf(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def complete_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE, exam_key: str):
     """Computes score, ranks candidate, and generates subject-wise dashboard & objection options."""
+    try:
+        return await _complete_analysis_impl(update, context, exam_key)
+    except Exception as e:
+        logger.error(f"Fatal error in complete_analysis for {exam_key}: {e}", exc_info=True)
+        keyboard = [
+            [InlineKeyboardButton("✍️ Quick Score & Rank Calculator", callback_data="manual_calc")],
+            [InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]
+        ]
+        chat_id = update.effective_chat.id if update.effective_chat else None
+        if chat_id:
+            await safe_send_message(
+                context.bot,
+                chat_id,
+                f"⚠️ <b>विश्लेषण करताना तांत्रिक अडचण आली:</b>\n<i>{html.escape(str(e)[:250])}</i>\n\nकृपया पुन्हा प्रयत्न करा किंवा खालील बटणावर क्लिक करा:",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+
+async def _complete_analysis_impl(update: Update, context: ContextTypes.DEFAULT_TYPE, exam_key: str):
     config = EXAMS.get(exam_key, {})
     records = context.user_data.get("last_records", [])
     raw_text = context.user_data.get("last_raw_text", "")
@@ -1760,7 +1831,10 @@ async def complete_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     context.user_data["awaiting_pdf"] = False
 
     # Automatically display full questions with all options and explanations immediately!
-    await send_question_review_page(update, context, offset=0, only_wrong=(result["incorrect"] > 0))
+    try:
+        await send_question_review_page(update, context, offset=0, only_wrong=(result["incorrect"] > 0))
+    except Exception as e:
+        logger.error(f"Error rendering question review page: {e}", exc_info=True)
 
 async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles text input (manual score, UTR submission) and photos (payment screenshots)."""

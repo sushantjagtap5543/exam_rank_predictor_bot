@@ -10,6 +10,7 @@ import os
 import sqlite3
 import logging
 import urllib.parse
+from pathlib import Path
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, Bot
 from telegram.ext import ContextTypes
 
@@ -21,7 +22,8 @@ def is_ads_enabled() -> bool:
     return os.getenv("ENABLE_ADS", "true").strip().lower() in ("true", "1", "yes")
 
 def get_db_path() -> str:
-    return os.getenv("DATABASE_PATH", "bot.db")
+    default_db = str(Path(__file__).resolve().parent.parent / "bot.db")
+    return os.getenv("DATABASE_PATH", default_db)
 
 def get_paid_channel_link() -> str:
     return os.getenv("PAID_CHANNEL_LINK", DEFAULT_PAID_CHANNEL_LINK).strip() or DEFAULT_PAID_CHANNEL_LINK
