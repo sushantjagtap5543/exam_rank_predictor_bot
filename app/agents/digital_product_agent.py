@@ -190,6 +190,49 @@ DEFAULT_PRODUCTS = [
     }
 ]
 
+from reportlab.lib import colors
+from reportlab.pdfgen import canvas
+
+class NumberedCanvas(canvas.Canvas):
+    """Two-pass canvas for dynamic Page X of Y and official header/footer rules."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._saved_page_states = []
+
+    def showPage(self):
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()
+
+    def save(self):
+        num_pages = len(self._saved_page_states)
+        for state in self._saved_page_states:
+            self.__dict__.update(state)
+            self.draw_page_decorations(num_pages)
+            super().showPage()
+        super().save()
+
+    def draw_page_decorations(self, total_pages):
+        self.saveState()
+        if self._pageNumber > 1:
+            self.setStrokeColor(colors.HexColor("#0284c7"))
+            self.setLineWidth(0.8)
+            self.line(36, 805, 559, 805)
+            self.setFont("Helvetica-Bold", 8)
+            self.setFillColor(colors.HexColor("#0369a1"))
+            self.drawString(36, 810, "EXAMRANKERS™ OFFICIAL STUDY SERIES — TCS & IBPS REVISION CAPSULE")
+            self.setFont("Helvetica", 8)
+            self.setFillColor(colors.HexColor("#64748b"))
+            self.drawRightString(559, 810, "100% VERIFIED EXAM MATERIAL")
+
+        self.setStrokeColor(colors.HexColor("#cbd5e1"))
+        self.setLineWidth(0.5)
+        self.line(36, 45, 559, 45)
+        self.setFont("Helvetica", 8)
+        self.setFillColor(colors.HexColor("#64748b"))
+        self.drawString(36, 32, "© 2026 ExamRankers™ India — Official Digital Edition | www.examrankers.com")
+        self.drawRightString(559, 32, f"Page {self._pageNumber} of {total_pages}")
+        self.restoreState()
+
 class DigitalProductPackagingAgent(BaseSeniorAgent):
     """
     Senior Digital Product Architect:
@@ -422,8 +465,8 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             pagesize=A4,
             leftMargin=36,
             rightMargin=36,
-            topMargin=40,
-            bottomMargin=40
+            topMargin=46,
+            bottomMargin=48
         )
 
         styles = getSampleStyleSheet()
@@ -523,7 +566,11 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         elements.append(Spacer(1, 8))
 
         # Authentic, Subject-Specific Questions & In-Depth Analyses
-        items, tricks_data, infographic_cols = get_subject_specific_content(product_id, prod.get("title", ""), prod.get("subject", ""))
+        content_res = get_subject_specific_content(product_id, prod.get("title", ""), prod.get("subject", ""))
+        items = content_res[0]
+        tricks_data = content_res[1]
+        infographic_cols = content_res[2]
+        revision_tables = content_res[3] if len(content_res) > 3 else []
 
         for item_tuple in items:
             q_txt, opts_txt, ans_txt = item_tuple[0], item_tuple[1], item_tuple[2]
@@ -531,22 +578,30 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             trk_txt = item_tuple[4] if len(item_tuple) > 4 else ""
             trp_txt = item_tuple[5] if len(item_tuple) > 5 else ""
 
-            q_flow = [
-                Paragraph(f"<b>{q_txt}</b>", q_style),
-                Spacer(1, 2),
-                Paragraph(opts_txt, opt_style),
-                Spacer(1, 2),
-                Paragraph(f"<b>{ans_txt}</b>", ans_style),
-                Spacer(1, 2),
+            card_rows = [
+                [Paragraph(f"<b>{q_txt}</b>", q_style)],
+                [Paragraph(opts_txt, opt_style)],
+                [Paragraph(f"<b>{ans_txt}</b>", ans_style)]
             ]
             if ana_txt:
-                q_flow.extend([Paragraph(f"<i>🔍 {ana_txt}</i>", exp_style), Spacer(1, 2)])
+                card_rows.append([Paragraph(f"<i>🔍 {ana_txt}</i>", ana_style)])
             if trk_txt:
-                q_flow.extend([Paragraph(f"<b>⚡ {trk_txt}</b>", ans_style), Spacer(1, 2)])
+                card_rows.append([Paragraph(f"<b>⚡ {trk_txt}</b>", trk_style)])
             if trp_txt:
-                q_flow.extend([Paragraph(f"<i>⚠️ {trp_txt}</i>", exp_style), Spacer(1, 2)])
-            q_flow.append(Spacer(1, 8))
-            elements.extend(q_flow)
+                card_rows.append([Paragraph(f"<i>⚠️ {trp_txt}</i>", trp_style)])
+
+            q_card = Table(card_rows, colWidths=[520])
+            q_card.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#ffffff")),
+                ('BOX', (0, 0), (-1, -1), 0.6, colors.HexColor("#e2e8f0")),
+                ('INNERGRID', (0, 0), (-1, -1), 0.3, colors.HexColor("#f8fafc")),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                ('LEFTPADDING', (0, 0), (-1, -1), 8),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ]))
+            elements.append(q_card)
+            elements.append(Spacer(1, 6))
 
         # Section 2: Subject-Specific High-Yield Tricks, Mnemonics & Shortcuts
         elements.append(Spacer(1, 10))
@@ -590,12 +645,68 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             elements.append(t_box)
             elements.append(Spacer(1, 6))
 
+        # Section 3: Subject-Specific Rapid Revision Reference Tables
+        if revision_tables:
+            elements.append(Spacer(1, 10))
+            elements.append(HRFlowable(width="100%", thickness=1.2, color=colors.HexColor("#0284c7"), spaceAfter=12))
+            elements.append(Paragraph(f"<b>📊 भाग ३: {prod.get('subject', 'विषय')} - जलद उजळणी तक्ते व परीक्षा टेबल चार्ट्स</b>", sec_style))
+            elements.append(Spacer(1, 6))
+
+            tbl_header_style = ParagraphStyle(
+                "TBH", parent=styles["Normal"], fontName=font_bold, fontSize=8.5, leading=12,
+                textColor=colors.HexColor("#ffffff"), alignment=1
+            )
+            tbl_cell_style = ParagraphStyle(
+                "TBC", parent=styles["Normal"], fontName=font_regular, fontSize=8, leading=11.5,
+                textColor=colors.HexColor("#1e293b")
+            )
+            tbl_title_style = ParagraphStyle(
+                "TBT", parent=styles["Normal"], fontName=font_bold, fontSize=9.5, leading=13.5,
+                textColor=colors.HexColor("#0369a1")
+            )
+
+            for table_meta in revision_tables:
+                t_title = table_meta.get("title", "उजळणी तक्ता")
+                headers = table_meta.get("headers", [])
+                rows = table_meta.get("rows", [])
+                col_widths = table_meta.get("col_widths", None)
+
+                elements.append(Paragraph(f"<b>📌 {t_title}</b>", tbl_title_style))
+                elements.append(Spacer(1, 4))
+
+                table_matrix = []
+                if headers:
+                    table_matrix.append([Paragraph(f"<b>{h}</b>", tbl_header_style) for h in headers])
+                for row in rows:
+                    table_matrix.append([Paragraph(str(cell), tbl_cell_style) for cell in row])
+
+                if col_widths and len(col_widths) == len(headers):
+                    r_table = Table(table_matrix, colWidths=col_widths, repeatRows=1)
+                else:
+                    num_cols = len(headers) if headers else 1
+                    w = 520 / num_cols
+                    r_table = Table(table_matrix, colWidths=[w] * num_cols, repeatRows=1)
+
+                r_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#0284c7")),
+                    ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+                    ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.HexColor("#ffffff"), colors.HexColor("#f8fafc")]),
+                    ('BOX', (0, 0), (-1, -1), 0.7, colors.HexColor("#cbd5e1")),
+                    ('INNERGRID', (0, 0), (-1, -1), 0.4, colors.HexColor("#e2e8f0")),
+                    ('TOPPADDING', (0, 0), (-1, -1), 4),
+                    ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                ]))
+                elements.append(r_table)
+                elements.append(Spacer(1, 8))
+
         # Footer Notice
         elements.append(Spacer(1, 10))
         elements.append(HRFlowable(width="100%", thickness=0.8, color=colors.HexColor("#94a3b8"), spaceAfter=10))
         elements.append(Paragraph("<b>© 2026 ExamRankers™ India — अधिकृत डिजिटल आवृत्ती. अनाधिकृत पुनरुत्पादन कायद्याने गुन्हा आहे.</b>", sub_style))
 
-        doc.build(elements)
+        doc.build(elements, canvasmaker=NumberedCanvas)
         logger.info(f"✅ Generated digital product PDF: {target_path} ({target_path.stat().st_size} bytes)")
         return target_path
 
