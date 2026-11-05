@@ -306,3 +306,4 @@ def get_subject_specific_content(product_id: str, title: str, subject: str):
             ("3. क्रीडा व घडामोडी", "ऑलिम्पिक, पॅरालिम्पिक व ग्रँड स्लॅम विजेते.")
         ]
         return items, tricks, infographic_cols
+
