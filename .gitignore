@@ -9,3 +9,8 @@ response_sheets/
 *.session
 *.session-journal
 test_peon_full.pdf
+ 
+data/
+*.sqlite3
+scratch_*.png
+gmc.pdf

@@ -1585,7 +1585,8 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
         user_id = update.effective_user.id
         is_bulk_request = (user_id in ADMIN_IDS) and (
             context.user_data.get("admin_bulk_mode") is True
-            or any(k in safe_name.lower() for k in ["bulk_qbank", "master_mcq", "master_qbank", "bulk_mcq"])
+            or any(k in safe_name.lower() for k in ["bulk_qbank", "master_mcq", "master_qbank", "bulk_mcq", "gmc", "bulk", "master", "qbank"])
+            or len(records) > 120
         )
         if is_bulk_request:
             quizzes = extract_quizzes_from_records(records, max_questions=2500, filter_unposted=False, db_path=DB_PATH)

@@ -23,6 +23,102 @@ def get_ocr_engine():
             _OCR_ENGINE = False
     return _OCR_ENGINE if _OCR_ENGINE is not False else None
 
+def _is_green_tick_image(img_bytes: bytes) -> bool:
+    try:
+        from PIL import Image
+        import io
+        im = Image.open(io.BytesIO(img_bytes))
+        if 8 <= im.width <= 32 and 8 <= im.height <= 32:
+            rgb = im.convert("RGB")
+            green_count = 0
+            for r, g, b in list(rgb.getdata()):
+                if g > 100 and g > r + 15 and g > b + 15:
+                    green_count += 1
+            if green_count >= 4:
+                return True
+    except Exception:
+        pass
+    return False
+
+def _extract_text_with_green_ticks(doc) -> str:
+    """Extracts text while detecting visual green tick marks on option lines (e.g. TCS iON printouts)."""
+    try:
+        all_xrefs = set()
+        for page in doc:
+            for img in page.get_images():
+                all_xrefs.add(img[0])
+
+        green_xrefs = set()
+        for xref in all_xrefs:
+            try:
+                data = doc.extract_image(xref)
+                if _is_green_tick_image(data["image"]):
+                    green_xrefs.add(xref)
+            except Exception:
+                pass
+
+        if not green_xrefs:
+            pages = [p.get_text("text") for p in doc]
+            return "\n".join(pages)
+
+        all_pages_text = []
+        for pno in range(len(doc)):
+            page = doc[pno]
+            raw_text = page.get_text("text")
+
+            ticks = []
+            for img in page.get_images():
+                xref = img[0]
+                if xref in green_xrefs:
+                    for r in page.get_image_rects(xref):
+                        ticks.append(r)
+
+            if not ticks:
+                all_pages_text.append(raw_text)
+                continue
+
+            words = page.get_text("words")
+            opt_words = []
+            for w in words:
+                if w[4] in ["1.", "2.", "3.", "4."]:
+                    opt_words.append({"num": w[4][0], "y": w[1]})
+
+            matched_y_levels = []
+            for t in ticks:
+                closest = None
+                min_dist = 999.0
+                for opt in opt_words:
+                    dist = abs(t.y0 - opt["y"])
+                    if dist < min_dist:
+                        min_dist = dist
+                        closest = opt
+                if closest and min_dist < 10.0:
+                    matched_y_levels.append(closest)
+
+            if not matched_y_levels:
+                all_pages_text.append(raw_text)
+                continue
+
+            lines = raw_text.splitlines()
+            new_lines = []
+            matched_nums = {m["num"] for m in matched_y_levels}
+            for line in lines:
+                s_line = line.strip()
+                matched = False
+                for c_opt in matched_nums:
+                    if s_line.startswith(f"{c_opt}.") and "[Correct Option]" not in line:
+                        new_lines.append(f"{line} [Correct Option]")
+                        matched = True
+                        break
+                if not matched:
+                    new_lines.append(line)
+            all_pages_text.append("\n".join(new_lines))
+
+        return "\n".join(all_pages_text)
+    except Exception as e:
+        logger.warning(f"Tick extraction fallback: {e}")
+        return "\n".join([p.get_text("text") for p in doc])
+
 def extract_pdf_text(path: str, max_ocr_pages: int = None) -> str:
     """
     Extracts text from all pages of a PDF document safely.
@@ -31,13 +127,9 @@ def extract_pdf_text(path: str, max_ocr_pages: int = None) -> str:
     """
     try:
         doc = fitz.open(path)
-        pages = []
-        for page in doc:
-            pages.append(page.get_text("text"))
-        text = "\n".join(pages)
-
-        # If selectable text layer exists with sufficient content, return it directly
-        if len(text.strip()) >= 60:
+        sample_chars = sum(len(doc[i].get_text("text").strip()) for i in range(min(3, len(doc))))
+        if sample_chars >= 60:
+            text = _extract_text_with_green_ticks(doc)
             doc.close()
             return text
 

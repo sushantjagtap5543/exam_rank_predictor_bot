@@ -301,12 +301,17 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             q_text = item.get("question") or item.get("q") or ""
             if q_text and q_text.strip() not in seen_qs:
                 seen_qs.add(q_text.strip())
+                opts = item.get("options") or item.get("opts") or []
+                c_idx = item.get("correct_option_index")
+                correct_val = item.get("correct") or item.get("ans") or ""
+                if not correct_val and c_idx is not None and isinstance(opts, list) and 0 <= int(c_idx) < len(opts):
+                    correct_val = opts[int(c_idx)]
                 existing_data.append({
                     "q": q_text.strip(),
-                    "options": item.get("options") or item.get("opts") or [],
-                    "correct": item.get("correct") or item.get("ans") or "",
+                    "options": opts,
+                    "correct": correct_val,
                     "explanation": item.get("explanation") or item.get("exp") or "TCS/IBPS अधिकृत उत्तरतालिकेनुसार",
-                    "subject": item.get("subject") or "General"
+                    "subject": item.get("section") or item.get("subject") or "General"
                 })
                 added_count += 1
 
