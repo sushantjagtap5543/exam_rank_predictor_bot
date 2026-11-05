@@ -55,9 +55,10 @@ class ChiefExecutiveOfficer(BaseSeniorAgent):
         try:
             with sqlite3.connect(db_path) as db:
                 db.row_factory = sqlite3.Row
-                uploads_cnt = db.execute("SELECT COUNT(*) FROM uploads").fetchone()[0]
-                orders_row = db.execute("SELECT COUNT(*), COALESCE(SUM(amount_paid), 0) FROM product_orders WHERE status = 'approved'").fetchone()
-                prods_cnt = db.execute("SELECT COUNT(*) FROM digital_products WHERE is_active = 1").fetchone()[0]
+                tables = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+                uploads_cnt = db.execute("SELECT COUNT(*) FROM uploads").fetchone()[0] if "uploads" in tables else 0
+                orders_row = db.execute("SELECT COUNT(*), COALESCE(SUM(amount_paid), 0) FROM product_orders WHERE status = 'approved'").fetchone() if "product_orders" in tables else (0, 0)
+                prods_cnt = db.execute("SELECT COUNT(*) FROM digital_products WHERE is_active = 1").fetchone()[0] if "digital_products" in tables else 0
                 metrics = {
                     "total_uploads": uploads_cnt,
                     "total_orders": orders_row[0] if orders_row else 0,
