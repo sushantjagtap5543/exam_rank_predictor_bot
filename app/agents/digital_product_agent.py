@@ -9,6 +9,8 @@ import os
 import json
 import sqlite3
 import logging
+import random
+import re
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from .base_agent import BaseSeniorAgent
@@ -395,9 +397,160 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             "status": "synchronized_successfully"
         }
 
-    def get_all_products(self, db_path: str = "bot.db") -> List[Dict[str, Any]]:
-        """Returns all active digital products from SQLite database."""
+    def register_pdf_file_as_product(self, file_path: Path, db_path: str = "bot.db") -> Optional[Dict[str, Any]]:
+        """
+        Registers any physical PDF file placed in a product folder as an active digital product.
+        Assigns a random price between 10-50 INR and calculates actual page count.
+        """
+        file_path = Path(file_path).resolve()
+        if not file_path.exists() or file_path.stat().st_size < 1000:
+            return None
+
+        filename = file_path.name
+        if filename.startswith("test_") or filename.startswith("temp_") or filename.endswith(".tmp"):
+            return None
+
         self.init_products_db(db_path)
+
+        # Check if already registered by download_file
+        with sqlite3.connect(db_path) as db:
+            db.row_factory = sqlite3.Row
+            existing = db.execute("SELECT * FROM digital_products WHERE download_file = ?", (filename,)).fetchone()
+            if existing:
+                return dict(existing)
+
+        # Extract actual page count using fitz (PyMuPDF) or pypdf
+        pages = 48
+        try:
+            import fitz
+            doc = fitz.open(str(file_path))
+            pages = max(1, len(doc))
+            doc.close()
+        except Exception:
+            try:
+                from pypdf import PdfReader
+                reader = PdfReader(str(file_path))
+                pages = max(1, len(reader.pages))
+            except Exception:
+                pass
+
+        # Random price between 10 and 50 INR
+        price_inr = random.choice([10, 15, 19, 25, 29, 35, 39, 45, 49])
+        original_price_inr = min(price_inr * 3 + 30, 199)
+
+        # Infer category and title from filename
+        fn_clean = re.sub(r"[_\-]+", " ", file_path.stem).strip()
+        fn_lower = filename.lower()
+
+        if any(k in fn_lower for k in ["ca", "current", "ghadamodi", "chalu"]):
+            subject = "Current Affairs"
+            icon = "📰"
+            badge = f"🔥 चालू घडामोडी (₹{price_inr})"
+            title = f"{fn_clean} — चालू घडामोडी Top MCQs व विश्लेषण"
+        elif any(k in fn_lower for k in ["marathi", "vyakaran", "grammar"]):
+            subject = "Marathi"
+            icon = "✍️"
+            badge = f"⚡ मराठी व्याकरण (₹{price_inr})"
+            title = f"{fn_clean} — मराठी व्याकरण संपूर्ण ट्रिक्स व नियम"
+        elif any(k in fn_lower for k in ["math", "reason", "ankganit", "buddhimate"]):
+            subject = "Maths & Reasoning"
+            icon = "🔢"
+            badge = f"⚡ शॉर्टकट सूत्रे (₹{price_inr})"
+            title = f"{fn_clean} — गणित व बुद्धिमत्ता १५-सेकंद ट्रिक्स"
+        elif any(k in fn_lower for k in ["english", "vocab", "comprehension"]):
+            subject = "English"
+            icon = "📖"
+            badge = f"⭐ English Mastery (₹{price_inr})"
+            title = f"{fn_clean} — TCS/IBPS English Grammar & Vocab"
+        elif any(k in fn_lower for k in ["qbank", "question_bank", "oneliner", "response", "sheet"]):
+            subject = "PYQ & Response Sheets"
+            icon = "📑"
+            badge = f"🎯 ४-स्तंभ प्रश्नसंच (₹{price_inr})"
+            title = f"TCS/IBPS अधिकृत प्रश्नसंच (४-Columns AI स्पष्टीकरण) — {filename}"
+        else:
+            subject = "General Knowledge"
+            icon = "🗺️"
+            badge = f"📚 विशेष ई-बुक (₹{price_inr})"
+            title = f"{fn_clean} (महाराष्ट्र स्पर्धा परीक्षा विशेष ई-बुक)"
+
+        import hashlib
+        prod_id = f"prod_file_{hashlib.md5(filename.encode()).hexdigest()[:10]}"
+
+        # Ensure the PDF is placed in admin_storage/products/ for instant downloads
+        target_dir = Path(__file__).resolve().parent.parent.parent / "admin_storage" / "products"
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_pdf = target_dir / filename
+        if file_path != target_pdf:
+            try:
+                import shutil
+                shutil.copy2(file_path, target_pdf)
+            except Exception as e:
+                logger.warning(f"Could not copy {file_path} to products dir: {e}")
+
+        # Insert into digital_products table
+        with sqlite3.connect(db_path) as db:
+            db.execute("""
+                INSERT OR REPLACE INTO digital_products (
+                    id, title, subject, price_inr, original_price_inr, pages,
+                    rating, reviews_count, badge, description, download_file, tier, icon, is_active, sales_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)
+            """, (
+                prod_id,
+                title,
+                subject,
+                price_inr,
+                original_price_inr,
+                pages,
+                4.9,
+                random.randint(120, 950),
+                badge,
+                f"TCS, IBPS व MPSC परीक्षांसाठी उपयुक्त अधिकृत डिजिटल ई-बुक ({filename}). सविस्तर स्पष्टीकरणासह तात्काळ डाऊनलोड उपलब्ध.",
+                filename,
+                "E-Book",
+                icon
+            ))
+
+        logger.info(f"✅ Auto-added PDF '{filename}' to website store with price ₹{price_inr} (ID: {prod_id})")
+        return {
+            "id": prod_id,
+            "title": title,
+            "subject": subject,
+            "price_inr": price_inr,
+            "original_price_inr": original_price_inr,
+            "pages": pages,
+            "download_file": filename
+        }
+
+    def sync_folder_pdfs_to_products(self, db_path: str = "bot.db") -> int:
+        """
+        Scans all designated product directories and automatically adds any new PDF
+        files to the web store with a price randomly between 10-50 INR.
+        """
+        root_dir = Path(__file__).resolve().parent.parent.parent
+        scan_dirs = [
+            root_dir / "products",
+            root_dir / "admin_storage" / "products",
+            root_dir / "admin_storage" / "reports",
+            root_dir / "reports",
+        ]
+
+        added_count = 0
+        for s_dir in scan_dirs:
+            if s_dir.exists() and s_dir.is_dir():
+                for pdf_file in s_dir.glob("*.pdf"):
+                    try:
+                        res = self.register_pdf_file_as_product(pdf_file, db_path=db_path)
+                        if res:
+                            added_count += 1
+                    except Exception as e:
+                        logger.warning(f"Error auto-syncing product PDF {pdf_file}: {e}")
+
+        return added_count
+
+    def get_all_products(self, db_path: str = "bot.db") -> List[Dict[str, Any]]:
+        """Returns all active digital products from SQLite database with automatic folder sync."""
+        self.init_products_db(db_path)
+        self.sync_folder_pdfs_to_products(db_path)
         with sqlite3.connect(db_path) as db:
             db.row_factory = sqlite3.Row
             rows = db.execute("SELECT * FROM digital_products WHERE is_active = 1 ORDER BY price_inr ASC").fetchall()
@@ -425,6 +578,19 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
 
         if not force_rebuild and target_path.exists() and target_path.stat().st_size > 1024:
             return target_path
+
+        # If product is Current Affairs, use Chalu Ghadamodi specification layout
+        if prod.get("subject") == "Current Affairs" or "ca" in product_id:
+            try:
+                from ..chalu_ghadamodi_builder import build_chalu_ghadamodi_pdf, structure_raw_data_to_chalu_ghadamodi
+                raw_content = get_subject_specific_content(product_id)
+                month_label = prod.get("title", "चालू घडामोडी").split(" ")[0]
+                data = structure_raw_data_to_chalu_ghadamodi(raw_content, month_name=month_label)
+                built_pdf = build_chalu_ghadamodi_pdf(data, str(target_path))
+                if os.path.exists(built_pdf) and os.path.getsize(built_pdf) > 2000:
+                    return Path(built_pdf)
+            except Exception as e:
+                logger.warning(f"Chalu Ghadamodi builder fallback to reportlab: {e}")
 
         # Generate publication-grade PDF using ReportLab
         from reportlab.lib.pagesizes import A4

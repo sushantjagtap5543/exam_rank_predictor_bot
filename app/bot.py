@@ -4743,7 +4743,19 @@ def main():
     init_db()
     init_quiz_db(DB_PATH)
     packaging_agent.init_products_db(DB_PATH)
+    packaging_agent.sync_folder_pdfs_to_products(DB_PATH)
     threading.Thread(target=lambda: [packaging_agent.ensure_product_pdf(p['id']) for p in DEFAULT_PRODUCTS], daemon=True).start()
+
+    def _auto_product_sync_worker():
+        import time
+        while True:
+            time.sleep(15)
+            try:
+                packaging_agent.sync_folder_pdfs_to_products(DB_PATH)
+            except Exception:
+                pass
+
+    threading.Thread(target=_auto_product_sync_worker, daemon=True).start()
     logger.info("Initializing Telegram application...")
     app = (
         Application.builder()
