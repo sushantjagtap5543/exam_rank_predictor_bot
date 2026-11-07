@@ -1956,12 +1956,12 @@ def generate_oneliner_question_bank_pdf(db_path: str, output_path: str, exam_nam
         story.append(sec_banner)
         story.append(Spacer(1, 3))
 
-        # Strictly 4 Columns Table for this Section: 1-Index, 2-Question, 3-Answer, 4-AI Explanation
+        # Strictly 4 Columns Table for this Section: 1-Index, 2-Question, 3-Answer, 4-Explanation
         table_data = [[
             Paragraph("<b>क्र.</b>", th_style),
             Paragraph("<b>प्रश्न (Question)</b>", th_style),
             Paragraph("<b>अचूक उत्तर (Answer)</b>", th_style),
-            Paragraph("<b>AI सविस्तर स्पष्टीकरण (AI Explanation)</b>", th_style)
+            Paragraph("<b>Explanation</b>", th_style)
         ]]
 
         for item in items:
