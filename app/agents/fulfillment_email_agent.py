@@ -136,11 +136,11 @@ class FulfillmentEmailAgent(BaseSeniorAgent):
         Sends transactional delivery email with digital product to customer.
         Uses SMTP settings from .env (e.g. Gmail / SendGrid / SES) if available.
         """
-        smtp_host = os.getenv("SMTP_HOST", "").strip()
+        smtp_host = os.getenv("SMTP_HOST", "").strip() or os.getenv("SMTP_SERVER", "").strip()
         smtp_port = int(os.getenv("SMTP_PORT", "587"))
         smtp_user = os.getenv("SMTP_USER", "").strip()
-        smtp_pass = os.getenv("SMTP_PASSWORD", "").strip()
-        sender_email = os.getenv("SENDER_EMAIL", smtp_user or "support@examrankers.com")
+        smtp_pass = os.getenv("SMTP_PASSWORD", "").strip() or os.getenv("SMTP_PASS", "").strip()
+        sender_email = os.getenv("SENDER_EMAIL", "").strip() or os.getenv("SMTP_FROM", "").strip() or smtp_user or "support@examrankers.com"
 
         subject_line = f"🎉 [Download Ready] {product.get('title', 'Your Digital Product')} — ExamRankers India"
         product_title = product.get("title", "Digital Study Material")

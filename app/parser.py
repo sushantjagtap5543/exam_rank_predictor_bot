@@ -507,6 +507,19 @@ def parse_answers(text: str):
         elif correct_opt_num and opt_ids.get(correct_opt_num):
             correct_id = opt_ids[correct_opt_num]
 
+        # Bidirectional Option ID <-> Option Number resolution
+        if not correct_opt_num and correct_id and opt_ids:
+            for onum, oid in opt_ids.items():
+                if str(oid).strip() == str(correct_id).strip():
+                    correct_opt_num = str(onum)
+                    break
+
+        if not given_opt_num and selected_id and opt_ids:
+            for onum, oid in opt_ids.items():
+                if str(oid).strip() == str(selected_id).strip():
+                    given_opt_num = str(onum)
+                    break
+
         status = status_match.group(1).strip() if status_match else None
 
         clean_excerpt = re.sub(r"(?:Question|Option\s*\d|Status|Chosen|Answer\s*Given|Correct\s*Answer).*?(?:\n|$)", "", block, flags=re.I)
@@ -522,13 +535,33 @@ def parse_answers(text: str):
         else:
             full_q_text = clean_excerpt
 
-        # Extract all options (1 to 4)
+        # Extract all options (1 to 4, Devanagari १-४, or Letters A-D)
         options = {}
-        opt_matches = re.findall(r"(?:\n|^)\s*([1-4])\s*[\.\):\-]\s*([^\n]+(?:\n(?![1-4]\s*[\.\):\-]|Question|Status|Ans|Chosen|Option\s*\d\s*ID)[^\n]+)*)", block)
-        for opt_num, opt_val in opt_matches:
+        opt_matches = re.findall(
+            r"(?:\n|^)\s*([1-4]|[१-४]|[A-Da-d])\s*[\.\):\-]\s*([^\n]+(?:\n(?!(?:[1-4]|[१-४]|[A-Da-d])\s*[\.\):\-]|Question|Status|Ans|Chosen|Option\s*\d\s*ID)[^\n]+)*)",
+            block
+        )
+        devanagari_map = {"१": "1", "२": "2", "३": "3", "४": "4"}
+        letter_map = {"A": "1", "B": "2", "C": "3", "D": "4", "a": "1", "b": "2", "c": "3", "d": "4"}
+
+        for raw_num, opt_val in opt_matches:
+            normalized_num = devanagari_map.get(raw_num, letter_map.get(raw_num, raw_num))
+            # If option text explicitly contains checkmark or [Correct Option], mark as correct
+            if not correct_opt_num and re.search(r"\[Correct Option\]|rightAns|[✓✔☑]", opt_val, re.I):
+                correct_opt_num = str(normalized_num)
+                if opt_ids.get(correct_opt_num):
+                    correct_id = opt_ids[correct_opt_num]
+
             cleaned_opt = re.sub(r"\[Correct Option\]|rightAns|[✓✔☑]", "", opt_val, flags=re.I).strip()
             cleaned_opt = re.sub(r"\s+", " ", cleaned_opt)
-            options[str(opt_num)] = cleaned_opt
+            options[str(normalized_num)] = cleaned_opt
+
+        # Final fallback check: if correct_opt_num still None but correct_id exists
+        if not correct_opt_num and correct_id and opt_ids:
+            for onum, oid in opt_ids.items():
+                if str(oid).strip() == str(correct_id).strip():
+                    correct_opt_num = str(onum)
+                    break
 
         chosen_text = options.get(str(given_opt_num), "") if given_opt_num else ""
         correct_text = options.get(str(correct_opt_num), "") if correct_opt_num else ""

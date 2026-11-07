@@ -46,7 +46,7 @@ class UIUXDesignArchitect(BaseSeniorAgent):
         Returns UX/UI design guidelines and audit metrics for the digital store.
         """
         return {
-            "design_system_version": "NanoBanana-Dark-v3.0",
+            "design_system_version": "ExamRankers-Dark-v3.0",
             "audit_score": 98,
             "metrics": {
                 "contrast_ratio": "14.2:1 (Exceeds WCAG AAA)",

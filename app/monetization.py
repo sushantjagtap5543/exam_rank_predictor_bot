@@ -7,6 +7,8 @@ Monetization & Ads Management Engine with ₹99 Paid Telegram Channel Integratio
 """
 
 import os
+import io
+import base64
 import sqlite3
 import logging
 import urllib.parse
@@ -27,6 +29,67 @@ def get_db_path() -> str:
 
 def get_paid_channel_link() -> str:
     return os.getenv("PAID_CHANNEL_LINK", DEFAULT_PAID_CHANNEL_LINK).strip() or DEFAULT_PAID_CHANNEL_LINK
+
+def generate_qr_bytes(data: str) -> bytes:
+    """Generates PNG bytes for a QR code locally using qrcode and Pillow."""
+    try:
+        import qrcode
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=8,
+            border=2,
+        )
+        qr.add_data(data)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception as e:
+        logger.warning(f"Local QR bytes error: {e}")
+        return b""
+
+def generate_qr_base64(data: str) -> str:
+    """Generates base64 data URI for an offline-safe QR code."""
+    png_bytes = generate_qr_bytes(data)
+    if png_bytes:
+        b64 = base64.b64encode(png_bytes).decode("utf-8")
+        return f"data:image/png;base64,{b64}"
+    return f"https://api.qrserver.com/v1/create-qr-code/?size=280x280&data={urllib.parse.quote(data)}"
+
+def validate_utr_format(utr: str) -> bool:
+    """Validates realistic UPI/Bank UTR format (8 to 22 alphanumeric characters)."""
+    if not utr:
+        return False
+    clean = utr.strip()
+    return 8 <= len(clean) <= 22 and clean.isalnum()
+
+def is_utr_already_used(utr: str, db_path: str = None) -> bool:
+    """Anti-Fraud: Checks whether a UTR has already been approved in payments or product_orders."""
+    if not utr or len(utr.strip()) < 6:
+        return False
+    clean_utr = utr.strip().lower()
+    path = db_path or get_db_path()
+    try:
+        with sqlite3.connect(path) as db:
+            # Check VIP payments
+            p_row = db.execute(
+                "SELECT id FROM payments WHERE LOWER(TRIM(utr)) = ? AND status = 'approved'",
+                (clean_utr,)
+            ).fetchone()
+            if p_row:
+                return True
+            # Check store product orders
+            o_row = db.execute(
+                "SELECT id FROM product_orders WHERE LOWER(TRIM(utr)) = ? AND status = 'approved'",
+                (clean_utr,)
+            ).fetchone()
+            if o_row:
+                return True
+    except Exception as e:
+        logger.warning(f"Error checking UTR duplication: {e}")
+    return False
 
 def init_monetization_db():
     db_path = get_db_path()
@@ -77,7 +140,7 @@ def init_monetization_db():
 
 def get_upi_payment_details(user_id: int) -> dict:
     """Generates UPI intent link, QR code, and details for ₹99 channel subscription."""
-    upi_id = os.getenv("UPI_ID", "examrankers@upi").strip()
+    upi_id = os.getenv("UPI_ID", "9970095256-2@ybl").strip()
     upi_name = os.getenv("UPI_NAME", "ExamRankers").strip()
     amount = os.getenv("CHANNEL_FEE_INR", "99").strip()
 
@@ -88,6 +151,7 @@ def get_upi_payment_details(user_id: int) -> dict:
     # Standard UPI URI format accepted by GPay, PhonePe, Paytm, BHIM
     upi_uri = f"upi://pay?pa={upi_id}&pn={encoded_name}&am={amount}&cu=INR&tn={encoded_note}"
     qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={urllib.parse.quote(upi_uri)}"
+    qr_data_uri = generate_qr_base64(upi_uri)
 
     return {
         "upi_id": upi_id,
@@ -95,6 +159,7 @@ def get_upi_payment_details(user_id: int) -> dict:
         "amount": amount,
         "upi_uri": upi_uri,
         "qr_url": qr_url,
+        "qr_data_uri": qr_data_uri,
         "note": note,
         "channel_link": get_paid_channel_link()
     }
@@ -135,8 +200,9 @@ async def approve_and_generate_invite(bot: Bot, payment_id: int) -> tuple[bool, 
     # Try creating single-use dynamic invite if bot is admin in channel ID
     if channel_id and (channel_id.startswith("-100") or channel_id.startswith("@")):
         try:
+            target_chat = int(channel_id) if channel_id.lstrip("-").isdigit() else channel_id
             invite = await bot.create_chat_invite_link(
-                chat_id=channel_id,
+                chat_id=target_chat,
                 member_limit=1,
                 name=f"VIP_{user_id}"
             )
@@ -162,6 +228,33 @@ async def approve_and_generate_invite(bot: Bot, payment_id: int) -> tuple[bool, 
     )
     await bot.send_message(chat_id=user_id, text=user_message, parse_mode="HTML")
     return True, invite_link
+
+async def reject_payment(bot: Bot, payment_id: int, reason: str = "") -> tuple[bool, str]:
+    """Rejects payment submission and sends notification to user."""
+    with sqlite3.connect(get_db_path()) as db:
+        row = db.execute(
+            "SELECT telegram_user_id, first_name, status FROM payments WHERE id = ?", (payment_id,)
+        ).fetchone()
+        if not row:
+            return False, "Payment record not found."
+        user_id, first_name, status = row
+        db.execute("UPDATE payments SET status = 'rejected' WHERE id = ?", (payment_id,))
+
+    user_message = (
+        "❌ <b>पेमेंट पडताळणी अयशस्वी (Payment Verification Failed)</b>\n\n"
+        f"नमस्कार {first_name or 'Aspirant'},\n"
+        "तुमच्या सबमिट केलेल्या ₹99 पेमेंटची पडताळणी होऊ शकली नाही किंवा चुकीचा UTR / स्क्रीनशॉट आढळला आहे.\n\n"
+        "💡 <b>काय करावे?</b>\n"
+        "१. कृपया बँकेच्या / UPI ॲपच्या पासबुकमधून अचूक १२-अंकी UTR किंवा ट्रान्झॅक्शन नंबर तपासा.\n"
+        "२. योग्य UTR सह पुन्हा /vip कमांड देऊन स्क्रीनशॉट पाठवा किंवा ऍडमिनशी संपर्क साधा."
+    )
+    if reason:
+        user_message += f"\n\nकारण: {reason}"
+    try:
+        await bot.send_message(chat_id=user_id, text=user_message, parse_mode="HTML")
+    except Exception as e:
+        logger.warning(f"Failed to send rejection message to user {user_id}: {e}")
+    return True, "Payment marked as rejected and user notified."
 
 def get_active_ad() -> dict:
     """Fetches the current active sponsor ad and increments impression count."""

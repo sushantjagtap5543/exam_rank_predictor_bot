@@ -22,10 +22,18 @@ from telegram import Bot
 logger = logging.getLogger(__name__)
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "db.sqlite3")
+# Standardize on bot.db across all modules
+DEFAULT_DB_PATH = os.getenv("DB_PATH", os.path.join(os.path.dirname(os.path.dirname(__file__)), "bot.db"))
+
+def normalize_question_text(q_text: str) -> str:
+    """Strips variable prefixes like Q.1, [उताऱ्यावरील प्रश्न], [General], etc. and normalizes punctuation and spacing."""
+    t = re.sub(r"^\[.*?\]\s*", "", q_text.strip())
+    t = re.sub(r"^(?:Q\s*\.?\s*\d+|Question\s*(?:No\.?|Number)?\s*\d+|\d+[\.\):-])\s*[:\-]?\s*", "", t, flags=re.I)
+    t = re.sub(r"[^\w\s]", "", t, flags=re.UNICODE)
+    return re.sub(r"\s+", " ", t).strip().lower()
 
 def init_quiz_db(db_path: str = DEFAULT_DB_PATH):
-    """Initializes the deduplication table for posted quizzes."""
+    """Initializes the deduplication table for posted quizzes in bot.db."""
     dir_name = os.path.dirname(db_path)
     if dir_name:
         os.makedirs(dir_name, exist_ok=True)
@@ -35,40 +43,58 @@ def init_quiz_db(db_path: str = DEFAULT_DB_PATH):
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 question_hash TEXT UNIQUE,
                 question_text TEXT,
+                normalized_q TEXT,
                 section TEXT,
                 has_passage INTEGER DEFAULT 0,
                 posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Ensure normalized_q column exists for schema migration
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(posted_quizzes)")
+        cols = [c[1] for c in cur.fetchall()]
+        if "normalized_q" not in cols:
+            conn.execute("ALTER TABLE posted_quizzes ADD COLUMN normalized_q TEXT")
         conn.commit()
 
 def compute_question_hash(question_text: str, options: list[str]) -> str:
-    """Computes a normalized SHA-256 hash for deduplication."""
-    clean_q = re.sub(r"\s+", " ", question_text.strip().lower())
+    """Computes a normalized SHA-256 hash for deduplication regardless of question number or section prefix."""
+    clean_q = normalize_question_text(question_text)
     clean_opts = "|".join(re.sub(r"\s+", " ", opt.strip().lower()) for opt in sorted(options))
     raw_key = f"{clean_q}::{clean_opts}"
     return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
 
-def is_quiz_already_posted(question_hash: str, db_path: str = DEFAULT_DB_PATH) -> bool:
-    """Checks if a quiz with the same hash was already posted to the channel."""
+def is_quiz_already_posted(question_hash: str, question_text: str = "", db_path: str = DEFAULT_DB_PATH) -> bool:
+    """Checks if a quiz with the same content hash or normalized question text was already posted."""
     try:
         init_quiz_db(db_path)
         with sqlite3.connect(db_path) as conn:
             cur = conn.cursor()
             cur.execute("SELECT 1 FROM posted_quizzes WHERE question_hash = ? LIMIT 1", (question_hash,))
-            return cur.fetchone() is not None
+            if cur.fetchone() is not None:
+                return True
+            if question_text:
+                norm_q = normalize_question_text(question_text)
+                if len(norm_q) > 15:
+                    cur.execute("SELECT 1 FROM posted_quizzes WHERE normalized_q = ? LIMIT 1", (norm_q,))
+                    if cur.fetchone() is not None:
+                        return True
+            return False
     except Exception as e:
         logger.warning(f"Error checking quiz deduplication: {e}")
         return False
 
 def mark_quiz_as_posted(question_hash: str, question_text: str, section: str = "", has_passage: bool = False, db_path: str = DEFAULT_DB_PATH):
-    """Marks a quiz as posted in the database."""
+    """Marks a quiz as posted in the database with hash and normalized text."""
     try:
         init_quiz_db(db_path)
+        norm_q = normalize_question_text(question_text)
         with sqlite3.connect(db_path) as conn:
             conn.execute(
-                "INSERT OR IGNORE INTO posted_quizzes (question_hash, question_text, section, has_passage) VALUES (?, ?, ?, ?)",
-                (question_hash, question_text[:500], section[:100], 1 if has_passage else 0)
+                """INSERT OR IGNORE INTO posted_quizzes 
+                   (question_hash, question_text, normalized_q, section, has_passage) 
+                   VALUES (?, ?, ?, ?, ?)""",
+                (question_hash, question_text[:500], norm_q[:500], section[:100], 1 if has_passage else 0)
             )
             conn.commit()
     except Exception as e:
@@ -212,6 +238,7 @@ def extract_quizzes_from_records(
       * completely anonymous
     """
     quizzes = []
+    seen_hashes = set()
     init_quiz_db(db_path)
 
     for r in records:
@@ -221,17 +248,36 @@ def extract_quizzes_from_records(
         q_text = r.get("question_text", "").strip()
         options_dict = r.get("options", {})
         c_num = r.get("correct_option_number")
+        c_id = r.get("correct_option_id")
+        opt_ids = r.get("option_ids", {})
         passage = r.get("comprehension", "").strip()
+
+        # Fallback 1: Resolve c_num from c_id and opt_ids
+        if not c_num and c_id and opt_ids:
+            for onum, oid in opt_ids.items():
+                if str(oid).strip() == str(c_id).strip():
+                    c_num = str(onum)
+                    break
+
+        # Fallback 2: Check options_dict for [Correct Option] or checkmarks
+        if not c_num:
+            for ok, ov in options_dict.items():
+                if re.search(r"\[Correct Option\]|rightAns|[✓✔☑]", ov, re.I):
+                    c_num = str(ok)
+                    break
 
         if len(options_dict) >= 4 and str(c_num) in ("1", "2", "3", "4") and len(q_text) >= 5:
             opts = [options_dict[str(k)][:95] for k in ["1", "2", "3", "4"]]
             c_idx = int(c_num) - 1
             sec = r.get("section", "General")
 
-            # Check deduplication
+            # Check deduplication against in-memory batch and database
             q_hash = compute_question_hash(q_text, opts)
-            if filter_unposted and is_quiz_already_posted(q_hash, db_path):
+            if q_hash in seen_hashes:
                 continue
+            if filter_unposted and is_quiz_already_posted(q_hash, q_text, db_path):
+                continue
+            seen_hashes.add(q_hash)
 
             c_txt = options_dict[str(c_num)]
             exp = f"अधिकृत उत्तर: पर्याय {c_num} ({c_txt[:50]}). {sec} पॅटर्ननुसार प्रमाणित स्पष्टीकरण."[:195]
@@ -346,7 +392,7 @@ async def send_quizzes_to_channel(
         q_hash = q.get("hash") or compute_question_hash(q["question"], q["options"])
 
         # Deduplication check
-        if is_quiz_already_posted(q_hash, db_path):
+        if is_quiz_already_posted(q_hash, q["question"], db_path):
             logger.info(f"Skipping already posted quiz: {q['question'][:40]}...")
             continue
 

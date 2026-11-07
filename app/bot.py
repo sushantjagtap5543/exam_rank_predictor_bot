@@ -80,7 +80,12 @@ from .monetization import (
     get_upi_payment_details,
     record_payment_request,
     approve_and_generate_invite,
+    reject_payment,
     get_paid_channel_link,
+    generate_qr_bytes,
+    generate_qr_base64,
+    validate_utr_format,
+    is_utr_already_used,
 )
 from .digital_store import (
     render_nano_banana_store_html,
@@ -374,10 +379,40 @@ def init_db():
                 except Exception as e:
                     logger.warning(f"Column migration warning for {col_name}: {e}")
 
+        # Store Visitors tracking table
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS store_visitors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ip_address TEXT,
+                user_agent TEXT,
+                device_type TEXT,
+                referrer TEXT,
+                telegram_user_id INTEGER,
+                page_path TEXT,
+                action TEXT DEFAULT 'view_store',
+                product_id TEXT,
+                details TEXT,
+                visited_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
     try:
         init_monetization_db()
     except Exception as e:
         logger.warning(f"Could not initialize monetization tables: {e}")
+
+def log_store_visitor(ip: str, user_agent: str, referrer: str = "", tg_id: int = None, page_path: str = "/", action: str = "view_store", product_id: str = "", details: str = ""):
+    """Logs a visitor to the Standalone Web Store."""
+    try:
+        ua_lower = (user_agent or "").lower()
+        device_type = "Mobile" if any(k in ua_lower for k in ["mobile", "android", "iphone", "ipad"]) else "Desktop"
+        with get_connection() as db:
+            db.execute("""
+                INSERT INTO store_visitors (ip_address, user_agent, device_type, referrer, telegram_user_id, page_path, action, product_id, details)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (str(ip or "")[:45], str(user_agent or "")[:250], device_type, str(referrer or "")[:250], tg_id, str(page_path or "")[:100], str(action or "")[:50], str(product_id or "")[:50], str(details or "")[:250]))
+    except Exception as e:
+        logger.warning(f"Error logging store visitor: {e}")
 
 async def _send_single_msg(bot, chat_id, chunk: str, parse_mode, reply_markup, disable_web_page_preview):
     try:
@@ -640,15 +675,32 @@ async def auto_post_quizzes_background(bot, text: str, exam_name: str, records: 
 
 # ----------------- TELEGRAM BOT HANDLERS ----------------- #
 
+def alert_admins_sync(text: str):
+    """Sends immediate notification to all Telegram bot admins synchronously."""
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    if not token or not ADMIN_IDS:
+        return
+    for aid in ADMIN_IDS:
+        try:
+            import requests
+            requests.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": aid, "text": text, "parse_mode": "HTML"},
+                timeout=5
+            )
+        except Exception as e:
+            logger.warning(f"Could not alert admin {aid}: {e}")
+
 async def check_channel_membership(bot, user_id: int) -> bool:
-    """Checks whether the user is an active member or administrator of the official ExamRankers Telegram channel."""
+    """Checks whether the user is an active member of the configured free/public Telegram channel."""
     if user_id in ADMIN_IDS:
         return True
-    channel_id_str = os.getenv("PAID_CHANNEL_ID", "-1004381339759").strip()
+    # Only enforce if a separate free/public channel is specifically configured for force subscription
+    channel_id_str = os.getenv("FORCE_SUB_CHANNEL_ID", os.getenv("FREE_CHANNEL_ID", "")).strip()
     if not channel_id_str:
         return True
     try:
-        channel_id = int(channel_id_str)
+        channel_id = int(channel_id_str) if channel_id_str.lstrip("-").isdigit() else channel_id_str
         member = await bot.get_chat_member(chat_id=channel_id, user_id=user_id)
         return member.status in ("member", "administrator", "creator")
     except Exception as e:
@@ -699,6 +751,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Force Join Channel Gate
     if not await check_channel_membership(context.bot, user.id):
         await prompt_force_join(update, context)
+        return
+
+    # Deep-link routing e.g. /start quiz
+    if context.args and context.args[0] in ("quiz", "practice", "mcq"):
+        await quiz_cmd(update, context)
         return
 
     context.user_data.clear()
@@ -911,6 +968,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await q.answer("⚠️ तुम्ही अजून चॅनेल जॉईन केलेले नाही! कृपया आधी चॅनेल जॉईन करा.", show_alert=True)
 
+    elif data == "next_quiz":
+        await quiz_cmd(update, context)
+
     elif data == "daily_questions":
         daily_data = get_daily_latest_exam_questions()
         lines = [
@@ -970,14 +1030,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data in ("store", "open_store"):
         await store_cmd(update, context)
 
-    elif data.startswith("buy_prod:"):
+    elif data.startswith("buy:") or data.startswith("buy_prod:"):
         prod_id = data.split(":", 1)[1]
         prod = packaging_agent.get_product_by_id(prod_id, DB_PATH) or DEFAULT_PRODUCTS[0]
         context.user_data["buying_product_id"] = prod_id
         context.user_data["buying_product_price"] = prod.get("price_inr", 19)
         context.user_data["awaiting_store_utr"] = True
 
-        upi_id = os.getenv("UPI_ID", "examrankers@upi").strip()
+        upi_id = os.getenv("UPI_ID", "9970095256-2@ybl").strip()
         upi_name = os.getenv("UPI_NAME", "ExamRankers India").strip()
         price = prod.get("price_inr", 19)
         upi_uri = f"upi://pay?pa={upi_id}&pn={urllib.parse.quote(upi_name)}&am={price}&cu=INR&tn=Store_{prod_id[:8]}"
@@ -996,10 +1056,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"⚡ <i>पेमेंट कन्फर्म होताच पुस्तक तात्काळ येथे PDF स्वरूपात व तुमच्या Email वर पाठवले जाईल!</i>"
         )
         kb = [
-            [InlineKeyboardButton("⚡ थेट UPI ॲपमध्ये उघडा", url=upi_uri)],
             [InlineKeyboardButton("🌐 वेब स्टोअरवरून खरेदी करा", url=f"{get_store_web_url()}#checkoutModal")],
             [InlineKeyboardButton("🔙 मागे जा (Back to Store)", callback_data="store")]
         ]
+        qr_bytes = generate_qr_bytes(upi_uri)
+        if qr_bytes:
+            try:
+                await q.message.reply_photo(
+                    photo=io.BytesIO(qr_bytes),
+                    caption=pay_msg,
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(kb)
+                )
+                return
+            except Exception as e:
+                logger.warning(f"Error sending local QR bytes photo: {e}")
+
         try:
             await q.message.reply_photo(
                 photo=qr_url,
@@ -1098,12 +1170,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await download_store_content_cmd(update, context)
         return
 
-# join_paid handler removed (monetization disabled)
+    elif data in ("join_paid", "vip_channel", "pay_vip"):
+        await vip_cmd(update, context)
 
     elif data == "submit_proof":
         context.user_data["awaiting_payment_proof"] = True
         await q.message.reply_text(
-            "📤 <b>Please send your 12-digit UPI UTR number or upload your payment screenshot now:</b>",
+            "📤 <b>कृपया तुमचा १२-अंकी UPI UTR नंबर किंवा पेमेंटचा स्क्रीनशॉट येथे पाठवा:</b>\n\n"
+            "उदा: <code>431289456789</code>",
             parse_mode="HTML"
         )
 
@@ -1127,9 +1201,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.effective_user.id not in ADMIN_IDS:
             await q.answer("⛔ Restricted to admin.", show_alert=True)
             return
-        with get_connection() as db:
-            db.execute("UPDATE payments SET status = 'rejected' WHERE id = ?", (payment_id,))
-        await q.message.edit_text(f"❌ Payment #{payment_id} marked as Rejected.", parse_mode="HTML")
+        success, res = await reject_payment(context.bot, payment_id)
+        await q.message.edit_text(f"❌ Payment #{payment_id} marked as Rejected and user notified.", parse_mode="HTML")
 
     elif data == "admin_dl_all_zip":
         if update.effective_user.id not in ADMIN_IDS:
@@ -1409,13 +1482,16 @@ async def handle_url_sheet(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                 )
                 await complete_analysis(update, context, detected["key"])
             elif detected.get("status") == "ambiguous":
-                keyboard = [[InlineKeyboardButton(m["name"], callback_data=f"exam:{m['key']}")] for m in detected["matches"]]
-                keyboard.append([InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")])
+                matches = detected.get("matches", [])
+                chosen_m = matches[min(2, len(matches) - 1)] if len(matches) >= 3 else matches[0]
+                context.user_data["exam_key"] = chosen_m["key"]
                 await status_msg.edit_text(
-                    f"⚠️ Multiple matching exams detected for post <code>{post_name}</code>.\nPlease select your specific exam:",
-                    parse_mode="HTML",
-                    reply_markup=InlineKeyboardMarkup(keyboard)
+                    f"✅ <b>परीक्षा ऑटो-डिटेक्ट: {chosen_m['name']}</b>\n"
+                    f"🎖️ Post: <code>{post_name}</code>\n"
+                    "गुण व ४-टियर रँक विश्लेषण करत आहे...",
+                    parse_mode="HTML"
                 )
+                await complete_analysis(update, context, chosen_m["key"])
             else:
                 keyboard = [[InlineKeyboardButton(c["display_name"], callback_data=f"exam:{k}")] for k, c in EXAMS.items()]
                 keyboard.append([InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")])
@@ -1665,8 +1741,14 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
                 pass
             await complete_analysis(update, context, key)
         elif detected.get("status") == "ambiguous":
-            keyboard = [[InlineKeyboardButton(m["name"], callback_data=f"exam:{m['key']}")] for m in detected["matches"]]
-            await status_msg.edit_text("🔍 Several configured exams matched your sheet. Please select your specific exam:", reply_markup=InlineKeyboardMarkup(keyboard))
+            matches = detected.get("matches", [])
+            chosen_m = matches[min(2, len(matches) - 1)] if len(matches) >= 3 else matches[0]
+            context.user_data["exam_key"] = chosen_m["key"]
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
+            await complete_analysis(update, context, chosen_m["key"])
         else:
             keyboard = [[InlineKeyboardButton(c["display_name"], callback_data=f"exam:{k}")] for k, c in EXAMS.items()]
             await status_msg.edit_text("⚠️ Could not auto-detect the exam title from document text. Please select your exam:", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -1888,118 +1970,99 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
             )
         return
 
-    # Force Join Channel Gate
-    if not await check_channel_membership(context.bot, user.id):
-        await prompt_force_join(update, context)
-        return
+    # -------------------------------------------------------------
+    # 1. PAYMENT GATEWAY: Check if user is submitting payment proof
+    # -------------------------------------------------------------
+    caption_text = (msg.caption or "").strip()
+    combined_text = f"{raw_text} {caption_text}".strip()
 
-    # Check if user sent a response sheet Web / DigiALM URL
-    url_match = re.search(r"https?://[^\s<>\"']+", raw_text)
-    if url_match:
-        await handle_url_sheet(update, context, url_match.group(0))
-        return
-
-    # Check if user tapped one of the persistent reply keyboard buttons
-    clean_text = raw_text.lower()
-    if any(k in clean_text for k in ["start", "सुरू करा", "main menu", "मुख्य मेनू", "मेनू", "menu"]) or raw_text in ("/start", "/menu"):
-        await start(update, context)
-        return
-    elif any(k in clean_text for k in ["store", "ई-बुक्स स्टोअर", "ई-बुक", "books", "products", "स्टोअर"]):
-        await store_cmd(update, context)
-        return
-
-    # Check if user is submitting payment for a digital store product
-    if context.user_data.get("awaiting_store_utr") or (context.user_data.get("buying_product_id") and re.search(r"\b\d{6,16}\b", raw_text)):
+    # Case A: Digital Store Product Purchase
+    if context.user_data.get("awaiting_store_utr") or (context.user_data.get("buying_product_id") and (msg.photo or re.search(r"\b[A-Za-z0-9]{8,22}\b", combined_text))):
         prod_id = context.user_data.get("buying_product_id", "prod_ca_monthly_top200")
         price = context.user_data.get("buying_product_price", 19)
 
-        email_match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", raw_text)
+        email_match = re.search(r"[\w\.-]+@[\w\.-]+\.\w+", combined_text)
         customer_email = email_match.group(0) if email_match else f"user_{user.id}@telegram.com"
 
-        utr_match = re.search(r"\b\d{6,16}\b", raw_text)
-        utr_val = utr_match.group(0) if utr_match else raw_text.strip()[:16]
-
-        order_res = fulfillment_agent.create_order(prod_id, customer_email, float(price), customer_telegram_id=user.id, db_path=DB_PATH)
-        order_token = order_res["order_token"]
-
-        success, msg, prod_data = fulfillment_agent.confirm_and_fulfill_order(order_token, utr_val, db_path=DB_PATH)
-
-        context.user_data["awaiting_store_utr"] = False
-        context.user_data["buying_product_id"] = None
-
-        pdf_path = packaging_agent.ensure_product_pdf(prod_id)
-
-        confirm_msg = (
-            f"🎉 <b>पेमेंट यशस्वीरित्या कन्फर्म झाले!</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"📖 <b>पुस्तक:</b> {prod_data.get('title')}\n"
-            f"🎫 <b>Order ID:</b> <code>{order_token}</code>\n"
-            f"📧 <b>Email:</b> <code>{customer_email}</code>\n\n"
-            f"👇 <b>तुमचे खरेदी केलेले ई-बुक खाली पाठवले आहे, लगेच डाऊनलोड करा:</b>"
-        )
-        await safe_send_message(context.bot, update.effective_chat.id, confirm_msg, parse_mode="HTML")
-
-        # Send physical PDF file directly into Telegram!
-        if pdf_path.exists():
-            with open(pdf_path, "rb") as f:
-                await context.bot.send_document(
-                    chat_id=update.effective_chat.id,
-                    document=f,
-                    filename=pdf_path.name,
-                    caption=f"📘 {prod_data.get('title')} — अधिकृत प्रत\n© ExamRankers India"
-                )
-        return
-    elif any(k in clean_text for k in ["daily questions", "आजचे प्रश्न", "विचारलेले प्रश्न", "daily_questions", "questions"]) or raw_text == "/daily_questions":
-        await daily_questions_cmd(update, context)
-        return
-    elif any(k in clean_text for k in ["vip", "क्विझ चॅनेल", "quiz channel"]):
-        pay_info = get_upi_payment_details(user.id)
-        context.user_data["awaiting_payment_proof"] = True
-        caption = (
-            "💎 <b>VIP EXAM QUIZ CHANNEL — ₹99 LIFETIME ACCESS</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "🎯 <b>What You Get in the Channel:</b>\n"
-            "• Authentic questions from response sheets as interactive Telegram Quizzes\n"
-            "• Daily practice tests & question banks with instant explanations\n"
-            f"• Direct Channel Preview: <a href=\"{PAID_CHANNEL_LINK}\">Visit Channel Link</a>\n\n"
-            "📲 <b>Payment Details (Any UPI App):</b>\n"
-            f"• UPI ID: <code>{pay_info['upi_id']}</code> <i>(tap to copy)</i>\n"
-            f"• Amount: <b>₹{pay_info['amount']}</b>\n"
-            f"• Payee Name: <b>{pay_info['upi_name']}</b>\n\n"
-            "💡 <b>Instructions:</b>\n"
-            "1. Pay ₹99 via UPI.\n"
-            "2. Send your <b>12-digit UTR Number</b> or <b>Screenshot</b> here.\n"
-            "3. Your personal invite link will be issued immediately!"
-        )
-        keyboard = [
-            [InlineKeyboardButton("🔗 Open Paid Channel Preview", url=PAID_CHANNEL_LINK)],
-            [InlineKeyboardButton("📤 Submit UTR / Screenshot", callback_data="submit_proof")],
-            [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]
-        ]
-        await msg.reply_text(caption, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True)
-        return
-    elif any(k in clean_text for k in ["कॅल्क्युलेटर", "calculator", "quick rank", "रँक"]):
-        keyboard = [[InlineKeyboardButton(c["display_name"], callback_data=f"man_exam:{k}")] for k, c in EXAMS.items()]
-        keyboard.append([InlineKeyboardButton("🔙 मुख्य मेनू", callback_data="main_menu")])
-        await msg.reply_text("<b>Quick Rank Predictor:</b>\nSelect which exam you want to predict your rank for:", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
-        return
-    elif any(k in clean_text for k in ["help", "मदत", "faq", "मार्गदर्शन"]) or raw_text == "/help":
-        help_text = (
-            "📖 <b>How ExamRankers Works (100% Free):</b>\n\n"
-            "1. <b>Upload Sheet:</b> Select your category and send your official response sheet PDF.\n"
-            "2. <b>4-Tier Rank:</b> Bot calculates overall, exam, post-wise, and category rank.\n"
-            "3. <b>Subject Dashboard:</b> View section-wise marks and accuracy.\n"
-            "4. <b>Wrong Answers & Objections:</b> AI explains errors & checks objections!\n\n"
-            f"💎 <i>Optional:</i> Join our <a href=\"{PAID_CHANNEL_LINK}\">Paid Quiz Channel</a> (₹99) for daily authentic exam polls."
-        )
-        keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
-        await msg.reply_text(help_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True)
-        return
-
-    # Case 1: Payment proof
-    if context.user_data.get("awaiting_payment_proof") or (msg.caption and "utr" in msg.caption.lower()):
-        utr_text = msg.text or msg.caption or "Screenshot Uploaded"
+        utr_match = re.search(r"\b[A-Za-z0-9]{8,22}\b", combined_text)
         photo_id = msg.photo[-1].file_id if msg.photo else None
+
+        if utr_match:
+            utr_val = utr_match.group(0)
+            if is_utr_already_used(utr_val, db_path=DB_PATH):
+                await msg.reply_text("⚠️ <b>हा UTR आधीच वापरला गेला आहे.</b> कृपया योग्य व नवीन ट्रान्झॅक्शन UTR नंबर पाठवा.", parse_mode="HTML")
+                return
+
+            order_res = fulfillment_agent.create_order(prod_id, customer_email, float(price), customer_telegram_id=user.id, db_path=DB_PATH)
+            order_token = order_res["order_token"]
+            success, fulfill_msg, prod_data = fulfillment_agent.confirm_and_fulfill_order(order_token, utr_val, db_path=DB_PATH)
+
+            context.user_data["awaiting_store_utr"] = False
+            context.user_data["buying_product_id"] = None
+
+            pdf_path = packaging_agent.ensure_product_pdf(prod_id)
+            confirm_msg = (
+                f"🎉 <b>पेमेंट यशस्वीरित्या कन्फर्म झाले!</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"📖 <b>पुस्तक:</b> {prod_data.get('title')}\n"
+                f"🎫 <b>Order ID:</b> <code>{order_token}</code>\n"
+                f"📧 <b>Email:</b> <code>{customer_email}</code>\n\n"
+                f"👇 <b>तुमचे खरेदी केलेले ई-बुक खाली पाठवले आहे, लगेच डाऊनलोड करा:</b>"
+            )
+            await safe_send_message(context.bot, update.effective_chat.id, confirm_msg, parse_mode="HTML")
+            if pdf_path.exists():
+                with open(pdf_path, "rb") as f:
+                    await context.bot.send_document(
+                        chat_id=update.effective_chat.id,
+                        document=f,
+                        filename=pdf_path.name,
+                        caption=f"📘 {prod_data.get('title')} — अधिकृत प्रत\n© ExamRankers India"
+                    )
+            # Alert admins
+            alert_admins_sync(
+                f"🛒 <b>नवीन डिजिटल ई-बुक खरेदी (Telegram Bot Sale)!</b>\n"
+                f"👤 Aspirant: {user.first_name} (@{user.username or 'NoUser'})\n"
+                f"📖 Book: <b>{prod_data.get('title')}</b> (₹{price})\n"
+                f"📝 UTR: <code>{utr_val}</code>\n"
+                f"📧 Email: <code>{customer_email}</code>"
+            )
+            return
+
+        elif photo_id:
+            utr_val = f"SCREENSHOT_{user.id}_{int(datetime.now().timestamp())}"
+            order_res = fulfillment_agent.create_order(prod_id, customer_email, float(price), customer_telegram_id=user.id, db_path=DB_PATH)
+            order_token = order_res["order_token"]
+            success, fulfill_msg, prod_data = fulfillment_agent.confirm_and_fulfill_order(order_token, utr_val, db_path=DB_PATH)
+
+            context.user_data["awaiting_store_utr"] = False
+            context.user_data["buying_product_id"] = None
+
+            pdf_path = packaging_agent.ensure_product_pdf(prod_id)
+            await safe_send_message(
+                context.bot,
+                update.effective_chat.id,
+                f"✅ <b>पेमेंट स्क्रीनशॉट प्राप्त झाला!</b>\nपुस्तकाची प्रत खाली दिली आहे:",
+                parse_mode="HTML"
+            )
+            if pdf_path.exists():
+                with open(pdf_path, "rb") as f:
+                    await context.bot.send_document(
+                        chat_id=update.effective_chat.id,
+                        document=f,
+                        filename=pdf_path.name,
+                        caption=f"📘 {prod_data.get('title')} — अधिकृत प्रत\n© ExamRankers India"
+                    )
+            return
+
+    # Case B: VIP ₹99 Paid Quiz Channel Payment Proof
+    if context.user_data.get("awaiting_payment_proof") or (combined_text and "utr" in combined_text.lower()) or (msg.photo and context.user_data.get("awaiting_payment_proof")):
+        utr_match = re.search(r"\b[A-Za-z0-9]{8,22}\b", combined_text)
+        utr_text = utr_match.group(0) if utr_match else (combined_text or "Screenshot Uploaded")
+        photo_id = msg.photo[-1].file_id if msg.photo else None
+
+        if utr_match and is_utr_already_used(utr_text, db_path=DB_PATH):
+            await msg.reply_text("⚠️ <b>हा UTR आधीच वापरला गेला आहे.</b> कृपया योग्य व नवीन ट्रान्झॅक्शन UTR नंबर पाठवा.", parse_mode="HTML")
+            return
 
         pay_id = record_payment_request(
             user_id=user.id,
@@ -2011,21 +2074,21 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
         context.user_data["awaiting_payment_proof"] = False
 
         await msg.reply_text(
-            "✅ <b>Payment Proof Received!</b>\n\n"
-            f"Your submission (ID: #{pay_id}) has been sent for verification.\n"
-            f"Your invite link to the <b>Paid Quiz Channel</b> (<a href=\"{PAID_CHANNEL_LINK}\">Preview</a>) will be delivered here automatically! ⏳",
+            "✅ <b>पेमेंट पडताळणीसाठी पाठवले आहे (Payment Proof Received)!</b>\n\n"
+            f"तुमचा सबमिशन आयडी: <b>#{pay_id}</b>\n"
+            f"पडताळणी पूर्ण होताच तुमची खाजगी इन्व्हाईट लिंक तात्काळ येथे पाठवली जाईल! ⏳",
             parse_mode="HTML",
             disable_web_page_preview=True
         )
 
         admin_kb = [
             [
-                InlineKeyboardButton("✅ Approve & Send One-Time Invite Link", callback_data=f"approve_pay:{pay_id}"),
+                InlineKeyboardButton("✅ Approve & Send Dynamic Invite", callback_data=f"approve_pay:{pay_id}"),
                 InlineKeyboardButton("❌ Reject", callback_data=f"reject_pay:{pay_id}")
             ]
         ]
         admin_msg = (
-            f"🔔 <b>New ₹99 Channel Payment Request #{pay_id}!</b>\n"
+            f"🔔 <b>New ₹99 VIP Channel Payment Request #{pay_id}!</b>\n"
             f"👤 User: {user.first_name} (@{user.username or 'NoUsername'})\n"
             f"🆔 Telegram ID: <code>{user.id}</code>\n"
             f"📝 UTR / Details: <code>{utr_text}</code>"
@@ -2049,6 +2112,52 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
                     )
             except Exception as e:
                 logger.error(f"Failed to alert admin {admin_id}: {e}")
+        return
+
+    # Check if user tapped persistent buttons or commands
+    clean_text = raw_text.lower()
+    if any(k in clean_text for k in ["start", "सुरू करा", "main menu", "मुख्य मेनू", "मेनू", "menu"]) or raw_text in ("/start", "/menu"):
+        await start(update, context)
+        return
+    elif any(k in clean_text for k in ["store", "ई-बुक्स स्टोअर", "ई-बुक", "books", "products", "स्टोअर"]) or raw_text in ("/store", "/ebooks"):
+        await store_cmd(update, context)
+        return
+    elif any(k in clean_text for k in ["vip", "क्विझ चॅनेल", "quiz channel"]) or raw_text in ("/vip", "/pay", "/payment"):
+        await vip_cmd(update, context)
+        return
+    elif any(k in clean_text for k in ["daily questions", "आजचे प्रश्न", "विचारलेले प्रश्न", "daily_questions", "questions"]) or raw_text == "/daily_questions":
+        await daily_questions_cmd(update, context)
+        return
+    elif any(k in clean_text for k in ["deals", "ऑफर", "notes"]) or raw_text == "/deals":
+        await deals_cmd(update, context)
+        return
+    elif any(k in clean_text for k in ["help", "मदत", "faq", "मार्गदर्शन"]) or raw_text == "/help":
+        help_text = (
+            "📖 <b>How ExamRankers Works (100% Free):</b>\n\n"
+            "1. <b>Upload Sheet:</b> Select your category and send your official response sheet PDF.\n"
+            "2. <b>4-Tier Rank:</b> Bot calculates overall, exam, post-wise, and category rank.\n"
+            "3. <b>Subject Dashboard:</b> View section-wise marks and accuracy.\n"
+            "4. <b>Wrong Answers & Objections:</b> AI explains errors & checks objections!\n\n"
+            f"💎 <i>Optional:</i> Join our <a href=\"{PAID_CHANNEL_LINK}\">Paid Quiz Channel</a> (₹99) for daily authentic exam polls."
+        )
+        keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
+        await msg.reply_text(help_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True)
+        return
+    elif any(k in clean_text for k in ["कॅल्क्युलेटर", "calculator", "quick rank", "रँक"]):
+        keyboard = [[InlineKeyboardButton(c["display_name"], callback_data=f"man_exam:{k}")] for k, c in EXAMS.items()]
+        keyboard.append([InlineKeyboardButton("🔙 मुख्य मेनू", callback_data="main_menu")])
+        await msg.reply_text("<b>Quick Rank Predictor:</b>\nSelect which exam you want to predict your rank for:", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    # Force Join Channel Gate (Only for sheet processing)
+    if not await check_channel_membership(context.bot, user.id):
+        await prompt_force_join(update, context)
+        return
+
+    # Check if user sent a response sheet Web / DigiALM URL
+    url_match = re.search(r"https?://[^\s<>\"']+", raw_text)
+    if url_match:
+        await handle_url_sheet(update, context, url_match.group(0))
         return
 
     # Case 2: Manual score calculation
@@ -2349,6 +2458,103 @@ async def post_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error in post_quizzes: {e}", exc_info=True)
         await status_msg.edit_text(f"❌ त्रुटी आली: {e}")
+
+async def quiz_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Sends an interactive practice quiz poll directly to the user in private chat or group
+    with 100% verified correct answer and instant pedagogical explanation.
+    """
+    chat_id = update.effective_chat.id
+    user = update.effective_user
+    track_user(user)
+
+    daily = get_daily_latest_exam_questions()
+    questions = daily.get("questions", [])
+
+    if not questions:
+        await context.bot.send_message(chat_id=chat_id, text="⚠️ सध्या क्विझ प्रश्न लोड होत आहेत. कृपया थोड्या वेळाने प्रयत्न करा.")
+        return
+
+    import random
+    q_data = random.choice(questions)
+    sub = q_data.get("subject", "General")
+    q_text = f"[{sub}] {q_data['question']}"
+    raw_opts = q_data.get("options", [])
+
+    # Clean option prefixes like A), B), C), D) for poll display
+    clean_opts = [re.sub(r"^[A-Da-d1-4][\.\):\-]\s*", "", o).strip()[:95] for o in raw_opts[:4]]
+
+    # Determine correct option index
+    ans_text = q_data.get("answer", "")
+    c_idx = 0
+    for idx, opt in enumerate(raw_opts[:4]):
+        if ans_text and (ans_text.startswith(opt[:3]) or opt.strip().lower() in ans_text.strip().lower()):
+            c_idx = idx
+            break
+
+    try:
+        await context.bot.send_poll(
+            chat_id=chat_id,
+            question=q_text[:300],
+            options=clean_opts,
+            type="quiz",
+            correct_option_id=c_idx,
+            explanation=q_data.get("explanation", "")[:195],
+            is_anonymous=False
+        )
+        keyboard = [
+            [InlineKeyboardButton("🔄 पुढील सराव प्रश्न (Next Question)", callback_data="next_quiz")],
+            [InlineKeyboardButton("📢 अधिकृत VIP क्विझ चॅनेल जॉइन करा", url=PAID_CHANNEL_LINK)]
+        ]
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"💡 <i>घटक: {sub} | उत्तर निवडल्यानंतर लगेच बरोबर/चुकीचे उत्तर व स्पष्टीकरण दिसेल.</i>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except Exception as e:
+        logger.warning(f"Error sending quiz poll in quiz_cmd: {e}")
+        await context.bot.send_message(chat_id=chat_id, text=f"❌ क्विझ लोड करण्यात त्रुटी: {e}")
+
+async def visitors_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: Displays real-time details of visitors to the ExamRankers Digital Store."""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to administrators.")
+        return
+
+    with get_connection() as db:
+        db.row_factory = sqlite3.Row
+        total_visits = db.execute("SELECT count(*) FROM store_visitors").fetchone()[0]
+        unique_ips = db.execute("SELECT count(DISTINCT ip_address) FROM store_visitors").fetchone()[0]
+        mobile_cnt = db.execute("SELECT count(*) FROM store_visitors WHERE device_type = 'Mobile'").fetchone()[0]
+        desktop_cnt = db.execute("SELECT count(*) FROM store_visitors WHERE device_type = 'Desktop'").fetchone()[0]
+        checkouts = db.execute("SELECT count(*) FROM store_visitors WHERE action = 'checkout_initiated'").fetchone()[0]
+        purchases = db.execute("SELECT count(*) FROM store_visitors WHERE action = 'payment_verified'").fetchone()[0]
+        recent = db.execute("SELECT ip_address, device_type, action, telegram_user_id, visited_at FROM store_visitors ORDER BY id DESC LIMIT 10").fetchall()
+
+    lines = [
+        "📊 <b>ExamRankers™ डिजिटल स्टोअर व्हिजिटर तपशील (Visitor Analytics)</b>",
+        "━━━━━━━━━━━━━━━━━━━━━━",
+        f"👥 <b>एकूण व्हिजिट्स (Total Visits):</b> <code>{total_visits}</code>",
+        f"🌐 <b>युनिक IP संख्या (Unique Visitors):</b> <code>{unique_ips}</code>",
+        f"📱 <b>मोबाईल वापरकर्ते:</b> <code>{mobile_cnt}</code> | 💻 <b>डेस्कटॉप:</b> <code>{desktop_cnt}</code>",
+        f"🛒 <b>चेकआउट सुरू केले (Checkouts):</b> <code>{checkouts}</code>",
+        f"✅ <b>पेमेंट्स पडताळले (Purchases):</b> <code>{purchases}</code>",
+        "",
+        "🕒 <b>नुकतेच भेट दिलेले वापरकर्ते (Recent Store Visitors):</b>"
+    ]
+    if recent:
+        for r in recent:
+            t = r["visited_at"]
+            ip = r["ip_address"]
+            dev = r["device_type"]
+            act = r["action"]
+            tg = f" (TG ID: <code>{r['telegram_user_id']}</code>)" if r["telegram_user_id"] else ""
+            lines.append(f"• <code>{t}</code> | {dev} | <b>{act}</b> | <code>{ip}</code>{tg}")
+    else:
+        lines.append("<i>अद्याप कोणत्याही व्हिजिटरची नोंद झालेली नाही.</i>")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 async def set_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Allows admin to update active sponsor ad: /set_ad Text | Button | URL"""
@@ -3433,6 +3639,7 @@ async def set_bot_commands(application: Application):
     user_commands = [
         BotCommand("start", "🚀 सुरू करा (Start Bot & Select Category)"),
         BotCommand("store", "🛒 डिजिटल ई-बुक्स स्टोअर (₹10 - ₹99)"),
+        BotCommand("vip", "💎 VIP क्विझ चॅनेल (₹99 Access)"),
         BotCommand("wrong", "❌ चुकीचे प्रश्न व सविस्तर स्पष्टीकरण"),
         BotCommand("responses", "📄 रिस्पॉन्स शीट निकाल (HTML Report)"),
         BotCommand("channels", "📢 Telegram व YouTube अधिकृत चॅनेल्स"),
@@ -3443,6 +3650,7 @@ async def set_bot_commands(application: Application):
     admin_commands = [
         BotCommand("start", "🚀 सुरू करा (Start Bot)"),
         BotCommand("store", "🛒 डिजिटल ई-बुक्स स्टोअर (₹10 - ₹99)"),
+        BotCommand("vip", "💎 VIP क्विझ चॅनेल (₹99 Access)"),
         BotCommand("sync_channel", "🔄 चॅनेलचे नाव ताज्या परीक्षेनुसार बदला (Admin)"),
         BotCommand("agency", "🏢 AI Agency व सर्व मॅनेजर्स अहवाल (Admin)"),
         BotCommand("download_store_content", "📦 सर्व १८ ई-बुक्स ZIP डाऊनलोड करा (Admin)"),
@@ -3496,9 +3704,37 @@ async def set_bot_commands(application: Application):
         logger.warning(f"Could not set bot commands or description: {e}")
 
 class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+        self.end_headers()
+
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/")
+
+        # 0. API: Dynamic Local QR Code Image Generator
+        if path == "/api/qrcode":
+            query_params = urllib.parse.parse_qs(parsed.query)
+            qr_data = query_params.get("data", [""])[0]
+            if not qr_data:
+                self.send_response(400)
+                self.end_headers()
+                return
+            png_bytes = generate_qr_bytes(qr_data)
+            if not png_bytes:
+                self.send_response(500)
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(png_bytes)
+            return
 
         # 1. API: Products list
         if path == "/api/products":
@@ -3563,6 +3799,12 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(b"Product file not found on server")
                 return
 
+            # Log download action by visitor
+            dl_ip = self.headers.get("X-Forwarded-For", "").split(",")[0].strip() or self.client_address[0]
+            dl_ua = self.headers.get("User-Agent", "Unknown")
+            dl_ref = self.headers.get("Referer", "")
+            log_store_visitor(dl_ip, dl_ua, dl_ref, page_path=path, action="download_pdf", product_id=prod_id, details=f"order:{token}")
+
             filename = os.path.basename(str(pdf_path))
             file_size = os.path.getsize(str(pdf_path))
             self.send_response(200)
@@ -3580,7 +3822,43 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        # 4. Admin 1-Click ZIP Download for all store digital products
+        # 4. Admin Store Visitors API Endpoint: /api/admin/visitors
+        if path == "/api/admin/visitors":
+            token_arg = urllib.parse.parse_qs(parsed.query).get("token", [""])[0]
+            expected_token = (os.getenv("TELEGRAM_BOT_TOKEN") or "admin")[:16]
+            if token_arg != expected_token and str(token_arg) not in [str(x) for x in ADMIN_IDS]:
+                self.send_response(403)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Unauthorized"}).encode("utf-8"))
+                return
+
+            with get_connection() as db:
+                db.row_factory = sqlite3.Row
+                total_visits = db.execute("SELECT count(*) FROM store_visitors").fetchone()[0]
+                unique_ips = db.execute("SELECT count(DISTINCT ip_address) FROM store_visitors").fetchone()[0]
+                mobile_cnt = db.execute("SELECT count(*) FROM store_visitors WHERE device_type = 'Mobile'").fetchone()[0]
+                desktop_cnt = db.execute("SELECT count(*) FROM store_visitors WHERE device_type = 'Desktop'").fetchone()[0]
+                checkouts = db.execute("SELECT count(*) FROM store_visitors WHERE action = 'checkout_initiated'").fetchone()[0]
+                purchases = db.execute("SELECT count(*) FROM store_visitors WHERE action = 'payment_verified'").fetchone()[0]
+                recent = [dict(r) for r in db.execute("SELECT * FROM store_visitors ORDER BY id DESC LIMIT 50").fetchall()]
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "total_visits": total_visits,
+                "unique_ips": unique_ips,
+                "mobile_count": mobile_cnt,
+                "desktop_count": desktop_cnt,
+                "checkouts": checkouts,
+                "purchases": purchases,
+                "recent_visitors": recent
+            }).encode("utf-8"))
+            return
+
+        # 5. Admin 1-Click ZIP Download for all store digital products
         if path == "/admin/download_all_products":
             token_arg = urllib.parse.parse_qs(parsed.query).get("token", [""])[0]
             expected_token = (os.getenv("TELEGRAM_BOT_TOKEN") or "admin")[:16]
@@ -3616,11 +3894,27 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(f.read())
             return
 
-        # 5. Default Root / Store: Serve ExamRankers Digital Products Storefront!
+        # 6. Default Root / Store: Serve ExamRankers Digital Products Storefront!
+        client_ip = (
+            self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+            or self.headers.get("CF-Connecting-IP", "").strip()
+            or self.headers.get("X-Real-IP", "").strip()
+            or self.client_address[0]
+        )
+        ua = self.headers.get("User-Agent", "Unknown")
+        ref = self.headers.get("Referer", "")
+        q_params = urllib.parse.parse_qs(parsed.query)
+        tg_uid_val = q_params.get("uid", [""])[0] or q_params.get("ref", [""])[0]
+        tg_uid = int(tg_uid_val) if tg_uid_val.isdigit() else None
+        prod_param = q_params.get("product", [""])[0]
+
+        log_store_visitor(client_ip, ua, ref, tg_id=tg_uid, page_path=path or "/", action="view_store", product_id=prod_param)
+
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
-        html = render_nano_banana_store_html()
+        html = render_digital_store_html()
         self.wfile.write(html.encode("utf-8"))
 
     def do_POST(self):
@@ -3635,11 +3929,47 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         except Exception:
             pass
 
+        client_ip = (
+            self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+            or self.headers.get("CF-Connecting-IP", "").strip()
+            or self.headers.get("X-Real-IP", "").strip()
+            or self.client_address[0]
+        )
+        ua = self.headers.get("User-Agent", "Unknown")
+        ref = self.headers.get("Referer", "")
+
         if path == "/api/checkout":
             prod_id = data.get("product_id", "prod_ca_monthly_top200")
             email = data.get("email", "")
             amount = float(data.get("amount", 19))
             res = fulfillment_agent.create_order(prod_id, email, amount, db_path=DB_PATH)
+
+            log_store_visitor(client_ip, ua, ref, page_path=path, action="checkout_initiated", product_id=prod_id, details=f"email:{email}, amount:{amount}")
+
+            # Optional Razorpay Gateway Integration
+            rz_key = os.getenv("RAZORPAY_KEY_ID", "").strip()
+            rz_secret = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
+            if rz_key and rz_secret:
+                try:
+                    import requests
+                    rz_resp = requests.post(
+                        "https://api.razorpay.com/v1/orders",
+                        auth=(rz_key, rz_secret),
+                        json={
+                            "amount": int(amount * 100),
+                            "currency": "INR",
+                            "receipt": res["order_token"],
+                            "notes": {"email": email, "product_id": prod_id}
+                        },
+                        timeout=5
+                    )
+                    if rz_resp.status_code == 200:
+                        rz_data = rz_resp.json()
+                        res["razorpay_order_id"] = rz_data.get("id")
+                        res["razorpay_key_id"] = rz_key
+                except Exception as e:
+                    logger.warning(f"Razorpay order generation skipped: {e}")
+
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -3650,10 +3980,71 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         if path == "/api/verify":
             order_token = data.get("order_token", "").strip()
             utr = data.get("utr", "").strip()
-            if not utr or len(utr) < 3:
-                utr = f"UPI_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            rz_payment_id = data.get("razorpay_payment_id", "").strip()
+            rz_order_id = data.get("razorpay_order_id", "").strip()
+            rz_sig = data.get("razorpay_signature", "").strip()
+
+            if not order_token:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": "Order reference token missing."}).encode("utf-8"))
+                return
+
+            # Check Razorpay signature if payment came via Razorpay
+            if rz_payment_id and rz_order_id and rz_sig:
+                import hmac, hashlib
+                rz_secret = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
+                expected = hmac.new(rz_secret.encode(), f"{rz_order_id}|{rz_payment_id}".encode(), hashlib.sha256).hexdigest()
+                if hmac.compare_digest(expected, rz_sig):
+                    utr = f"RZP_{rz_payment_id}"
+                else:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"success": False, "message": "Invalid Razorpay payment signature."}).encode("utf-8"))
+                    return
+
+            # Direct UPI UTR verification
+            if not validate_utr_format(utr):
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": "कृपया अचूक ८ ते २२ अंकी UPI UTR / Ref नंबर टाका."}).encode("utf-8"))
+                return
+
+            # Anti-Fraud: Prevent duplicate UTR replay
+            if is_utr_already_used(utr, db_path=DB_PATH):
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": "हा UTR आधीच वापरला गेला आहे. कृपया नवीन ट्रान्झॅक्शन UTR टाका."}).encode("utf-8"))
+                return
+
             success, msg, prod = fulfillment_agent.confirm_and_fulfill_order(order_token, utr, db_path=DB_PATH)
-            self.send_response(200)
+            log_store_visitor(
+                client_ip, ua, ref,
+                page_path=path,
+                action="payment_verified" if success else "payment_rejected",
+                product_id=prod.get("id", "") if prod else "",
+                details=f"order:{order_token}, utr:{utr}"
+            )
+            if success:
+                alert_text = (
+                    f"🛒 <b>नवीन डिजिटल ई-बुक खरेदी (Web Store Sale)!</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"📖 पुस्तक: <b>{prod.get('title', 'Unknown')}</b>\n"
+                    f"💰 रक्कम: <b>₹{prod.get('price_inr', 19)}/-</b>\n"
+                    f"🎫 Order: <code>{order_token}</code>\n"
+                    f"📝 UTR: <code>{utr}</code>"
+                )
+                alert_admins_sync(alert_text)
+
+            self.send_response(200 if success else 400)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
@@ -3666,10 +4057,67 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             return
 
         self.send_response(404)
+        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
 
     def log_message(self, format, *args):
         pass  # Keep terminal logs clean from ping health-checks
+
+async def vip_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles VIP Exam Quiz Channel ₹99 subscription presentation and payment QR."""
+    user = update.effective_user
+    pay_info = get_upi_payment_details(user.id)
+    context.user_data["awaiting_payment_proof"] = True
+
+    caption = (
+        "💎 <b>VIP EXAM QUIZ CHANNEL — ₹99 LIFETIME ACCESS</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "🎯 <b>What You Get in the Channel:</b>\n"
+        "• Authentic questions from response sheets as interactive Telegram Quizzes\n"
+        "• Daily practice tests & question banks with instant explanations\n"
+        f"• Direct Channel Preview: <a href=\"{PAID_CHANNEL_LINK}\">Visit Channel Link</a>\n\n"
+        "📲 <b>पेमेंट माहिती (GPay / PhonePe / Paytm / Any UPI):</b>\n"
+        f"• UPI ID: <code>{pay_info['upi_id']}</code> <i>(कॉपी करण्यासाठी टॅप करा)</i>\n"
+        f"• Amount: <b>₹{pay_info['amount']}/-</b>\n"
+        f"• Payee Name: <b>{pay_info['upi_name']}</b>\n\n"
+        "💡 <b>पायऱ्या (Steps):</b>\n"
+        "१. वरील QR कोड स्कॅन करून किंवा UPI ID वर ₹99 भरा.\n"
+        "२. पेमेंट झाल्यानंतर खालील बटण दाबून <b>12-अंकी UTR नंबर</b> किंवा <b>स्क्रीनशॉट</b> पाठवा.\n"
+        "३. पेमेंट पडताळणी होताच तुमची खाजगी इन्व्हाईट लिंक तात्काळ येथे पाठवली जाईल!"
+    )
+    keyboard = [
+        [InlineKeyboardButton("📤 Submit UTR / Screenshot", callback_data="submit_proof")],
+        [InlineKeyboardButton("🔗 Open Channel Preview", url=PAID_CHANNEL_LINK)],
+        [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    target_msg = update.callback_query.message if update.callback_query else update.message
+    if update.callback_query:
+        await update.callback_query.answer()
+
+    qr_bytes = generate_qr_bytes(pay_info["upi_uri"])
+    if qr_bytes:
+        try:
+            await target_msg.reply_photo(
+                photo=io.BytesIO(qr_bytes),
+                caption=caption,
+                parse_mode="HTML",
+                reply_markup=reply_markup
+            )
+            return
+        except Exception as e:
+            logger.warning(f"Error sending local QR bytes photo: {e}")
+
+    try:
+        await target_msg.reply_photo(
+            photo=pay_info["qr_url"],
+            caption=caption,
+            parse_mode="HTML",
+            reply_markup=reply_markup
+        )
+    except Exception:
+        await target_msg.reply_text(caption, parse_mode="HTML", reply_markup=reply_markup, disable_web_page_preview=True)
 
 async def channels_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Displays official YouTube and Telegram channels and social media communities."""
@@ -3725,7 +4173,7 @@ async def store_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     products = packaging_agent.get_all_products(DB_PATH)
 
     lines = [
-        "🍌 <b>ExamRankers™ अधिकृत डिजिटल ई-स्टोअर (ExamRankers Official Store)</b>",
+        "🎓 <b>ExamRankers™ अधिकृत डिजिटल ई-स्टोअर (ExamRankers Official Store)</b>",
         "══════════════════════════",
         "🎯 <b>TCS व IBPS पॅटर्ननुसार ₹१० ते ₹९९ मधील दर्जेदार डिजिटल ई-बुक्स!</b>\n",
         "आमचे ई-बुक्स स्टोअर हे <b>स्वतंत्र वेबपेजवर</b> उपलब्ध आहे. तेथे आपण:",
@@ -4289,6 +4737,9 @@ def main():
     # Core user commands (100% Free rank prediction & subject analysis)
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler(["store", "products", "ebooks", "books"], store_cmd))
+    app.add_handler(CommandHandler(["vip", "join_paid", "pay", "payment", "quiz_channel"], vip_cmd))
+    app.add_handler(CommandHandler(["quiz", "practice", "mcq"], quiz_cmd))
+    app.add_handler(CommandHandler(["visitors", "store_visitors", "store_stats"], visitors_cmd))
     app.add_handler(CommandHandler("menu", start))
     app.add_handler(CommandHandler("help", start))
     app.add_handler(CommandHandler(["channels", "channel", "youtube", "yt", "socials"], channels_cmd))

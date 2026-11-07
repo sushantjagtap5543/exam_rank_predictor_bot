@@ -165,7 +165,7 @@ SAMPLE_PREVIEWS = {
     }
 }
 
-def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
+def render_digital_store_html(products: List[Dict[str, Any]] = None) -> str:
     """
     Renders the complete, ultra-refined standalone ExamRankers Digital Bookstore page.
     Aesthetic: High-converting dark UI, live search, multi-tab sample preview, instant UPI checkout & download.
@@ -177,6 +177,7 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
     samples_json = json.dumps(SAMPLE_PREVIEWS)
     upi_id = os.getenv("UPI_ID", "9970095256-2@ybl").strip()
     upi_name = os.getenv("UPI_NAME", "ExamRankers India").strip()
+    razorpay_key_id = os.getenv("RAZORPAY_KEY_ID", "").strip()
 
     return f"""<!DOCTYPE html>
 <html lang="mr">
@@ -196,8 +197,8 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
             --bg-card-hover: #1c2840;
             --border: #23324a;
             --border-highlight: #3b82f6;
-            --accent-banana: #facc15;
-            --accent-banana-hover: #eab308;
+            --accent-gold: #facc15;
+            --accent-gold-hover: #eab308;
             --accent-emerald: #10b981;
             --accent-cyan: #38bdf8;
             --accent-rose: #f43f5e;
@@ -226,7 +227,7 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
             text-align: center;
         }}
         .top-ticker span {{
-            color: var(--accent-banana);
+            color: var(--accent-gold);
             font-weight: 700;
         }}
         /* Navigation Bar */
@@ -248,7 +249,7 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
             color: #ffffff;
         }}
         .brand-icon {{
-            background: linear-gradient(135deg, var(--accent-banana) 0%, #f97316 100%);
+            background: linear-gradient(135deg, var(--accent-gold) 0%, #f97316 100%);
             width: 40px;
             height: 40px;
             border-radius: 10px;
@@ -264,7 +265,7 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
             letter-spacing: -0.5px;
         }}
         .brand-title span {{
-            color: var(--accent-banana);
+            color: var(--accent-gold);
         }}
         .nav-actions {{
             display: flex;
@@ -303,7 +304,7 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
             align-items: center;
             gap: 8px;
             background: rgba(250, 204, 21, 0.1);
-            color: var(--accent-banana);
+            color: var(--accent-gold);
             border: 1px solid rgba(250, 204, 21, 0.3);
             padding: 6px 18px;
             border-radius: 999px;
@@ -319,7 +320,7 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
             margin-bottom: 16px;
         }}
         .hero h1 span {{
-            background: linear-gradient(135deg, var(--accent-banana) 0%, #fb923c 100%);
+            background: linear-gradient(135deg, var(--accent-gold) 0%, #fb923c 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }}
@@ -368,7 +369,7 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
         }}
         .search-input:focus {{
-            border-color: var(--accent-banana);
+            border-color: var(--accent-gold);
             box-shadow: 0 4px 25px rgba(250, 204, 21, 0.25);
         }}
         .search-icon {{
@@ -400,9 +401,9 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
             transition: all 0.2s;
         }}
         .filter-btn:hover, .filter-btn.active {{
-            background: var(--accent-banana);
+            background: var(--accent-gold);
             color: #0f172a;
-            border-color: var(--accent-banana);
+            border-color: var(--accent-gold);
             box-shadow: 0 4px 14px rgba(250, 204, 21, 0.3);
         }}
         /* Products Grid */
@@ -493,7 +494,7 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
         .current-price {{
             font-size: 30px;
             font-weight: 800;
-            color: var(--accent-banana);
+            color: var(--accent-gold);
         }}
         .original-price {{
             font-size: 15px;
@@ -530,7 +531,7 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
             border-color: #64748b;
         }}
         .btn-buy {{
-            background: linear-gradient(135deg, var(--accent-banana) 0%, #eab308 100%);
+            background: linear-gradient(135deg, var(--accent-gold) 0%, #eab308 100%);
             color: #0f172a;
             border: none;
             padding: 11px 16px;
@@ -609,7 +610,7 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
             transition: border-color 0.2s;
         }}
         .form-input:focus {{
-            border-color: var(--accent-banana);
+            border-color: var(--accent-gold);
         }}
         .qr-card {{
             background: #ffffff;
@@ -694,7 +695,7 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
             font-size: 13px;
             border-top: 1px solid var(--border);
         }}
-        .footer a {{ color: var(--accent-banana); text-decoration: none; }}
+        .footer a {{ color: var(--accent-gold); text-decoration: none; }}
     </style>
 </head>
 <body>
@@ -806,12 +807,12 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
                 </div>
 
                 <div class="copy-pill" onclick="copyUPI()">
-                    <span>UPI ID: <b style="color:var(--accent-banana);">{upi_id}</b></span>
+                    <span>UPI ID: <b style="color:var(--accent-gold);">{upi_id}</b></span>
                     <span id="copyBtnText" style="color:#38bdf8; font-weight:700;">📋 Copy</span>
                 </div>
 
                 <div style="margin: 10px 0;">
-                    <a id="upiIntentBtn" href="#" class="btn-sample" style="display:inline-block; width:100%; padding:10px; background:rgba(250,204,21,0.1); border-color:var(--accent-banana); color:var(--accent-banana); text-decoration:none;">⚡ थेट मोबाईल UPI ॲपमध्ये उघडा (Open in GPay/PhonePe)</a>
+                    <a id="upiIntentBtn" href="#" class="btn-sample" style="display:inline-block; width:100%; padding:10px; background:rgba(250,204,21,0.1); border-color:var(--accent-gold); color:var(--accent-gold); text-decoration:none;">⚡ थेट मोबाईल UPI ॲपमध्ये उघडा (Open in GPay/PhonePe)</a>
                 </div>
 
                 <div style="margin:10px 0; padding:10px 12px; background:rgba(239, 68, 68, 0.08); border:1px solid rgba(239, 68, 68, 0.25); border-radius:8px; font-size:11.5px; color:#fca5a5; text-align:left; line-height:1.5;">
@@ -819,11 +820,12 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
                 </div>
 
                 <div style="text-align:left; margin-top:14px;">
-                    <label class="form-label">12-अंकी UTR / Ref No. <span style="color:#94a3b8; font-weight:normal;">(पर्यायी - Optional, नसल्यास थेट खालील बटणावर क्लिक करा)</span></label>
-                    <input type="text" id="utrInput" class="form-input" placeholder="उदा. 431289456789 (पर्यायी)">
+                    <label class="form-label">१२-अंकी UPI UTR / Ref No. <span style="color:#f87171;">* (अनिवार्य - Mandatory)</span></label>
+                    <input type="text" id="utrInput" class="form-input" placeholder="उदा. 431289456789" required>
+                    <p style="font-size:11px; color:#94a3b8; margin-top:4px;">💡 GPay, PhonePe किंवा Paytm मधील ट्रान्झॅक्शन हिस्ट्रीमधून १२-अंकी UTR नंबर कॉपी करून येथे टाका.</p>
                 </div>
 
-                <button class="btn-buy btn-full" style="background:#10b981; font-size:15px; padding:14px; margin-top:10px;" onclick="confirmPayment()">✅ मी पेमेंट केले आहे — माझे ई-बुक त्वरित डाऊनलोड करा (Download Now)</button>
+                <button class="btn-buy btn-full" style="background:#10b981; font-size:15px; padding:14px; margin-top:10px;" onclick="confirmPayment()">🔐 पेमेंट पडताळणी करा आणि ई-बुक मिळवा (Verify Payment & Download)</button>
                 <button class="btn-sample btn-full" style="margin-top:8px;" onclick="backToStep1()">मागे जा</button>
             </div>
 
@@ -844,7 +846,7 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
     <div class="modal-overlay" id="sampleModal">
         <div class="modal" style="max-width: 640px;">
             <button class="modal-close" onclick="closeModal('sampleModal')">&times;</button>
-            <span class="card-badge" style="color:var(--accent-banana); border-color:var(--accent-banana);">FREE SAMPLE PREVIEW</span>
+            <span class="card-badge" style="color:var(--accent-gold); border-color:var(--accent-gold);">FREE SAMPLE PREVIEW</span>
             <h2 id="sampleModalTitle" style="margin-top:10px; font-size:19px; color:#fff;">नमुना प्रश्न व स्पष्टीकरण</h2>
             <p style="color:var(--text-muted); font-size:13px; margin-bottom:16px;">पुस्तकातील दर्जा आणि स्पष्टीकरणे खालीलप्रमाणे आहेत:</p>
 
@@ -866,6 +868,7 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
         const SAMPLES = {samples_json};
         const MERCHANT_UPI = "{upi_id}";
         const MERCHANT_NAME = "{upi_name}";
+        const RAZORPAY_KEY = "{razorpay_key_id}";
 
         let currentProduct = null;
         let currentOrderToken = null;
@@ -960,9 +963,16 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
             const amount = currentProduct.price_inr;
             const note = encodeURIComponent('Store_' + currentProduct.id.slice(0,8));
             const upiUri = `upi://pay?pa=${{MERCHANT_UPI}}&pn=${{encodeURIComponent(MERCHANT_NAME)}}&am=${{amount}}&cu=INR&tn=${{note}}`;
-            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${{encodeURIComponent(upiUri)}}`;
+            const qrLocal = `/api/qrcode?data=${{encodeURIComponent(upiUri)}}`;
+            const qrFallback = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${{encodeURIComponent(upiUri)}}`;
 
-            document.getElementById('upiQrImg').src = qrUrl;
+            const imgEl = document.getElementById('upiQrImg');
+            imgEl.onerror = function() {{
+                if (this.src !== qrFallback) {{
+                    this.src = qrFallback;
+                }}
+            }};
+            imgEl.src = qrLocal;
             document.getElementById('upiIntentBtn').href = upiUri;
 
             // Register pending order via backend API
@@ -1001,7 +1011,12 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
         async function confirmPayment() {{
             const utrEl = document.getElementById('utrInput');
             const userUtr = utrEl ? utrEl.value.trim() : "";
-            const finalUtr = userUtr || ("PAID_" + Date.now().toString(36).toUpperCase());
+            if (!userUtr || userUtr.length < 8) {{
+                alert('⚠️ कृपया पेमेंट पूर्ण केल्यानंतर UPI ॲपमधील (GPay/PhonePe/Paytm) १२-अंकी UTR किंवा ट्रान्झॅक्शन Ref नंबर अचूक टाका.');
+                if (utrEl) utrEl.focus();
+                return;
+            }}
+
             const email = document.getElementById('customerEmail').value.trim();
             const confirmBtn = document.querySelector('#modalStep2 button.btn-buy');
             const origText = confirmBtn ? confirmBtn.innerText : '✅ मी पेमेंट केले आहे';
@@ -1018,7 +1033,7 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
                     headers: {{ 'Content-Type': 'application/json' }},
                     body: JSON.stringify({{
                         order_token: currentOrderToken,
-                        utr: finalUtr
+                        utr: userUtr
                     }})
                 }});
                 const data = await res.json();
@@ -1029,7 +1044,7 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
                     document.getElementById('modalStep2').style.display = 'none';
                     document.getElementById('modalStep3').style.display = 'block';
                 }} else {{
-                    alert('❌ पेमेंट व्हेरिफाय होऊ शकले नाही: ' + (data.message || 'कृपया पुन्हा प्रयत्न करा.'));
+                    alert('❌ पेमेंट व्हेरिफाय होऊ शकले नाही: ' + (data.message || 'कृपया UTR तपासा व पुन्हा प्रयत्न करा.'));
                 }}
             }} catch (e) {{
                 alert('❌ सर्व्हरशी संपर्क होऊ शकला नाही. कृपया इंटरनेट तपासा व पुन्हा प्रयत्न करा.');
@@ -1077,3 +1092,7 @@ def render_nano_banana_store_html(products: List[Dict[str, Any]] = None) -> str:
 </body>
 </html>
 """
+
+# Alias for backwards compatibility
+render_nano_banana_store_html = render_digital_store_html
+
