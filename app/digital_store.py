@@ -5,9 +5,17 @@ Includes real-time search, sample preview modals, dynamic UPI QR checkout, email
 """
 
 import os
+import sys
+import re
 import json
 import urllib.parse
+from pathlib import Path
 from typing import Dict, Any, List
+
+if __package__ is None or __package__ == "":
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    __package__ = "app"
+
 from .agents.digital_product_agent import DigitalProductPackagingAgent, DEFAULT_PRODUCTS
 from .agents.fulfillment_email_agent import FulfillmentEmailAgent
 
@@ -178,6 +186,19 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None) -> str:
     upi_id = os.getenv("UPI_ID", "9970095256-2@ybl").strip()
     upi_name = os.getenv("UPI_NAME", "ExamRankers India").strip()
     razorpay_key_id = os.getenv("RAZORPAY_KEY_ID", "").strip()
+
+    static_file = Path(__file__).resolve().parent.parent / "store_static" / "index.html"
+    if static_file.exists():
+        try:
+            content = static_file.read_text(encoding="utf-8")
+            content = re.sub(r'const PRODUCTS = \[.*?\];', lambda m: 'const PRODUCTS = ' + products_json + ';', content, count=1, flags=re.DOTALL)
+            content = re.sub(r'const SAMPLES = \{.*?\};', lambda m: 'const SAMPLES = ' + samples_json + ';', content, count=1, flags=re.DOTALL)
+            content = re.sub(r'const MERCHANT_UPI = "[^"]*";', lambda m: f'const MERCHANT_UPI = "{upi_id}";', content, count=1)
+            content = re.sub(r'const MERCHANT_NAME = "[^"]*";', lambda m: f'const MERCHANT_NAME = "{upi_name}";', content, count=1)
+            content = re.sub(r'const RAZORPAY_KEY = "[^"]*";', lambda m: f'const RAZORPAY_KEY = "{razorpay_key_id}";', content, count=1)
+            return content
+        except Exception:
+            pass
 
     return f"""<!DOCTYPE html>
 <html lang="mr">

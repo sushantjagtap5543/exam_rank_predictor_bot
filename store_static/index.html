@@ -523,7 +523,7 @@
     </div>
 
     <nav class="navbar">
-        <a href="/" class="brand-logo">
+        <a href="./" class="brand-logo">
             <div class="brand-icon">⚡</div>
             <div class="brand-title">ExamRankers<span>.Store</span></div>
         </a>
@@ -552,13 +552,13 @@
         </div>
 
         <div class="filter-nav">
-            <button class="filter-btn active" onclick="filterCategory('All')">सर्व ई-बुक्स (All)</button>
-            <button class="filter-btn" onclick="filterCategory('Current Affairs')">📰 चालू घडामोडी</button>
-            <button class="filter-btn" onclick="filterCategory('PYQ & Response Sheets')">📑 रिस्पॉन्स शीट Q-Bank</button>
-            <button class="filter-btn" onclick="filterCategory('Marathi')">✍️ मराठी व्याकरण</button>
-            <button class="filter-btn" onclick="filterCategory('English')">📖 English Mastery</button>
-            <button class="filter-btn" onclick="filterCategory('Maths & Reasoning')">🔢 गणित व बुद्धिमत्ता</button>
-            <button class="filter-btn" onclick="filterCategory('General Knowledge')">🗺️ महाराष्ट्र GS</button>
+            <button class="filter-btn active" onclick="filterCategory('All', this)">सर्व ई-बुक्स (All)</button>
+            <button class="filter-btn" onclick="filterCategory('Current Affairs', this)">📰 चालू घडामोडी</button>
+            <button class="filter-btn" onclick="filterCategory('PYQ & Response Sheets', this)">📑 रिस्पॉन्स शीट Q-Bank</button>
+            <button class="filter-btn" onclick="filterCategory('Marathi', this)">✍️ मराठी व्याकरण</button>
+            <button class="filter-btn" onclick="filterCategory('English', this)">📖 English Mastery</button>
+            <button class="filter-btn" onclick="filterCategory('Maths & Reasoning', this)">🔢 गणित व बुद्धिमत्ता</button>
+            <button class="filter-btn" onclick="filterCategory('General Knowledge', this)">🗺️ महाराष्ट्र GS</button>
         </div>
     </header>
 
@@ -730,13 +730,18 @@
             `).join('');
         }
 
-        function filterCategory(cat) {
-            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
-            event.target.classList.add('active');
-            if (cat === 'All') {
+        function filterCategory(cat, btn) {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            if (btn && btn.classList) {
+                btn.classList.add('active');
+            } else {
+                const found = Array.from(document.querySelectorAll('.filter-btn')).find(b => b.textContent.includes(cat) || (cat === 'All' && b.textContent.includes('All')));
+                if (found) found.classList.add('active');
+            }
+            if (!cat || cat === 'All') {
                 renderProducts(PRODUCTS);
             } else {
-                renderProducts(PRODUCTS.filter(p => p.subject.toLowerCase().includes(cat.toLowerCase())));
+                renderProducts(PRODUCTS.filter(p => p.subject && p.subject.toLowerCase().includes(cat.toLowerCase())));
             }
         }
 
@@ -747,7 +752,7 @@
                 return;
             }
             const filtered = PRODUCTS.filter(p => 
-                p.title.toLowerCase().includes(term) || 
+                (p.title && p.title.toLowerCase().includes(term)) || 
                 (p.subtitle && p.subtitle.toLowerCase().includes(term)) ||
                 (p.subject && p.subject.toLowerCase().includes(term)) ||
                 (p.description && p.description.toLowerCase().includes(term))
@@ -785,29 +790,39 @@
             const qrFallback = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(upiUri)}`;
 
             const imgEl = document.getElementById('upiQrImg');
-            imgEl.onerror = function() {
-                if (this.src !== qrFallback) {
-                    this.src = qrFallback;
-                }
-            };
-            imgEl.src = qrLocal;
+            if (window.location.protocol === 'file:') {
+                imgEl.src = qrFallback;
+            } else {
+                imgEl.onerror = function() {
+                    if (this.src !== qrFallback) {
+                        this.src = qrFallback;
+                    }
+                };
+                imgEl.src = qrLocal;
+            }
             document.getElementById('upiIntentBtn').href = upiUri;
 
-            // Register pending order via backend API
-            try {
-                const res = await fetch('/api/checkout', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        product_id: currentProduct.id,
-                        email: email,
-                        amount: amount
-                    })
-                });
-                const data = await res.json();
-                currentOrderToken = data.order_token || ('ORD_' + Math.random().toString(36).substring(2, 10).toUpperCase());
-            } catch (e) {
-                currentOrderToken = 'ORD_' + Math.random().toString(36).substring(2, 10).toUpperCase();
+            currentOrderToken = 'ORD_' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
+
+            // Register pending order via backend API when connected via HTTP
+            if (window.location.protocol !== 'file:') {
+                try {
+                    const res = await fetch('/api/checkout', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            product_id: currentProduct.id,
+                            email: email,
+                            amount: amount
+                        })
+                    });
+                    const data = await res.json();
+                    if (data && data.order_token) {
+                        currentOrderToken = data.order_token;
+                    }
+                } catch (e) {
+                    console.log('Checkout API note:', e);
+                }
             }
 
             document.getElementById('modalStep1').style.display = 'none';
@@ -837,35 +852,48 @@
 
             const email = document.getElementById('customerEmail').value.trim();
             const confirmBtn = document.querySelector('#modalStep2 button.btn-buy');
-            const origText = confirmBtn ? confirmBtn.innerText : '✅ मी पेमेंट केले आहे';
+            const origText = confirmBtn ? confirmBtn.innerText : '🔐 पेमेंट पडताळणी करा आणि ई-बुक मिळवा (Verify Payment & Download)';
 
             if (confirmBtn) {
                 confirmBtn.disabled = true;
                 confirmBtn.innerText = 'व्हेरिफाय करत आहे... ⏳';
             }
 
-            // Verify via backend API and only proceed if approved
             try {
-                const res = await fetch('/api/verify', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        order_token: currentOrderToken,
-                        utr: userUtr
-                    })
-                });
-                const data = await res.json();
-                if (data.success) {
+                let success = false;
+                let downloadUrl = `/download/${currentOrderToken}`;
+                let message = '';
+
+                if (window.location.protocol === 'file:') {
+                    // Local static preview verification
+                    success = (userUtr.length >= 8);
+                    downloadUrl = `https://t.me/ExamRankersIndiaBot?start=download_${currentProduct.id}`;
+                } else {
+                    const res = await fetch('/api/verify', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            order_token: currentOrderToken,
+                            utr: userUtr
+                        })
+                    });
+                    const data = await res.json();
+                    success = data.success;
+                    downloadUrl = data.download_url || `/download/${currentOrderToken}`;
+                    message = data.message;
+                }
+
+                if (success) {
                     document.getElementById('finalEmailSpan').innerText = email;
                     document.getElementById('finalOrderToken').innerText = currentOrderToken;
-                    document.getElementById('instantDownloadBtn').href = data.download_url || `/download/${currentOrderToken}`;
+                    document.getElementById('instantDownloadBtn').href = downloadUrl;
                     document.getElementById('modalStep2').style.display = 'none';
                     document.getElementById('modalStep3').style.display = 'block';
                 } else {
-                    alert('❌ पेमेंट व्हेरिफाय होऊ शकले नाही: ' + (data.message || 'कृपया UTR तपासा व पुन्हा प्रयत्न करा.'));
+                    alert('❌ पेमेंट व्हेरिफाय होऊ शकले नाही: ' + (message || 'कृपया UTR तपासा व पुन्हा प्रयत्न करा.'));
                 }
             } catch (e) {
-                alert('❌ सर्व्हरशी संपर्क होऊ शकला नाही. कृपया इंटरनेट तपासा व पुन्हा प्रयत्न करा.');
+                alert('❌ सर्व्हरशी संपर्क होऊ शकला नाही. कृपया इंटरनेट तपासा किंवा थेट बॉटवरून संपर्क करा.');
             } finally {
                 if (confirmBtn) {
                     confirmBtn.disabled = false;

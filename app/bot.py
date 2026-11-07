@@ -1,5 +1,6 @@
 import html
 import os
+import sys
 import json
 import sqlite3
 import tempfile
@@ -15,6 +16,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
 from dotenv import load_dotenv
+
+if __package__ is None or __package__ == "":
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    __package__ = "app"
 
 from telegram import (
     Update,
@@ -88,6 +93,7 @@ from .monetization import (
     is_utr_already_used,
 )
 from .digital_store import (
+    render_digital_store_html,
     render_nano_banana_store_html,
     packaging_agent,
     fulfillment_agent,
@@ -201,16 +207,21 @@ def get_promotional_broadcast_caption(yt_link: str = "") -> str:
 def get_store_web_url() -> str:
     """Returns the live ExamRankers digital products storefront URL."""
     url = (
-        os.getenv("RENDER_EXTERNAL_URL")
-        or os.getenv("SELF_PING_URL")
-        or os.getenv("STORE_URL")
+        os.getenv("STORE_URL")
+        or os.getenv("RENDER_EXTERNAL_URL")
     )
     if not url:
         hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME")
         if hostname:
             url = f"https://{hostname}"
     if not url:
-        url = "https://t.me/ExamRankersIndiaBot?start=store"
+        ping_url = os.getenv("SELF_PING_URL", "")
+        # Only use SELF_PING_URL if it doesn't point to an unverified placeholder
+        if ping_url and "exam-rankers-bot.onrender.com" not in ping_url:
+            url = ping_url
+    if not url:
+        port = os.getenv("PORT", "8080")
+        url = f"http://localhost:{port}"
     return url.rstrip("/")
 
 def update_env_channel_id(channel_id: str):
@@ -3910,12 +3921,23 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
 
         log_store_visitor(client_ip, ua, ref, tg_id=tg_uid, page_path=path or "/", action="view_store", product_id=prod_param)
 
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        html = render_digital_store_html()
-        self.wfile.write(html.encode("utf-8"))
+        try:
+            html = render_digital_store_html()
+            html_bytes = html.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(html_bytes)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(html_bytes)
+        except Exception as e:
+            logger.error(f"Error rendering digital store HTML: {e}", exc_info=True)
+            err_msg = f"Store Error: {e}".encode("utf-8")
+            self.send_response(500)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(err_msg)))
+            self.end_headers()
+            self.wfile.write(err_msg)
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
