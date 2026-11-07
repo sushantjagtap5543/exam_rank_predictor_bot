@@ -721,7 +721,7 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None) -> str:
 </head>
 <body>
     <div class="top-ticker">
-        ⚡ <span>TCS व IBPS चालू परीक्षा:</span> तलाठी, ZP, पोलीस भरती, वनरक्षक व आरोग्य विभाग विशेष ई-बुक्स <b>(सर्व पुस्तके अवघ्या ₹१० ते ₹९९ मध्ये!)</b>
+        ⚡ <span>TCS व IBPS चालू परीक्षा:</span> तलाठी, ZP, पोलीस भरती, वनरक्षक व आरोग्य विभाग विशेष ई-बुक्स <b>(सर्व पुस्तके अवघ्या ₹१० ते ₹५० मध्ये!)</b>
     </div>
 
     <nav class="navbar">
@@ -743,7 +743,7 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None) -> str:
 
         <div class="trust-bar">
             <div class="trust-item"><span>✓</span> १००% अधिकृत TCS/IBPS पॅटर्न</div>
-            <div class="trust-item"><span>✓</span> अवघ्या ₹१० ते ₹९९ मध्ये</div>
+            <div class="trust-item"><span>✓</span> अवघ्या ₹१० ते ₹५० मध्ये</div>
             <div class="trust-item"><span>✓</span> तात्काळ Email व Web डाऊनलोड</div>
             <div class="trust-item"><span>✓</span> ५०,०००+ समाधानी विद्यार्थी</div>
         </div>
@@ -897,7 +897,7 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None) -> str:
         function renderProducts(items) {{
             const grid = document.getElementById('productGrid');
             if (!items || items.length === 0) {{
-                grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px;">कोणतेही पुस्तक आढळले नाही. कृपया दुसरा शब्द शोधा.</div>';
+                grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 50px 20px;"><div style="font-size:42px; margin-bottom:12px;">📚</div><h3 style="color:#ffffff; font-size:18px; margin-bottom:8px;">सध्या नवीन ई-बुक्स संकलन सुरू आहे</h3><p style="font-size:13.5px; color:#94a3b8; max-width:480px; margin:0 auto;">लवकरच चालू TCS व IBPS परीक्षेसाठी नवी पुस्तके उपलब्ध केली जातील. चालू घडामोडी व मोफत क्विझसाठी आमच्या टेलिग्राम चॅनेलला भेट द्या.</p><a href="https://t.me/ExamRankersIndiaBot" class="btn-buy" style="display:inline-block; margin-top:16px; text-decoration:none; padding:10px 20px;">📢 अधिकृत टेलिग्राम चॅनेल उघडा</a></div>';
                 return;
             }}
             grid.innerHTML = items.map(p => `

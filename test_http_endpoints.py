@@ -5,18 +5,20 @@ import sqlite3
 import unittest
 import urllib.request
 import threading
+import base64
 from http.server import HTTPServer
 
 sys.path.insert(0, os.path.abspath("."))
 from app.bot import HealthCheckHandler, DB_PATH
+from app.digital_store import packaging_agent
 
 class TestHTTPEndpoints(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.server = HTTPServer(("127.0.0.1", 8765), HealthCheckHandler)
+        cls.server = HTTPServer(("127.0.0.1", 8769), HealthCheckHandler)
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
-        cls.base_url = "http://127.0.0.1:8765"
+        cls.base_url = "http://127.0.0.1:8769"
 
     @classmethod
     def tearDownClass(cls):
@@ -31,8 +33,10 @@ class TestHTTPEndpoints(unittest.TestCase):
         req = urllib.request.urlopen(f"{self.base_url}/admin")
         self.assertEqual(req.status, 200)
         content = req.read().decode("utf-8")
-        self.assertIn("ExamRankers™ Admin Command Center", content)
+        self.assertIn("Admin Studio", content)
         self.assertIn("थेट स्टोअर व्हिजिटर्स", content)
+        self.assertIn("openAddModal", content)
+        self.assertIn("purgeAllProducts", content)
 
     def test_storefront(self):
         req = urllib.request.urlopen(f"{self.base_url}/")
@@ -40,28 +44,104 @@ class TestHTTPEndpoints(unittest.TestCase):
         content = req.read().decode("utf-8")
         self.assertIn("ExamRankers", content)
 
-    def test_admin_sync_products_api(self):
+    def test_manual_product_crud_apis(self):
+        # 1. Create Product
+        new_prod_payload = {
+            "title": "मॅन्युअल चाचणी ई-बुक २०२६",
+            "subtitle": "अतिसंभाव्य ५०० सराव प्रश्न",
+            "subject": "Marathi",
+            "price_inr": 25,
+            "original_price_inr": 99,
+            "pages": 55,
+            "badge": "⭐ नवीन",
+            "icon": "✍️",
+            "download_file": "manual_test.pdf",
+            "description": "मॅन्युअल ॲडमिन कंट्रोल चाचणी पुस्तक.",
+            "is_active": 1
+        }
         req = urllib.request.Request(
-            f"{self.base_url}/api/admin/sync_products",
-            data=b"{}",
+            f"{self.base_url}/api/admin/create_product",
+            data=json.dumps(new_prod_payload).encode("utf-8"),
             headers={"Content-Type": "application/json"}
         )
         resp = urllib.request.urlopen(req)
         self.assertEqual(resp.status, 200)
-        data = json.loads(resp.read().decode("utf-8"))
-        self.assertIn("success", data)
-        self.assertTrue(data["success"])
+        res_data = json.loads(resp.read().decode("utf-8"))
+        self.assertTrue(res_data.get("success"))
+        created_p = res_data.get("product")
+        prod_id = created_p["id"]
+        self.assertEqual(created_p["title"], "मॅन्युअल चाचणी ई-बुक २०२६")
 
-    def test_admin_update_price_api(self):
+        # 2. Update Product
+        up_req = urllib.request.Request(
+            f"{self.base_url}/api/admin/update_product",
+            data=json.dumps({"product_id": prod_id, "price_inr": 45, "title": "अद्ययावत मॅन्युअल ई-बुक"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        up_resp = urllib.request.urlopen(up_req)
+        self.assertEqual(up_resp.status, 200)
+        up_data = json.loads(up_resp.read().decode("utf-8"))
+        self.assertTrue(up_data.get("success"))
+
+        # Verify DB updated
+        p = packaging_agent.get_product_by_id(prod_id, DB_PATH)
+        self.assertEqual(p["price_inr"], 45)
+        self.assertEqual(p["title"], "अद्ययावत मॅन्युअल ई-बुक")
+
+        # 3. Toggle Status (Active -> Hidden)
+        tog_req = urllib.request.Request(
+            f"{self.base_url}/api/admin/toggle_product_status",
+            data=json.dumps({"product_id": prod_id}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        tog_resp = urllib.request.urlopen(tog_req)
+        self.assertEqual(tog_resp.status, 200)
+        p_after = packaging_agent.get_product_by_id(prod_id, DB_PATH)
+        self.assertEqual(p_after["is_active"], 0)
+
+        # 4. Delete Product
+        del_req = urllib.request.Request(
+            f"{self.base_url}/api/admin/delete_product",
+            data=json.dumps({"product_id": prod_id}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        del_resp = urllib.request.urlopen(del_req)
+        self.assertEqual(del_resp.status, 200)
+        self.assertIsNone(packaging_agent.get_product_by_id(prod_id, DB_PATH))
+
+    def test_upload_pdf_api(self):
+        sample_pdf_bytes = b"%PDF-1.4 sample test bytes for admin manual upload"
+        b64_str = base64.b64encode(sample_pdf_bytes).decode("utf-8")
         req = urllib.request.Request(
-            f"{self.base_url}/api/admin/update_price",
-            data=json.dumps({"product_id": "prod_ca_monthly_top200", "price_inr": 25}).encode("utf-8"),
+            f"{self.base_url}/api/admin/upload_pdf",
+            data=json.dumps({"filename": "test_admin_upload.pdf", "base64_data": b64_str}).encode("utf-8"),
             headers={"Content-Type": "application/json"}
         )
         resp = urllib.request.urlopen(req)
         self.assertEqual(resp.status, 200)
         data = json.loads(resp.read().decode("utf-8"))
         self.assertTrue(data.get("success"))
+        self.assertEqual(data.get("filename"), "test_admin_upload.pdf")
+
+    def test_order_action_api(self):
+        with sqlite3.connect(DB_PATH) as db:
+            db.execute("""
+                INSERT OR REPLACE INTO product_orders (
+                    order_token, product_id, customer_email, amount_paid, utr, status
+                ) VALUES ('ORD_TEST_ACTION', 'prod_test', 'test@gmail.com', 29, '123456789012', 'pending')
+            """)
+            db.commit()
+
+        req = urllib.request.Request(
+            f"{self.base_url}/api/admin/order_action",
+            data=json.dumps({"order_token": "ORD_TEST_ACTION", "action": "approve"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        resp = urllib.request.urlopen(req)
+        self.assertEqual(resp.status, 200)
+        data = json.loads(resp.read().decode("utf-8"))
+        self.assertTrue(data.get("success"))
+        self.assertEqual(data.get("status"), "approved")
 
 if __name__ == "__main__":
     unittest.main()

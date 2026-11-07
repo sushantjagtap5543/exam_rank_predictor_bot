@@ -3967,7 +3967,8 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             zip_path = STORAGE_DIR / "reports" / "ExamRankers_Full_Store_Content.zip"
             storage_products_dir = STORAGE_DIR / "products"
             storage_products_dir.mkdir(parents=True, exist_ok=True)
-            for p in DEFAULT_PRODUCTS:
+            active_prods = packaging_agent.get_all_products(DB_PATH, include_inactive=True)
+            for p in active_prods:
                 try:
                     packaging_agent.ensure_product_pdf(p["id"], output_dir=storage_products_dir, db_path=DB_PATH)
                 except Exception:
@@ -4163,6 +4164,177 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 return
             except Exception as e:
                 logger.error(f"Error generating Chalu Ghadamodi: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
+                return
+
+        # Admin API: Create product manually
+        if path == "/api/admin/create_product":
+            try:
+                created = packaging_agent.create_product(data, DB_PATH)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": True, "product": created}).encode("utf-8"))
+                return
+            except Exception as e:
+                logger.error(f"Error creating product: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
+                return
+
+        # Admin API: Update product details
+        if path == "/api/admin/update_product":
+            try:
+                prod_id = data.get("product_id")
+                if not prod_id:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"success": False, "message": "product_id missing"}).encode("utf-8"))
+                    return
+
+                ok = packaging_agent.update_product(prod_id, data, DB_PATH)
+                self.send_response(200 if ok else 400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": ok, "product_id": prod_id}).encode("utf-8"))
+                return
+            except Exception as e:
+                logger.error(f"Error updating product: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
+                return
+
+        # Admin API: Delete product permanently
+        if path == "/api/admin/delete_product":
+            try:
+                prod_id = data.get("product_id")
+                ok = packaging_agent.delete_product(prod_id, DB_PATH)
+                self.send_response(200 if ok else 400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": ok, "product_id": prod_id}).encode("utf-8"))
+                return
+            except Exception as e:
+                logger.error(f"Error deleting product: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
+                return
+
+        # Admin API: Toggle product status (active/inactive)
+        if path == "/api/admin/toggle_product_status":
+            try:
+                prod_id = data.get("product_id")
+                ok = packaging_agent.toggle_product_status(prod_id, DB_PATH)
+                self.send_response(200 if ok else 400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": ok, "product_id": prod_id}).encode("utf-8"))
+                return
+            except Exception as e:
+                logger.error(f"Error toggling product status: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
+                return
+
+        # Admin API: Purge all products for clean manual setup
+        if path == "/api/admin/purge_products":
+            try:
+                purged_cnt = packaging_agent.purge_all_products(DB_PATH)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": True, "purged": purged_cnt}).encode("utf-8"))
+                return
+            except Exception as e:
+                logger.error(f"Error purging products: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
+                return
+
+        # Admin API: Approve or reject customer order
+        if path == "/api/admin/order_action":
+            try:
+                order_token = data.get("order_token")
+                action = data.get("action", "approve")
+                new_status = "approved" if action == "approve" else "rejected"
+                with sqlite3.connect(DB_PATH) as db:
+                    db.execute("UPDATE product_orders SET status = ?, delivery_status = ? WHERE order_token = ?", (new_status, "delivered" if action == "approve" else "failed", order_token))
+                    db.commit()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": True, "order_token": order_token, "status": new_status}).encode("utf-8"))
+                return
+            except Exception as e:
+                logger.error(f"Error updating order: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
+                return
+
+        # Admin API: Upload PDF directly from browser
+        if path == "/api/admin/upload_pdf":
+            try:
+                import base64
+                fn = data.get("filename", "uploaded.pdf").strip()
+                b64 = data.get("base64_data", "")
+                if not b64 or not fn:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"success": False, "message": "Missing file data"}).encode("utf-8"))
+                    return
+
+                safe_fn = os.path.basename(fn)
+                if not safe_fn.lower().endswith(".pdf"):
+                    safe_fn += ".pdf"
+
+                dest_dir = STORAGE_DIR / "products"
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                dest_path = dest_dir / safe_fn
+
+                pdf_bytes = base64.b64decode(b64)
+                with open(dest_path, "wb") as f:
+                    f.write(pdf_bytes)
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": True, "filename": safe_fn, "size": len(pdf_bytes)}).encode("utf-8"))
+                return
+            except Exception as e:
+                logger.error(f"Error uploading PDF: {e}")
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Access-Control-Allow-Origin", "*")
@@ -4971,19 +5143,7 @@ def main():
     init_db()
     init_quiz_db(DB_PATH)
     packaging_agent.init_products_db(DB_PATH)
-    packaging_agent.sync_folder_pdfs_to_products(DB_PATH)
-    threading.Thread(target=lambda: [packaging_agent.ensure_product_pdf(p['id']) for p in DEFAULT_PRODUCTS], daemon=True).start()
-
-    def _auto_product_sync_worker():
-        import time
-        while True:
-            time.sleep(15)
-            try:
-                packaging_agent.sync_folder_pdfs_to_products(DB_PATH)
-            except Exception:
-                pass
-
-    threading.Thread(target=_auto_product_sync_worker, daemon=True).start()
+    logger.info("Products database initialized (Manual Admin Control mode).")
     logger.info("Initializing Telegram application...")
     app = (
         Application.builder()

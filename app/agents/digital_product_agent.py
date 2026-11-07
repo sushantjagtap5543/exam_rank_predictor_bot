@@ -296,31 +296,90 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            # Upsert all default products to ensure new months & updates are synchronized
-            for p in DEFAULT_PRODUCTS:
-                db.execute("""
-                    INSERT INTO digital_products (
-                        id, title, subtitle, subject, tier, price_inr, original_price_inr,
-                        badge, rating, reviews_count, pages, description, download_file, icon
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(id) DO UPDATE SET
-                        title=excluded.title,
-                        subtitle=excluded.subtitle,
-                        subject=excluded.subject,
-                        tier=excluded.tier,
-                        price_inr=excluded.price_inr,
-                        original_price_inr=excluded.original_price_inr,
-                        badge=excluded.badge,
-                        pages=excluded.pages,
-                        description=excluded.description,
-                        download_file=excluded.download_file,
-                        icon=excluded.icon
-                """, (
-                    p["id"], p["title"], p["subtitle"], p["subject"], p["tier"],
-                    p["price_inr"], p["original_price_inr"], p["badge"], p["rating"],
-                    p["reviews_count"], p["pages"], p["description"], p["download_file"], p["icon"]
-                ))
-            logger.info(f"Synchronized digital_products table with {len(DEFAULT_PRODUCTS)} standard products.")
+            logger.info("digital_products and product_orders tables initialized.")
+
+    def create_product(self, data: Dict[str, Any], db_path: str = "bot.db") -> Dict[str, Any]:
+        """Manually creates a new product in the digital_products table with full admin control."""
+        import uuid
+        self.init_products_db(db_path)
+        prod_id = data.get("id") or f"prod_{uuid.uuid4().hex[:8]}"
+        title = data.get("title", "नवीन डिजिटल ई-बुक").strip()
+        subtitle = data.get("subtitle", "TCS/IBPS परीक्षा विशेष ई-बुक").strip()
+        subject = data.get("subject", "General").strip()
+        tier = data.get("tier", "Manual").strip()
+        price_inr = int(data.get("price_inr", 19))
+        original_price_inr = int(data.get("original_price_inr") or max(price_inr * 3, 99))
+        badge = data.get("badge", "🔥 NEW").strip()
+        rating = float(data.get("rating", 5.0))
+        reviews_count = int(data.get("reviews_count", 50))
+        pages = int(data.get("pages", 40))
+        description = data.get("description", "").strip()
+        download_file = data.get("download_file", f"{prod_id}.pdf").strip()
+        icon = data.get("icon", "📚").strip()
+        is_active = int(data.get("is_active", 1))
+
+        with sqlite3.connect(db_path) as db:
+            db.execute("""
+                INSERT OR REPLACE INTO digital_products (
+                    id, title, subtitle, subject, tier, price_inr, original_price_inr,
+                    badge, rating, reviews_count, pages, description, download_file, icon,
+                    is_active, sales_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """, (
+                prod_id, title, subtitle, subject, tier, price_inr, original_price_inr,
+                badge, rating, reviews_count, pages, description, download_file, icon,
+                is_active
+            ))
+            db.commit()
+
+        logger.info(f"✅ Manually created product '{title}' (ID: {prod_id}, ₹{price_inr})")
+        return self.get_product_by_id(prod_id, db_path)
+
+    def update_product(self, product_id: str, updates: Dict[str, Any], db_path: str = "bot.db") -> bool:
+        """Manually updates an existing product with specified fields."""
+        allowed_fields = [
+            "title", "subtitle", "subject", "tier", "price_inr", "original_price_inr",
+            "badge", "pages", "description", "download_file", "icon", "is_active"
+        ]
+        set_clauses = []
+        vals = []
+        for k, v in updates.items():
+            if k in allowed_fields:
+                set_clauses.append(f"{k} = ?")
+                vals.append(v)
+        if not set_clauses:
+            return False
+
+        vals.append(product_id)
+        with sqlite3.connect(db_path) as db:
+            db.execute(f"UPDATE digital_products SET {', '.join(set_clauses)} WHERE id = ?", vals)
+            db.commit()
+        logger.info(f"✅ Updated product {product_id} with {updates}")
+        return True
+
+    def delete_product(self, product_id: str, db_path: str = "bot.db") -> bool:
+        """Permanently deletes a product from the database."""
+        with sqlite3.connect(db_path) as db:
+            cur = db.execute("DELETE FROM digital_products WHERE id = ?", (product_id,))
+            db.commit()
+            logger.info(f"🗑️ Deleted product {product_id} (rows: {cur.rowcount})")
+            return cur.rowcount > 0
+
+    def toggle_product_status(self, product_id: str, db_path: str = "bot.db") -> bool:
+        """Toggles product between active (1) and inactive/hidden (0)."""
+        with sqlite3.connect(db_path) as db:
+            cur = db.execute("UPDATE digital_products SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END WHERE id = ?", (product_id,))
+            db.commit()
+            logger.info(f"👁️ Toggled product status {product_id} (rows: {cur.rowcount})")
+            return cur.rowcount > 0
+
+    def purge_all_products(self, db_path: str = "bot.db") -> int:
+        """Removes all products from the store so admin has a 100% clean slate for manual control."""
+        with sqlite3.connect(db_path) as db:
+            cur = db.execute("DELETE FROM digital_products")
+            db.commit()
+            logger.info(f"🧹 Purged all {cur.rowcount} products from digital_products table.")
+            return cur.rowcount
 
     def bulk_sync_questions_to_store_qbank(self, new_questions: List[Dict[str, Any]], db_path: str = "bot.db") -> Dict[str, Any]:
         """
@@ -547,13 +606,15 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
 
         return added_count
 
-    def get_all_products(self, db_path: str = "bot.db") -> List[Dict[str, Any]]:
-        """Returns all active digital products from SQLite database with automatic folder sync."""
+    def get_all_products(self, db_path: str = "bot.db", include_inactive: bool = False) -> List[Dict[str, Any]]:
+        """Returns digital products from SQLite database under 100% manual admin control."""
         self.init_products_db(db_path)
-        self.sync_folder_pdfs_to_products(db_path)
         with sqlite3.connect(db_path) as db:
             db.row_factory = sqlite3.Row
-            rows = db.execute("SELECT * FROM digital_products WHERE is_active = 1 ORDER BY price_inr ASC").fetchall()
+            if include_inactive:
+                rows = db.execute("SELECT * FROM digital_products ORDER BY id DESC").fetchall()
+            else:
+                rows = db.execute("SELECT * FROM digital_products WHERE is_active = 1 ORDER BY price_inr ASC").fetchall()
             return [dict(r) for r in rows]
 
     def get_product_by_id(self, product_id: str, db_path: str = "bot.db") -> Optional[Dict[str, Any]]:
@@ -565,14 +626,21 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
 
     def ensure_product_pdf(self, product_id: str, output_dir: Optional[Path] = None, db_path: str = "bot.db", force_rebuild: bool = False) -> Path:
         """
-        Dynamically synthesizes and ensures a publication-grade ReportLab PDF exists on disk.
+        Dynamically synthesizes or retrieves product PDF file.
         Returns the absolute Path to the ready-to-deliver PDF file.
         """
         if output_dir is None:
             output_dir = Path(__file__).resolve().parent.parent.parent / "admin_storage" / "products"
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        prod = self.get_product_by_id(product_id, db_path) or DEFAULT_PRODUCTS[0]
+        prod = self.get_product_by_id(product_id, db_path)
+        if not prod:
+            # Check if file exists matching product_id
+            cand = output_dir / f"{product_id}.pdf"
+            if cand.exists():
+                return cand
+            return None
+
         filename = prod.get("download_file") or f"{product_id}.pdf"
         target_path = output_dir / filename
 

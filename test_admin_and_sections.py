@@ -22,7 +22,7 @@ class TestAdminAndSections(unittest.TestCase):
 
     def test_admin_dashboard_html_rendering(self):
         html = render_admin_dashboard_html(self.db_path)
-        self.assertIn("ExamRankers™ Admin Command Center", html)
+        self.assertIn("Admin Studio", html)
         self.assertIn("थेट स्टोअर व्हिजिटर्स", html)
         self.assertIn("१२-अंकी UTR", html)
         self.assertIn("syncFolderPdfs", html)
