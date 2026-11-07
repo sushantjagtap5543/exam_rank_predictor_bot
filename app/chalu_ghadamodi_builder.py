@@ -59,6 +59,10 @@ def structure_raw_data_to_chalu_ghadamodi(raw_input: Any, month_name: str = "च
     """
     entries = []
 
+    if isinstance(raw_input, tuple):
+        # Unpack tuple if returned by get_subject_specific_content: (items, ...)
+        raw_input = raw_input[0]
+
     if isinstance(raw_input, str):
         # Parse text lines or bullet points
         lines = [l.strip() for l in raw_input.splitlines() if l.strip()]
@@ -82,7 +86,7 @@ def structure_raw_data_to_chalu_ghadamodi(raw_input: Any, month_name: str = "च
                 "star": is_star,
                 "raw": line
             })
-    elif isinstance(raw_input, list):
+    elif isinstance(raw_input, (list, tuple)):
         for item in raw_input:
             if isinstance(item, dict):
                 ev = item.get("event") or item.get("title") or item.get("q") or ""
@@ -92,6 +96,20 @@ def structure_raw_data_to_chalu_ghadamodi(raw_input: Any, month_name: str = "च
                     "event": ev,
                     "detail": dt if dt.endswith(".") else f"{dt}.",
                     "star": st,
+                    "raw": f"{ev} {dt}"
+                })
+            elif isinstance(item, (list, tuple)):
+                # Tuple format: (q, opts, ans, ana, trk, trp)
+                q_text = str(item[0]) if len(item) > 0 else ""
+                ans_text = str(item[2]) if len(item) > 2 else ""
+                ana_text = str(item[3]) if len(item) > 3 else ""
+                ev = q_text.split(".", 1)[-1].strip() if "." in q_text else q_text
+                dt = f"{ans_text.replace('उत्तर:', '').strip()} {ana_text.replace('विश्लेषण:', '').strip()}".strip()
+                is_st = any(w in q_text.lower() for w in ["पहिल", "सर्वोच्च", "ऐतिहासिक", "सुवर्ण", "नवा", "विक्रम"])
+                entries.append({
+                    "event": ev[:70],
+                    "detail": dt if dt.endswith(".") else f"{dt}.",
+                    "star": is_st,
                     "raw": f"{ev} {dt}"
                 })
             elif isinstance(item, str):
@@ -558,21 +576,25 @@ def build_chalu_ghadamodi_pdf(data: Dict[str, Any], output_pdf_path: str) -> str
     browser_bin = find_browser_executable()
     rendered = False
 
+    abs_out = os.path.abspath(output_pdf_path)
+    os.makedirs(os.path.dirname(abs_out), exist_ok=True)
+
     if browser_bin:
         try:
             cmd = [
                 browser_bin,
-                "--headless",
+                "--headless=new",
                 "--disable-gpu",
+                "--no-sandbox",
                 "--no-pdf-header-footer",
-                f"--print-to-pdf={output_pdf_path}",
+                f"--print-to-pdf={abs_out}",
                 temp_html
             ]
             logger.info(f"Running headless browser to render PDF: {browser_bin}")
             res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=25)
-            if os.path.exists(output_pdf_path) and os.path.getsize(output_pdf_path) > 1000:
+            if os.path.exists(abs_out) and os.path.getsize(abs_out) > 1000:
                 rendered = True
-                logger.info(f"Successfully generated Chalu Ghadamodi PDF at {output_pdf_path} ({os.path.getsize(output_pdf_path)} bytes)")
+                logger.info(f"Successfully generated Chalu Ghadamodi PDF at {abs_out} ({os.path.getsize(abs_out)} bytes)")
         except Exception as e:
             logger.warning(f"Headless browser PDF rendering failed: {e}")
 
@@ -594,3 +616,4 @@ def build_chalu_ghadamodi_pdf(data: Dict[str, Any], output_pdf_path: str) -> str
         pass
 
     return output_pdf_path
+

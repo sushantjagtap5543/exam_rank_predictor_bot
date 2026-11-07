@@ -1559,6 +1559,15 @@ def format_swot_telegram_message(swot: dict) -> str:
         "💡 <i>टिप: वरील संधी व दुर्बल घटकांवर भर दिल्यास अंतिम गुणवत्ता यादीत तुमचे स्थान निश्चित होईल!</i>"
     )
 
+# Subject-wise section grouping for Question Banks (मराठी, English, सामान्य ज्ञान, बुद्धिमत्ता व गणित)
+SECTION_DEFS = [
+    ("विभाग १: मराठी भाषा व व्याकरण (Marathi Language & Grammar)", ["मराठी", "marathi", "व्याकरण"]),
+    ("विभाग २: इंग्रजी भाषा व व्याकरण (English Language & Comprehension)", ["english", "इंग्रजी", "vocab", "comprehension"]),
+    ("विभाग ३: सामान्य ज्ञान, चालू घडामोडी व GS (General Studies & GK)", ["सामान्य ज्ञान", "gs", "gk", "चालू घडामोडी", "इतिहास", "भूगोल", "राज्यघटना", "विज्ञान", "सामान्य घटक"]),
+    ("विभाग ४: बौद्धिक चाचणी व अंकगणित (Reasoning & Mathematics)", ["गणित", "अंकगणित", "बुद्धिमत्ता", "math", "reasoning", "aptitude"]),
+    ("विभाग ५: तांत्रिक व विशेष घटक (Technical & Special Subjects)", [])
+]
+
 def generate_oneliner_question_bank_pdf(db_path: str, output_path: str, exam_name: str = None) -> str:
     """
     Generates a world-class, printable A4 One-Liner Question Bank PDF for Admins.
@@ -1904,41 +1913,82 @@ def generate_oneliner_question_bank_pdf(db_path: str, output_path: str, exam_nam
     story.append(Spacer(1, 6))
     story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#4338ca"), spaceBefore=2, spaceAfter=6))
 
-    # STRICTLY 4 COLUMNS: 1-Index, 2-Question, 3-Answer, 4-Explanation by AI
-    table_data = [[
-        Paragraph("<b>क्र.</b>", th_style),
-        Paragraph("<b>प्रश्न (Question)</b>", th_style),
-        Paragraph("<b>अचूक उत्तर (Answer)</b>", th_style),
-        Paragraph("<b>AI सविस्तर स्पष्टीकरण (AI Explanation)</b>", th_style)
-    ]]
+    # Subject-wise section grouping (मराठी, English, सामान्य ज्ञान, बुद्धिमत्ता व गणित)
+    section_groups = {title: [] for title, _ in SECTION_DEFS}
+    for q in final_questions:
+        assigned = False
+        sec_name = (q.get("section") or "").lower()
+        for title, kws in SECTION_DEFS[:-1]:
+            if any(k in sec_name for k in kws):
+                section_groups[title].append(q)
+                assigned = True
+                break
+        if not assigned:
+            section_groups["विभाग ५: तांत्रिक व विशेष घटक (Technical & Special Subjects)"].append(q)
 
-    for i, item in enumerate(final_questions, 1):
-        sec = clean_text_for_pdf(item.get("section", "सामान्य घटक"))
-        q_text = clean_text_for_pdf(item.get("question", ""))
-        ans_text = clean_text_for_pdf(item.get("answer", ""))
-        exp_text = clean_text_for_pdf(item.get("explanation", ""))
+    # Active non-empty sections
+    active_sections = [(t, items) for t, items in section_groups.items() if items]
 
-        idx_p = Paragraph(f"<b>{i}</b>", idx_cell_style)
-        q_p = Paragraph(f"<b>[{sec}]</b> {q_text}", q_cell_style)
-        a_p = Paragraph(f"{ans_text}", ans_cell_style)
-        e_p = Paragraph(f"{exp_text}", exp_cell_style)
-        table_data.append([idx_p, q_p, a_p, e_p])
+    sec_banner_style = ParagraphStyle(
+        "SecBanner",
+        fontName=font_bold,
+        fontSize=10,
+        leading=14,
+        textColor=colors.white,
+        alignment=0
+    )
 
-    # Table with exact A4 printable widths:
-    # 28 pt (Index) + 195 pt (Question) + 122 pt (Answer) + 200 pt (AI Explanation) = 545 pt total
-    oneliner_table = Table(table_data, colWidths=[28, 195, 122, 200], repeatRows=1)
-    oneliner_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e1b4b")),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#f8fafc"), colors.white])
-    ]))
+    global_q_idx = 1
+    for sec_title, items in active_sections:
+        # Section Header Banner
+        sec_banner = Table(
+            [[Paragraph(f"<b>📌 {sec_title} — ({len(items)} प्रश्न)</b>", sec_banner_style)]],
+            colWidths=[545]
+        )
+        sec_banner.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#1e1b4b")),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ]))
+        story.append(Spacer(1, 7))
+        story.append(sec_banner)
+        story.append(Spacer(1, 3))
 
-    story.append(oneliner_table)
+        # Strictly 4 Columns Table for this Section: 1-Index, 2-Question, 3-Answer, 4-AI Explanation
+        table_data = [[
+            Paragraph("<b>क्र.</b>", th_style),
+            Paragraph("<b>प्रश्न (Question)</b>", th_style),
+            Paragraph("<b>अचूक उत्तर (Answer)</b>", th_style),
+            Paragraph("<b>AI सविस्तर स्पष्टीकरण (AI Explanation)</b>", th_style)
+        ]]
+
+        for item in items:
+            q_text = clean_text_for_pdf(item.get("question", ""))
+            ans_text = clean_text_for_pdf(item.get("answer", ""))
+            exp_text = clean_text_for_pdf(item.get("explanation", ""))
+
+            idx_p = Paragraph(f"<b>{global_q_idx}</b>", idx_cell_style)
+            q_p = Paragraph(f"{q_text}", q_cell_style)
+            a_p = Paragraph(f"{ans_text}", ans_cell_style)
+            e_p = Paragraph(f"{exp_text}", exp_cell_style)
+            table_data.append([idx_p, q_p, a_p, e_p])
+            global_q_idx += 1
+
+        sec_table = Table(table_data, colWidths=[28, 195, 122, 200], repeatRows=1)
+        sec_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#f8fafc"), colors.white])
+        ]))
+        story.append(sec_table)
+        story.append(Spacer(1, 6))
 
     doc.build(story)
     logger.info(f"4-Column Question Bank Table PDF generated at {output_path} with {len(final_questions)} deduplicated questions.")

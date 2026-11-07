@@ -92,6 +92,7 @@ from .monetization import (
     validate_utr_format,
     is_utr_already_used,
 )
+from .admin_panel import render_admin_dashboard_html
 from .digital_store import (
     render_digital_store_html,
     render_nano_banana_store_html,
@@ -964,7 +965,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "2. <b>Score & Rank:</b> Bot instantly calculates overall & category rank, percentile, and cutoff zone.\n"
             "3. <b>Subject Dashboard:</b> View section-wise marks, accuracy, and questions breakdown.\n"
             "4. <b>Wrong Answers & Objections:</b> AI explains why your answer was wrong and whether to raise an official objection on ambiguous questions!\n\n"
-            f"💎 <i>Optional:</i> Join our <a href=\"{PAID_CHANNEL_LINK}\">Paid Quiz Channel</a> (₹99) for daily authentic exam polls."
+            f"📢 <b>मोफत टेलिग्राम चॅनेल:</b> <a href=\"{PAID_CHANNEL_LINK}\">येथे मोफत जॉईन करा</a>\n"
+            f"🛒 <b>डिजिटल ई-बुक्स स्टोअर (₹१० ते ₹५०):</b> <a href=\"{get_store_web_url()}\">येथे खरेदी करा</a>"
         )
         keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
         await q.message.edit_text(help_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True)
@@ -2149,7 +2151,8 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
             "2. <b>4-Tier Rank:</b> Bot calculates overall, exam, post-wise, and category rank.\n"
             "3. <b>Subject Dashboard:</b> View section-wise marks and accuracy.\n"
             "4. <b>Wrong Answers & Objections:</b> AI explains errors & checks objections!\n\n"
-            f"💎 <i>Optional:</i> Join our <a href=\"{PAID_CHANNEL_LINK}\">Paid Quiz Channel</a> (₹99) for daily authentic exam polls."
+            f"📢 <b>मोफत टेलिग्राम चॅनेल:</b> <a href=\"{PAID_CHANNEL_LINK}\">येथे मोफत जॉईन करा</a>\n"
+            f"🛒 <b>डिजिटल ई-बुक्स स्टोअर (₹१० ते ₹५०):</b> <a href=\"{get_store_web_url()}\">येथे खरेदी करा</a>"
         )
         keyboard = [[InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]]
         await msg.reply_text(help_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True)
@@ -2218,7 +2221,8 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
         )
 
         keyboard = [
-            [InlineKeyboardButton("💎 Join Paid ₹99 Quiz Channel (Official MCQs)", callback_data="join_paid")],
+            [InlineKeyboardButton("🛒 डिजिटल ई-बुक्स स्टोअर (₹१० ते ₹५०)", callback_data="store")],
+            [InlineKeyboardButton("📢 मोफत टेलिग्राम चॅनेल", url=PAID_CHANNEL_LINK)],
             [InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]
         ]
         await msg.reply_text(resp, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -3049,7 +3053,8 @@ async def daily_questions_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE
         "💎 <b>दररोज विचारलेले सर्व प्रश्न क्विझ स्वरूपात सोडवण्यासाठी आजच आमचे VIP चॅनेल जॉईन करा!</b>"
     ])
     keyboard = [
-        [InlineKeyboardButton("💎 Join Paid ₹99 Quiz Channel", callback_data="join_paid")],
+        [InlineKeyboardButton("🛒 डिजिटल ई-बुक्स स्टोअर (₹१० ते ₹५०)", url=get_store_web_url())],
+        [InlineKeyboardButton("📢 मोफत टेलिग्राम चॅनेल", url=PAID_CHANNEL_LINK)],
         [InlineKeyboardButton("🎯 Analyze My Response Sheet", callback_data="analyze")],
         [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]
     ]
@@ -3649,8 +3654,10 @@ async def set_bot_commands(application: Application):
     """Configures the official Telegram chat menu button [≡], command scopes, and launches background schedulers."""
     user_commands = [
         BotCommand("start", "🚀 सुरू करा (Start Bot & Select Category)"),
-        BotCommand("store", "🛒 डिजिटल ई-बुक्स स्टोअर (₹10 - ₹99)"),
-        BotCommand("vip", "💎 VIP क्विझ चॅनेल (₹99 Access)"),
+        BotCommand("admin", "⚙️ ॲडमिन कंट्रोल पॅनेल (Admin Panel)"),
+        BotCommand("store", "🛒 डिजिटल ई-बुक्स स्टोअर (₹१० ते ₹५०)"),
+        BotCommand("store", "🛒 डिजिटल ई-बुक्स स्टोअर (₹१० ते ₹५०)"),
+        BotCommand("channel", "📢 मोफत टेलिग्राम चॅनेल (Free Study Group)"),
         BotCommand("wrong", "❌ चुकीचे प्रश्न व सविस्तर स्पष्टीकरण"),
         BotCommand("responses", "📄 रिस्पॉन्स शीट निकाल (HTML Report)"),
         BotCommand("channels", "📢 Telegram व YouTube अधिकृत चॅनेल्स"),
@@ -3660,8 +3667,10 @@ async def set_bot_commands(application: Application):
     ]
     admin_commands = [
         BotCommand("start", "🚀 सुरू करा (Start Bot)"),
-        BotCommand("store", "🛒 डिजिटल ई-बुक्स स्टोअर (₹10 - ₹99)"),
-        BotCommand("vip", "💎 VIP क्विझ चॅनेल (₹99 Access)"),
+        BotCommand("admin", "⚙️ ॲडमिन कंट्रोल पॅनेल (Admin Panel)"),
+        BotCommand("store", "🛒 डिजिटल ई-बुक्स स्टोअर (₹१० ते ₹५०)"),
+        BotCommand("store", "🛒 डिजिटल ई-बुक्स स्टोअर (₹१० ते ₹५०)"),
+        BotCommand("channel", "📢 मोफत टेलिग्राम चॅनेल (Free Study Group)"),
         BotCommand("sync_channel", "🔄 चॅनेलचे नाव ताज्या परीक्षेनुसार बदला (Admin)"),
         BotCommand("agency", "🏢 AI Agency व सर्व मॅनेजर्स अहवाल (Admin)"),
         BotCommand("download_store_content", "📦 सर्व १८ ई-बुक्स ZIP डाऊनलोड करा (Admin)"),
@@ -3869,6 +3878,81 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             }).encode("utf-8"))
             return
 
+        # Admin Web Dashboard: /admin or /admin/dashboard
+        if path in ("/admin", "/admin/dashboard"):
+            try:
+                dash_html = render_admin_dashboard_html(DB_PATH)
+                dash_bytes = dash_html.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(dash_bytes)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(dash_bytes)
+                return
+            except Exception as e:
+                logger.error(f"Error rendering admin dashboard: {e}", exc_info=True)
+                self.send_response(500)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(f"Admin Dashboard Error: {e}".encode("utf-8"))
+                return
+
+        # Admin PDF Preview/Download: /admin/download_pdf?file=...
+        if path == "/admin/download_pdf":
+            file_name = urllib.parse.parse_qs(parsed.query).get("file", [""])[0]
+            if not file_name:
+                self.send_response(400)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"Filename missing")
+                return
+            
+            safe_name = os.path.basename(file_name)
+            candidate_dirs = [
+                STORAGE_DIR / "products",
+                Path("products"),
+                STORAGE_DIR / "reports",
+            ]
+            found_path = None
+            for d in candidate_dirs:
+                p = d / safe_name
+                if p.exists() and p.is_file():
+                    found_path = p
+                    break
+            
+            if not found_path:
+                try:
+                    built = packaging_agent.ensure_product_pdf(safe_name.replace(".pdf", ""), db_path=DB_PATH)
+                    if built and os.path.exists(built):
+                        found_path = Path(built)
+                except Exception:
+                    pass
+
+            if not found_path or not found_path.exists():
+                self.send_response(404)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"PDF file not found")
+                return
+
+            try:
+                with open(found_path, "rb") as f:
+                    pdf_bytes = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/pdf")
+                self.send_header("Content-Disposition", f'inline; filename="{safe_name}"')
+                self.send_header("Content-Length", str(len(pdf_bytes)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(pdf_bytes)
+                return
+            except Exception as e:
+                logger.error(f"Error serving admin PDF {safe_name}: {e}")
+                self.send_response(500)
+                self.end_headers()
+                return
+
         # 5. Admin 1-Click ZIP Download for all store digital products
         if path == "/admin/download_all_products":
             token_arg = urllib.parse.parse_qs(parsed.query).get("token", [""])[0]
@@ -3959,6 +4043,132 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         )
         ua = self.headers.get("User-Agent", "Unknown")
         ref = self.headers.get("Referer", "")
+
+        # Admin API: Sync folder PDFs to digital_products
+        if path == "/api/admin/sync_products":
+            try:
+                added_cnt = packaging_agent.sync_folder_pdfs_to_products(DB_PATH)
+                all_prods = packaging_agent.get_all_products(DB_PATH)
+                res = {
+                    "success": True,
+                    "added": added_cnt if isinstance(added_cnt, int) else 0,
+                    "total": len(all_prods)
+                }
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps(res).encode("utf-8"))
+                return
+            except Exception as e:
+                logger.error(f"Error syncing folder PDFs: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
+                return
+
+        # Admin API: Update product price (₹10 - ₹100)
+        if path == "/api/admin/update_price":
+            try:
+                prod_id = data.get("product_id")
+                new_price = int(data.get("price_inr", 19))
+                if not prod_id or new_price < 5 or new_price > 500:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"success": False, "message": "Invalid product or price."}).encode("utf-8"))
+                    return
+
+                with sqlite3.connect(DB_PATH) as db:
+                    db.execute("""
+                        UPDATE digital_products
+                        SET price_inr = ?, original_price_inr = ?
+                        WHERE id = ?
+                    """, (new_price, max(new_price * 3, 99), prod_id))
+                    db.commit()
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": True, "product_id": prod_id, "new_price": new_price}).encode("utf-8"))
+                return
+            except Exception as e:
+                logger.error(f"Error updating product price: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
+                return
+
+        # Admin API: Generate 4-column section-wise Question Bank
+        if path == "/api/admin/generate_qbank":
+            try:
+                from .ai_analysis import generate_oneliner_question_bank_pdf
+                out_dir = STORAGE_DIR / "products"
+                out_dir.mkdir(parents=True, exist_ok=True)
+                out_pdf = out_dir / "tcs_ibps_qbank_sectionwise.pdf"
+                gen_path = generate_oneliner_question_bank_pdf(DB_PATH, str(out_pdf))
+                
+                packaging_agent.register_pdf_file_as_product(
+                    str(gen_path),
+                    title="TCS/IBPS सविस्तर विषयवार प्रश्नसंच (All Sections Q-Bank)",
+                    price=29,
+                    subject="Comprehensive",
+                    db_path=DB_PATH
+                )
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": True, "file": os.path.basename(gen_path), "path": str(gen_path)}).encode("utf-8"))
+                return
+            except Exception as e:
+                logger.error(f"Error generating Q-Bank: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
+                return
+
+        # Admin API: Generate Chalu Ghadamodi Monthly Digest
+        if path == "/api/admin/generate_chalu_ghadamodi":
+            try:
+                from .agents.product_catalog_content import get_subject_specific_content
+                from .chalu_ghadamodi_builder import build_chalu_ghadamodi_pdf, structure_raw_data_to_chalu_ghadamodi
+                out_dir = STORAGE_DIR / "products"
+                out_dir.mkdir(parents=True, exist_ok=True)
+                out_pdf = out_dir / "chalu_ghadamodi_monthly.pdf"
+                raw_content = get_subject_specific_content("prod_ca_monthly_top200")
+                data = structure_raw_data_to_chalu_ghadamodi(raw_content, month_name="चालू घडामोडी")
+                gen_path = build_chalu_ghadamodi_pdf(data, str(out_pdf))
+
+                packaging_agent.register_pdf_file_as_product(
+                    str(gen_path),
+                    title="चालू घडामोडी मासिक संच (Chalu Ghadamodi Digest)",
+                    price=19,
+                    subject="Current Affairs",
+                    db_path=DB_PATH
+                )
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": True, "file": os.path.basename(gen_path), "path": str(gen_path)}).encode("utf-8"))
+                return
+            except Exception as e:
+                logger.error(f"Error generating Chalu Ghadamodi: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
+                return
 
         if path == "/api/checkout":
             prod_id = data.get("product_id", "prod_ca_monthly_top200")
@@ -4086,31 +4296,29 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         pass  # Keep terminal logs clean from ping health-checks
 
 async def vip_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles VIP Exam Quiz Channel ₹99 subscription presentation and payment QR."""
+    """Explains that the channel is 100% FREE and guides users to our official Digital Store (₹10-₹50)."""
     user = update.effective_user
-    pay_info = get_upi_payment_details(user.id)
-    context.user_data["awaiting_payment_proof"] = True
+    store_url = get_store_web_url()
+    free_channel = PAID_CHANNEL_LINK or "https://t.me/+EjtGp-pH4hMxZDM1"
 
     caption = (
-        "💎 <b>VIP EXAM QUIZ CHANNEL — ₹99 LIFETIME ACCESS</b>\n"
+        "📢 <b>ExamRankers अधिकृत अभ्यास समुदाय — १००% मोफत!</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━\n"
-        "🎯 <b>What You Get in the Channel:</b>\n"
-        "• Authentic questions from response sheets as interactive Telegram Quizzes\n"
-        "• Daily practice tests & question banks with instant explanations\n"
-        f"• Direct Channel Preview: <a href=\"{PAID_CHANNEL_LINK}\">Visit Channel Link</a>\n\n"
-        "📲 <b>पेमेंट माहिती (GPay / PhonePe / Paytm / Any UPI):</b>\n"
-        f"• UPI ID: <code>{pay_info['upi_id']}</code> <i>(कॉपी करण्यासाठी टॅप करा)</i>\n"
-        f"• Amount: <b>₹{pay_info['amount']}/-</b>\n"
-        f"• Payee Name: <b>{pay_info['upi_name']}</b>\n\n"
-        "💡 <b>पायऱ्या (Steps):</b>\n"
-        "१. वरील QR कोड स्कॅन करून किंवा UPI ID वर ₹99 भरा.\n"
-        "२. पेमेंट झाल्यानंतर खालील बटण दाबून <b>12-अंकी UTR नंबर</b> किंवा <b>स्क्रीनशॉट</b> पाठवा.\n"
-        "३. पेमेंट पडताळणी होताच तुमची खाजगी इन्व्हाईट लिंक तात्काळ येथे पाठवली जाईल!"
+        "🎯 <b>महत्त्वाची सूचना:</b>\n"
+        "आमचे टेलिग्राम चॅनेल सर्व विद्यार्थ्यांसाठी <b>संपूर्ण मोफत</b> आहे! आम्ही चॅनेल सदस्यत्वासाठी कोणतेही शुल्क आकारत नाही.\n\n"
+        "📚 <b>आमचे डिजिटल ई-बुक्स व प्रश्नसंच स्टोअर:</b>\n"
+        "विद्यार्थ्यांच्या मागणीनुसार आम्ही फक्त अधिकृत व उच्च दर्जाची <b>डिजिटल ई-बुक्स, चालू घडामोडी मासिक संच व ४-स्तंभ विषयवार प्रश्नसंच</b> अतिशय माफक दरात (<b>फक्त ₹१० ते ₹५०</b>) उपलब्ध करतो!\n\n"
+        "✨ <b>वैशिष्ट्ये:</b>\n"
+        "• १००% TCS / IBPS पॅटर्न\n"
+        "• मराठी, इंग्रजी, बुद्धिमत्ता व GS स्वतंत्र विभाग\n"
+        "• AI द्वारे प्रत्येक प्रश्नाचे सविस्तर स्पष्टीकरण\n"
+        "• १-क्लिक तात्काळ डाऊनलोड व Email डिलिव्हरी\n\n"
+        "👇 <b>खालील बटणावर क्लिक करून थेट ई-बुक्स स्टोअर पहा:</b>"
     )
     keyboard = [
-        [InlineKeyboardButton("📤 Submit UTR / Screenshot", callback_data="submit_proof")],
-        [InlineKeyboardButton("🔗 Open Channel Preview", url=PAID_CHANNEL_LINK)],
-        [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")]
+        [InlineKeyboardButton("🛒 डिजिटल ई-बुक्स स्टोअर उघडा (₹१० ते ₹५०)", url=store_url)],
+        [InlineKeyboardButton("📢 मोफत टेलिग्राम चॅनेल जॉइन करा", url=free_channel)],
+        [InlineKeyboardButton("🔙 मुख्य मेनू (Main Menu)", callback_data="main_menu")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -4118,28 +4326,7 @@ async def vip_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.callback_query:
         await update.callback_query.answer()
 
-    qr_bytes = generate_qr_bytes(pay_info["upi_uri"])
-    if qr_bytes:
-        try:
-            await target_msg.reply_photo(
-                photo=io.BytesIO(qr_bytes),
-                caption=caption,
-                parse_mode="HTML",
-                reply_markup=reply_markup
-            )
-            return
-        except Exception as e:
-            logger.warning(f"Error sending local QR bytes photo: {e}")
-
-    try:
-        await target_msg.reply_photo(
-            photo=pay_info["qr_url"],
-            caption=caption,
-            parse_mode="HTML",
-            reply_markup=reply_markup
-        )
-    except Exception:
-        await target_msg.reply_text(caption, parse_mode="HTML", reply_markup=reply_markup, disable_web_page_preview=True)
+    await target_msg.reply_text(caption, parse_mode="HTML", reply_markup=reply_markup, disable_web_page_preview=True)
 
 async def channels_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Displays official YouTube and Telegram channels and social media communities."""
@@ -4350,6 +4537,47 @@ async def check_youtube_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_msg = await update.message.reply_text("⏳ <i>YouTube चॅनेलवरील ताज्या व्हिडिओंची तपासणी करत आहे...</i>", parse_mode="HTML")
     await check_and_post_latest_youtube_videos(context.bot, channel, yt_url, db_path=DB_PATH)
     await status_msg.edit_text("✅ YouTube व्हिडिओ स्कॅनिंग पूर्ण झाले! नवीन व्हिडिओ असल्यास चॅनेलवर पोस्ट केला आहे.", parse_mode="HTML")
+
+async def admin_panel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin command: Interactive Admin Command Center with 1-click web dashboard & operations."""
+    user = update.effective_user
+    if user.id not in ADMIN_IDS:
+        await update.message.reply_text("⛔ Restricted to bot administrators.")
+        return
+
+    admin_token = (os.getenv("TELEGRAM_BOT_TOKEN") or "admin")[:16]
+    web_admin_url = f"{get_store_web_url()}/admin?token={admin_token}"
+
+    text = (
+        "⚙️ <b>ExamRankers™ अधिकृत ॲडमिन कंट्रोल पॅनेल</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "येथून तुम्ही संपूर्ण डिजिटल प्रॉडक्ट स्टोअर, किंमती, व्हिजिटर ट्रॅफिक व ऑर्डर्स नियंत्रित करू शकता.\n\n"
+        "📊 <b>वैशिष्ट्ये:</b>\n"
+        "• 🛒 प्रॉडक्ट किंमत नियंत्रण (₹१० ते ₹५० थेट १-क्लिक बदल)\n"
+        "• 🔄 फोल्डरमधील नवीन PDF ई-बुक्स आपोआप सिंक\n"
+        "• 📑 ४-स्तंभ विषयवार प्रश्नसंच (Q-Bank) निर्मिती\n"
+        "• 📰 'चालू घडामोडी' मासिक विशेषांक निर्मिती\n"
+        "• 👥 लाईव्ह स्टोअर व्हिजिटर ट्रॅकिंग व UTR पडताळणी\n"
+        "• 📦 संपूर्ण स्टोअर बॅकअप (ZIP डाऊनलोड)\n\n"
+        f"🌐 <b>वेब ॲडमिन डॅशबोर्ड लिंक:</b>\n"
+        f"🔗 <a href=\"{web_admin_url}\">{web_admin_url}</a>"
+    )
+
+    kb = [
+        [InlineKeyboardButton("🌐 वेब ॲडमिन डॅशबोर्ड उघडा (Web Dashboard)", url=web_admin_url)],
+        [InlineKeyboardButton("🔄 फोल्डर PDF स्टोअरमध्ये सिंक करा", callback_data="admin_sync_folder")],
+        [InlineKeyboardButton("📑 ४-स्तंभ विषयवार प्रश्नसंच बनवा", callback_data="admin_gen_qbank")],
+        [InlineKeyboardButton("📰 चालू घडामोडी मासिक PDF बनवा", callback_data="admin_gen_ca")],
+        [InlineKeyboardButton("👥 स्टोअर व्हिजिटर आकडेवारी", callback_data="admin_visitor_stats")],
+        [InlineKeyboardButton("📦 सर्व ई-बुक्स ZIP डाऊनलोड करा", callback_data="admin_dl_zip")],
+    ]
+
+    await update.message.reply_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(kb),
+        disable_web_page_preview=True
+    )
 
 async def download_store_content_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin command: Packages all digital product PDFs into a single ZIP file for 1-click download."""
@@ -4770,6 +4998,7 @@ def main():
 
     # Core user commands (100% Free rank prediction & subject analysis)
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler(["admin", "admin_panel"], admin_panel_cmd))
     app.add_handler(CommandHandler(["store", "products", "ebooks", "books"], store_cmd))
     app.add_handler(CommandHandler(["vip", "join_paid", "pay", "payment", "quiz_channel"], vip_cmd))
     app.add_handler(CommandHandler(["quiz", "practice", "mcq"], quiz_cmd))

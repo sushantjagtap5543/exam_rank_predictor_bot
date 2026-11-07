@@ -32,7 +32,7 @@ def get_qbank_master_items(max_items: int = 75) -> List[Tuple]:
             pass
     return items
 
-def get_subject_specific_content(product_id: str, title: str, subject: str):
+def get_subject_specific_content(product_id: str, title: str = "", subject: str = ""):
     """
     Returns (items, tricks_data, infographic_cols, revision_tables) specific to the product's subject.
     """
