@@ -32,24 +32,6 @@ def run_store(port: int = 8080, open_browser: bool = True):
     init_db()
     packaging_agent = DigitalProductPackagingAgent()
     packaging_agent.init_products_db(DB_PATH)
-    packaging_agent.sync_folder_pdfs_to_products(DB_PATH)
-
-    import threading, time
-    def _store_folder_watcher():
-        while True:
-            time.sleep(10)
-            try:
-                packaging_agent.sync_folder_pdfs_to_products(DB_PATH)
-            except Exception:
-                pass
-    threading.Thread(target=_store_folder_watcher, daemon=True).start()
-
-    # Pre-generate standard product PDFs in the background
-    for p in DEFAULT_PRODUCTS[:3]:
-        try:
-            packaging_agent.ensure_product_pdf(p["id"], db_path=DB_PATH)
-        except Exception:
-            pass
 
     server_address = ("0.0.0.0", port)
     server = http.server.ThreadingHTTPServer(server_address, HealthCheckHandler)

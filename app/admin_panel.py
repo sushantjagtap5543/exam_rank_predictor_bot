@@ -55,7 +55,12 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
 
             # Product Orders & Revenue
             try:
-                orders_rows = db.execute("SELECT * FROM product_orders ORDER BY id DESC LIMIT 40").fetchall()
+                orders_rows = db.execute("""
+                    SELECT o.*, p.title as prod_title 
+                    FROM product_orders o 
+                    LEFT JOIN digital_products p ON o.product_id = p.id 
+                    ORDER BY o.id DESC LIMIT 100
+                """).fetchall()
                 recent_orders = [dict(r) for r in orders_rows]
                 rev_row = db.execute("SELECT sum(amount_paid) FROM product_orders WHERE status = 'delivered' OR status = 'approved'").fetchone()
                 if rev_row and rev_row[0]:
@@ -168,35 +173,74 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             </tr>
         """)
 
+    # Compute order stats
+    pending_count = sum(1 for o in recent_orders if o.get("status") in ("pending", "pending_verification"))
+    approved_count = sum(1 for o in recent_orders if o.get("status") in ("approved", "delivered"))
+    rejected_count = sum(1 for o in recent_orders if o.get("status") == "rejected")
+
     # Build Order Rows HTML
     order_rows_html = []
     for o in recent_orders:
         token = o.get("order_token", "")
         email = o.get("customer_email", "")
+        prod_title = o.get("prod_title") or o.get("product_id") or "Digital E-Book"
         amount = o.get("amount_paid", 19)
         utr = o.get("utr", "—")
         status = o.get("status", "pending")
+        delivery_status = o.get("delivery_status", "pending")
         ts = o.get("created_at", "")
 
+        deliv_badge = "badge-gray"
+        if delivery_status in ("sent", "delivered"):
+            deliv_badge = "badge-green"
+        elif delivery_status == "pending_verification":
+            deliv_badge = "badge-yellow"
+        elif delivery_status == "rejected":
+            deliv_badge = "badge-rose"
+
         action_btns = ""
-        if status == "pending":
+        if status in ("pending", "pending_verification"):
             action_btns = f"""
-                <button class="btn-sm btn-green" onclick="orderAction('{token}', 'approve')">✅ मंजूर</button>
-                <button class="btn-sm btn-del" onclick="orderAction('{token}', 'reject')">❌ रद्द</button>
+                <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
+                    <button class="btn-sm btn-green" title="UTR पडताळून ईमेलवर PDF पाठवा" onclick="orderAction('{token}', 'approve')">✅ मंजूर व Email पाठवा</button>
+                    <button class="btn-sm btn-del" title="ऑर्डर नाकारा" onclick="orderAction('{token}', 'reject')">❌ नाकारा</button>
+                    <a href="/download/{token}" target="_blank" class="btn-sm btn-outline" style="text-decoration:none;" title="PDF तपासा">📥 PDF</a>
+                </div>
+            """
+        elif status in ("approved", "delivered"):
+            action_btns = f"""
+                <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
+                    <button class="btn-sm btn-outline" style="color:#38bdf8; border-color:#38bdf8;" title="पुन्हा ईमेल पाठवा" onclick="orderAction('{token}', 'resend_email')">📧 पुन्हा Email पाठवा</button>
+                    <a href="/download/{token}" target="_blank" class="btn-sm btn-outline" style="text-decoration:none;" title="PDF डाऊनलोड करा">📥 PDF</a>
+                </div>
             """
         else:
-            action_btns = f"<span style='color:#64748b; font-size:11px;'>प्रक्रिया पूर्ण</span>"
+            action_btns = f"""
+                <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
+                    <button class="btn-sm btn-green" title="पुन्हा तपासून मंजूर करा" onclick="orderAction('{token}', 'approve')">🔄 पुन्हा मंजूर करा</button>
+                </div>
+            """
+
+        status_class = "status-pending"
+        if status in ("approved", "delivered"):
+            status_class = "status-active"
+        elif status == "rejected":
+            status_class = "status-rejected"
 
         order_rows_html.append(f"""
-            <tr>
+            <tr class="order-row" data-status="{status}">
                 <td><code>{token}</code></td>
-                <td><b style="color:#ffffff;">{email}</b></td>
-                <td style="color:#10b981; font-weight:700;">₹{amount}</td>
-                <td><code>{utr}</code></td>
                 <td>
-                    <span class="status-pill {'status-active' if status in ('approved', 'delivered') else ('status-rejected' if status == 'rejected' else 'status-pending')}">
+                    <b style="color:#ffffff;">{email}</b><br>
+                    <span style="font-size:11px; color:#94a3b8;">📖 {prod_title[:28]}</span>
+                </td>
+                <td style="color:#10b981; font-weight:700;">₹{amount}</td>
+                <td><code style="background:rgba(250,204,21,0.1); color:var(--accent-gold); padding:3px 7px; border-radius:4px; font-weight:700;">{utr}</code></td>
+                <td>
+                    <span class="status-pill {status_class}">
                         {status.upper()}
-                    </span>
+                    </span><br>
+                    <span class="badge {deliv_badge}" style="font-size:10px; margin-top:3px;">{delivery_status}</span>
                 </td>
                 <td style="color:#64748b; font-size:11px;">{ts}</td>
                 <td style="text-align:center;">{action_btns}</td>
@@ -438,6 +482,23 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         .status-pending {{ background: rgba(250, 204, 21, 0.15); color: var(--accent-gold); border: 1px solid rgba(250, 204, 21, 0.3); }}
         .status-rejected {{ background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }}
 
+        .filter-tab {{
+            background: #090d16;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 5px 12px;
+            border-radius: 8px;
+            font-size: 11.5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }}
+        .filter-tab:hover, .filter-tab.active {{
+            background: var(--bg-card);
+            color: var(--accent-gold);
+            border-color: var(--accent-gold);
+        }}
+
         /* Modal Styles */
         .modal-overlay {{
             position: fixed;
@@ -622,9 +683,16 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
 
         <!-- Recent Orders Table -->
         <div class="section-box">
-            <div class="section-header">
+            <div class="section-header" style="flex-wrap:wrap; gap:12px;">
                 <div class="section-title">
                     🛒 थेट ऑर्डर्स व पेमेंट पडताळणी (Customer Orders & UTR Approvals)
+                    <span class="badge badge-yellow" style="margin-left:8px;">{pending_count} प्रलंबित</span>
+                </div>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <button class="filter-tab active" onclick="filterOrders('all', this)">सर्व ({len(recent_orders)})</button>
+                    <button class="filter-tab" onclick="filterOrders('pending', this)">⏳ प्रलंबित ({pending_count})</button>
+                    <button class="filter-tab" onclick="filterOrders('approved', this)">✅ मंजूर ({approved_count})</button>
+                    <button class="filter-tab" onclick="filterOrders('rejected', this)">❌ नाकारले ({rejected_count})</button>
                 </div>
             </div>
             <div class="table-wrap">
@@ -632,12 +700,12 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                     <thead>
                         <tr>
                             <th>ऑर्डर टोकन</th>
-                            <th>विद्यार्थी Email</th>
+                            <th>विद्यार्थी व ई-बुक</th>
                             <th>रक्कम</th>
                             <th>१२-अंकी UTR</th>
                             <th>स्थिती</th>
                             <th>दिनांक</th>
-                            <th style="text-align:center;">ॲक्शन</th>
+                            <th style="text-align:center; min-width:180px;">ॲक्शन (Actions)</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -985,10 +1053,30 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             }}
         }}
 
-        // Order Action (Approve / Reject UTR)
+        // Filter Orders by Tab
+        function filterOrders(filter, btn) {{
+            document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.querySelectorAll('.order-row').forEach(row => {{
+                const status = row.getAttribute('data-status');
+                if (filter === 'all') {{
+                    row.style.display = '';
+                }} else if (filter === 'pending') {{
+                    row.style.display = (status === 'pending' || status === 'pending_verification') ? '' : 'none';
+                }} else if (filter === 'approved') {{
+                    row.style.display = (status === 'approved' || status === 'delivered') ? '' : 'none';
+                }} else if (filter === 'rejected') {{
+                    row.style.display = (status === 'rejected') ? '' : 'none';
+                }}
+            }});
+        }}
+
+        // Order Action (Approve UTR & Dispatch Email / Reject / Resend Email)
         async function orderAction(orderToken, action) {{
-            const actLabel = action === 'approve' ? 'मंजूर' : 'रद्द';
-            if (!confirm('या ऑर्डरचे पेमेंट ' + actLabel + ' करायचे का?')) return;
+            let actPrompt = 'या ऑर्डरचे पेमेंट मंजूर करून विद्यार्थ्याला ईमेलवर PDF पाठवायची का?';
+            if (action === 'reject') actPrompt = 'ही ऑर्डर नाकारायची (Reject) का?';
+            if (action === 'resend_email') actPrompt = 'विद्यार्थ्याला पुन्हा ईमेलवर PDF पाठवायची का?';
+            if (!confirm(actPrompt)) return;
             try {{
                 const res = await fetch('/api/admin/order_action', {{
                     method: 'POST',
@@ -997,7 +1085,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 }});
                 const data = await res.json();
                 if (data.success) {{
-                    alert('✅ ऑर्डर यशस्वीरित्या ' + actLabel + ' केली!');
+                    alert('✅ ' + (data.message || 'कृती यशस्वी!'));
                     location.reload();
                 }} else {{
                     alert('❌ त्रुटी: ' + data.message);

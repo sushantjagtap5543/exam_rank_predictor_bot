@@ -3774,6 +3774,47 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(b"OK")
             return
 
+        # 2b. API: Order Approval Status Check (For Customer Storefront Real-time Polling)
+        if path.startswith("/api/order_status"):
+            query = urllib.parse.urlparse(self.path).query
+            params = urllib.parse.parse_qs(query)
+            token = params.get("token", [""])[0].strip()
+            if not token:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": "Missing token parameter."}).encode("utf-8"))
+                return
+            with sqlite3.connect(DB_PATH) as db:
+                db.row_factory = sqlite3.Row
+                order = db.execute("SELECT * FROM product_orders WHERE order_token = ?", (token,)).fetchone()
+            if not order:
+                self.send_response(404)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": "Order not found."}).encode("utf-8"))
+                return
+            order_data = dict(order)
+            is_approved = order_data.get("status") in ("approved", "delivered")
+            is_rejected = order_data.get("status") == "rejected"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "success": True,
+                "order_token": token,
+                "status": order_data.get("status", "pending"),
+                "is_approved": is_approved,
+                "is_rejected": is_rejected,
+                "delivery_status": order_data.get("delivery_status", "pending"),
+                "customer_email": order_data.get("customer_email", ""),
+                "download_url": f"/download/{token}" if is_approved else None
+            }).encode("utf-8"))
+            return
+
         # 3. Download Endpoint: /download/<order_token> (Strictly Protected: Paid & Approved Orders Only)
         if path.startswith("/download/"):
             token = path.split("/download/")[-1].strip()
@@ -3802,11 +3843,16 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 return
 
             # STRICT SECURITY GATE: Enforce approved payment before serving digital product!
-            if order_data.get("status") != "approved":
+            status = order_data.get("status")
+            if status != "approved" and status != "delivered":
                 self.send_response(403)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
-                self.wfile.write("<h3>⛔ डाऊनलोड अनुमती नाही (Payment Not Approved)</h3><p>या ऑर्डरचे पेमेंट अद्याप कन्फर्म झालेले नाही. यशस्वी पेमेंटनंतरच डाऊनलोड लिंक उपलब्ध होते.</p>".encode("utf-8"))
+                if status == "rejected":
+                    msg = "<h3>❌ ऑर्डर नाकारण्यात आली आहे (Order Rejected)</h3><p>या ऑर्डरसाठी प्रविष्ट केलेला UTR अवैध किंवा चुकीचा आढळल्याने ॲडमिनने ही ऑर्डर नाकारली आहे. अधिक माहितीसाठी कृपया सपोर्टशी संपर्क साधा.</p>"
+                else:
+                    msg = f"<h3>⏳ UTR पडताळणी प्रलंबित आहे (Pending Admin Verification)</h3><p>ऑर्डर टोकन: <code>{token}</code></p><p>तुमचा १२-अंकी UTR अद्याप ॲडमिन पडताळणी प्रक्रियेत आहे. ॲडमिनने पडताळणी पूर्ण करताच ही लिंक सक्रिय होईल आणि तुमच्या ईमेलवर ({order_data.get('customer_email', '')}) फाईल थेट पाठवली जाईल.</p>"
+                self.wfile.write(msg.encode("utf-8"))
                 return
 
             prod_id = order_data.get("product_id")
@@ -4277,21 +4323,91 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
                 return
 
-        # Admin API: Approve or reject customer order
+        # Admin API: Approve or reject customer order & dispatch product to email
         if path == "/api/admin/order_action":
             try:
                 order_token = data.get("order_token")
                 action = data.get("action", "approve")
-                new_status = "approved" if action == "approve" else "rejected"
+                
                 with sqlite3.connect(DB_PATH) as db:
-                    db.execute("UPDATE product_orders SET status = ?, delivery_status = ? WHERE order_token = ?", (new_status, "delivered" if action == "approve" else "failed", order_token))
-                    db.commit()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.end_headers()
-                self.wfile.write(json.dumps({"success": True, "order_token": order_token, "status": new_status}).encode("utf-8"))
-                return
+                    db.row_factory = sqlite3.Row
+                    order = db.execute("SELECT * FROM product_orders WHERE order_token = ?", (order_token,)).fetchone()
+                
+                if not order:
+                    self.send_response(404)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"success": False, "message": "Order not found."}).encode("utf-8"))
+                    return
+
+                order_data = dict(order)
+                utr = order_data.get("utr") or "VERIFIED_BY_ADMIN"
+                customer_email = order_data.get("customer_email", "")
+
+                if action == "approve":
+                    success, msg, prod = fulfillment_agent.confirm_and_fulfill_order(order_token, utr, db_path=DB_PATH)
+                    self.send_response(200 if success else 500)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "success": success,
+                        "order_token": order_token,
+                        "status": "approved",
+                        "delivery_status": "sent",
+                        "message": f"ऑर्डर मंजूर करण्यात आली व {customer_email} वर ई-बुक ईमेल पाठवले गेले! ({msg})"
+                    }).encode("utf-8"))
+                    return
+
+                elif action == "resend_email":
+                    prod_id = order_data.get("product_id")
+                    prod = packaging_agent.get_product_by_id(prod_id, db_path=DB_PATH) or {
+                        "title": "MPSC Digital E-Book",
+                        "price_inr": order_data.get("amount_paid", 29)
+                    }
+                    pdf_path = packaging_agent.ensure_product_pdf(prod_id, db_path=DB_PATH)
+                    email_sent, email_msg = fulfillment_agent.send_product_email(
+                        to_email=customer_email,
+                        product=prod,
+                        order_token=order_token,
+                        attachment_path=pdf_path
+                    )
+                    with sqlite3.connect(DB_PATH) as db:
+                        db.execute(
+                            "UPDATE product_orders SET delivery_status = ?, delivered_at = CURRENT_TIMESTAMP WHERE order_token = ?",
+                            ("sent" if email_sent else "pending_email", order_token)
+                        )
+                        db.commit()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "success": True,
+                        "order_token": order_token,
+                        "message": f"ईमेल पुन्हा पाठवला गेला: {email_msg}"
+                    }).encode("utf-8"))
+                    return
+
+                elif action == "reject":
+                    with sqlite3.connect(DB_PATH) as db:
+                        db.execute(
+                            "UPDATE product_orders SET status = 'rejected', delivery_status = 'rejected' WHERE order_token = ?",
+                            (order_token,)
+                        )
+                        db.commit()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "success": True,
+                        "order_token": order_token,
+                        "status": "rejected",
+                        "message": "ऑर्डर नाकारण्यात (Reject) आली आहे."
+                    }).encode("utf-8"))
+                    return
             except Exception as e:
                 logger.error(f"Error updating order: {e}")
                 self.send_response(500)
@@ -4403,6 +4519,19 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 expected = hmac.new(rz_secret.encode(), f"{rz_order_id}|{rz_payment_id}".encode(), hashlib.sha256).hexdigest()
                 if hmac.compare_digest(expected, rz_sig):
                     utr = f"RZP_{rz_payment_id}"
+                    success, msg, prod = fulfillment_agent.confirm_and_fulfill_order(order_token, utr, db_path=DB_PATH)
+                    self.send_response(200 if success else 400)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "success": success,
+                        "status": "approved",
+                        "message": msg,
+                        "product": prod,
+                        "download_url": f"/download/{order_token}"
+                    }).encode("utf-8"))
+                    return
                 else:
                     self.send_response(400)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -4429,34 +4558,62 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "message": "हा UTR आधीच वापरला गेला आहे. कृपया नवीन ट्रान्झॅक्शन UTR टाका."}).encode("utf-8"))
                 return
 
-            success, msg, prod = fulfillment_agent.confirm_and_fulfill_order(order_token, utr, db_path=DB_PATH)
+            # Student submitted UPI UTR: Save order as pending verification for Admin Approval & Email Delivery
+            order_data = None
+            with sqlite3.connect(DB_PATH) as db:
+                db.row_factory = sqlite3.Row
+                order = db.execute("SELECT * FROM product_orders WHERE order_token = ?", (order_token,)).fetchone()
+                if not order:
+                    self.send_response(404)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"success": False, "message": "Order not found."}).encode("utf-8"))
+                    return
+                
+                order_data = dict(order)
+                db.execute(
+                    "UPDATE product_orders SET utr = ?, status = 'pending', delivery_status = 'pending_verification' WHERE order_token = ?",
+                    (utr.strip(), order_token)
+                )
+                db.commit()
+
+            prod_id = order_data.get("product_id", "")
+            prod = packaging_agent.get_product_by_id(prod_id, db_path=DB_PATH)
+
             log_store_visitor(
                 client_ip, ua, ref,
                 page_path=path,
-                action="payment_verified" if success else "payment_rejected",
-                product_id=prod.get("id", "") if prod else "",
+                action="utr_submitted_pending_verification",
+                product_id=prod_id,
                 details=f"order:{order_token}, utr:{utr}"
             )
-            if success:
-                alert_text = (
-                    f"🛒 <b>नवीन डिजिटल ई-बुक खरेदी (Web Store Sale)!</b>\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"📖 पुस्तक: <b>{prod.get('title', 'Unknown')}</b>\n"
-                    f"💰 रक्कम: <b>₹{prod.get('price_inr', 19)}/-</b>\n"
-                    f"🎫 Order: <code>{order_token}</code>\n"
-                    f"📝 UTR: <code>{utr}</code>"
-                )
-                alert_admins_sync(alert_text)
 
-            self.send_response(200 if success else 400)
+            # Instant alert to Admin via Telegram
+            alert_text = (
+                f"🔔 <b>नवीन UTR पडताळणीसाठी प्राप्त! (UTR Verification Pending)</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"📖 ई-बुक: <b>{prod.get('title', 'Digital E-Book') if prod else prod_id}</b>\n"
+                f"💰 रक्कम: <b>₹{order_data.get('amount_paid', 19)}/-</b>\n"
+                f"📧 ईमेल: <code>{order_data.get('customer_email', '')}</code>\n"
+                f"🎫 Order Token: <code>{order_token}</code>\n"
+                f"📝 UTR / Ref No: <code>{utr}</code>\n\n"
+                f"👉 <b>ॲडमिन पोर्टलवरून UTR तपासून त्वरित मंजुरी व ईमेल पाठवा:</b>\n"
+                f"http://localhost:8080/admin"
+            )
+            alert_admins_sync(alert_text)
+
+            self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(json.dumps({
-                "success": success,
-                "message": msg,
-                "product": prod,
-                "download_url": f"/download/{order_token}"
+                "success": True,
+                "status": "pending_verification",
+                "order_token": order_token,
+                "utr": utr,
+                "customer_email": order_data.get("customer_email", ""),
+                "message": "तुमचा १२-अंकी UTR पडताळणीसाठी (Verification) ॲडमिनकडे पाठवला आहे. ॲडमिनद्वारे UTR पडताळणी पूर्ण होताच तुमची PDF फाईल तुमच्या ईमेलवर पाठवली जाईल आणि डाऊनलोड उपलब्ध होईल!"
             }).encode("utf-8"))
             return
 

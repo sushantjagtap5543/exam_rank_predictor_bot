@@ -105,7 +105,7 @@ class FulfillmentEmailAgent(BaseSeniorAgent):
         # Ensure physical PDF is generated and synthesized
         from .digital_product_agent import DigitalProductPackagingAgent
         packaging = DigitalProductPackagingAgent()
-        pdf_path = packaging.ensure_product_pdf(order_data["product_id"])
+        pdf_path = packaging.ensure_product_pdf(order_data["product_id"], db_path=db_path)
         product_data["pdf_path"] = str(pdf_path)
 
         # Send email with digital product attached

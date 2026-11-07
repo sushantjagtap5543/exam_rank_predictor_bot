@@ -12,7 +12,7 @@ import logging
 import random
 import re
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from .base_agent import BaseSeniorAgent
 
 logger = logging.getLogger(__name__)
@@ -456,10 +456,23 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             "status": "synchronized_successfully"
         }
 
-    def register_pdf_file_as_product(self, file_path: Path, db_path: str = "bot.db") -> Optional[Dict[str, Any]]:
+    def register_pdf_file_as_product(
+        self,
+        file_path: Union[str, Path],
+        title: Optional[str] = None,
+        subtitle: Optional[str] = None,
+        subject: Optional[str] = None,
+        price: Optional[int] = None,
+        original_price: Optional[int] = None,
+        icon: Optional[str] = None,
+        badge: Optional[str] = None,
+        description: Optional[str] = None,
+        db_path: str = "bot.db",
+        **kwargs
+    ) -> Optional[Dict[str, Any]]:
         """
         Registers any physical PDF file placed in a product folder as an active digital product.
-        Assigns a random price between 10-50 INR and calculates actual page count.
+        Accepts custom title, price, subject, or defaults to automatic smart inference.
         """
         file_path = Path(file_path).resolve()
         if not file_path.exists() or file_path.stat().st_size < 1000:
@@ -470,13 +483,6 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             return None
 
         self.init_products_db(db_path)
-
-        # Check if already registered by download_file
-        with sqlite3.connect(db_path) as db:
-            db.row_factory = sqlite3.Row
-            existing = db.execute("SELECT * FROM digital_products WHERE download_file = ?", (filename,)).fetchone()
-            if existing:
-                return dict(existing)
 
         # Extract actual page count using fitz (PyMuPDF) or pypdf
         pages = 48
@@ -493,44 +499,51 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             except Exception:
                 pass
 
-        # Random price between 10 and 50 INR
-        price_inr = random.choice([10, 15, 19, 25, 29, 35, 39, 45, 49])
-        original_price_inr = min(price_inr * 3 + 30, 199)
+        # Determine price (use passed or pick between 10 and 50 INR)
+        price_inr = int(price) if price is not None else random.choice([10, 15, 19, 25, 29, 35, 39, 45, 49])
+        original_price_inr = int(original_price) if original_price is not None else min(price_inr * 3 + 30, 199)
 
-        # Infer category and title from filename
+        # Infer category and title from filename if not explicitly provided
         fn_clean = re.sub(r"[_\-]+", " ", file_path.stem).strip()
         fn_lower = filename.lower()
 
+        inferred_subject = "General Knowledge"
+        inferred_icon = "📚"
+        inferred_badge = f"🔥 नवीन संच (₹{price_inr})"
+        inferred_title = f"{fn_clean} (महाराष्ट्र स्पर्धा परीक्षा विशेष ई-बुक)"
+
         if any(k in fn_lower for k in ["ca", "current", "ghadamodi", "chalu"]):
-            subject = "Current Affairs"
-            icon = "📰"
-            badge = f"🔥 चालू घडामोडी (₹{price_inr})"
-            title = f"{fn_clean} — चालू घडामोडी Top MCQs व विश्लेषण"
+            inferred_subject = "Current Affairs"
+            inferred_icon = "📰"
+            inferred_badge = f"🔥 चालू घडामोडी (₹{price_inr})"
+            inferred_title = f"{fn_clean} — चालू घडामोडी Top MCQs व विश्लेषण"
         elif any(k in fn_lower for k in ["marathi", "vyakaran", "grammar"]):
-            subject = "Marathi"
-            icon = "✍️"
-            badge = f"⚡ मराठी व्याकरण (₹{price_inr})"
-            title = f"{fn_clean} — मराठी व्याकरण संपूर्ण ट्रिक्स व नियम"
+            inferred_subject = "Marathi"
+            inferred_icon = "✍️"
+            inferred_badge = f"⚡ मराठी व्याकरण (₹{price_inr})"
+            inferred_title = f"{fn_clean} — मराठी व्याकरण संपूर्ण ट्रिक्स व नियम"
         elif any(k in fn_lower for k in ["math", "reason", "ankganit", "buddhimate"]):
-            subject = "Maths & Reasoning"
-            icon = "🔢"
-            badge = f"⚡ शॉर्टकट सूत्रे (₹{price_inr})"
-            title = f"{fn_clean} — गणित व बुद्धिमत्ता १५-सेकंद ट्रिक्स"
+            inferred_subject = "Maths & Reasoning"
+            inferred_icon = "🔢"
+            inferred_badge = f"⚡ शॉर्टकट सूत्रे (₹{price_inr})"
+            inferred_title = f"{fn_clean} — गणित व बुद्धिमत्ता १५-सेकंद ट्रिक्स"
         elif any(k in fn_lower for k in ["english", "vocab", "comprehension"]):
-            subject = "English"
-            icon = "📖"
-            badge = f"⭐ English Mastery (₹{price_inr})"
-            title = f"{fn_clean} — TCS/IBPS English Grammar & Vocab"
+            inferred_subject = "English"
+            inferred_icon = "📖"
+            inferred_badge = f"⭐ English Mastery (₹{price_inr})"
+            inferred_title = f"{fn_clean} — TCS/IBPS English Grammar & Vocab"
         elif any(k in fn_lower for k in ["qbank", "question_bank", "oneliner", "response", "sheet"]):
-            subject = "PYQ & Response Sheets"
-            icon = "📑"
-            badge = f"🎯 ४-स्तंभ प्रश्नसंच (₹{price_inr})"
-            title = f"TCS/IBPS अधिकृत प्रश्नसंच (४-Columns AI स्पष्टीकरण) — {filename}"
-        else:
-            subject = "General Knowledge"
-            icon = "🗺️"
-            badge = f"📚 विशेष ई-बुक (₹{price_inr})"
-            title = f"{fn_clean} (महाराष्ट्र स्पर्धा परीक्षा विशेष ई-बुक)"
+            inferred_subject = "PYQ & Response Sheets"
+            inferred_icon = "📑"
+            inferred_badge = f"🎯 ४-स्तंभ प्रश्नसंच (₹{price_inr})"
+            inferred_title = f"TCS/IBPS अधिकृत प्रश्नसंच (४-Columns AI स्पष्टीकरण) — {filename}"
+
+        final_title = title or inferred_title
+        final_subtitle = subtitle or "TCS/IBPS परीक्षा विशेष अधिकृत ई-बुक"
+        final_subject = subject or inferred_subject
+        final_icon = icon or inferred_icon
+        final_badge = badge or inferred_badge
+        final_desc = description or f"TCS, IBPS व MPSC परीक्षांसाठी उपयुक्त अधिकृत डिजिटल ई-बुक ({filename}). सविस्तर स्पष्टीकरणासह तात्काळ डाऊनलोड उपलब्ध."
 
         import hashlib
         prod_id = f"prod_file_{hashlib.md5(filename.encode()).hexdigest()[:10]}"
@@ -546,33 +559,35 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             except Exception as e:
                 logger.warning(f"Could not copy {file_path} to products dir: {e}")
 
-        # Insert into digital_products table
+        # Insert or update in digital_products table
         with sqlite3.connect(db_path) as db:
             db.execute("""
                 INSERT OR REPLACE INTO digital_products (
-                    id, title, subject, price_inr, original_price_inr, pages,
+                    id, title, subtitle, subject, price_inr, original_price_inr, pages,
                     rating, reviews_count, badge, description, download_file, tier, icon, is_active, sales_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)
             """, (
                 prod_id,
-                title,
-                subject,
+                final_title,
+                final_subtitle,
+                final_subject,
                 price_inr,
                 original_price_inr,
                 pages,
                 4.9,
                 random.randint(120, 950),
-                badge,
-                f"TCS, IBPS व MPSC परीक्षांसाठी उपयुक्त अधिकृत डिजिटल ई-बुक ({filename}). सविस्तर स्पष्टीकरणासह तात्काळ डाऊनलोड उपलब्ध.",
+                final_badge,
+                final_desc,
                 filename,
                 "E-Book",
-                icon
+                final_icon
             ))
+            db.commit()
 
-        logger.info(f"✅ Auto-added PDF '{filename}' to website store with price ₹{price_inr} (ID: {prod_id})")
+        logger.info(f"✅ Registered PDF '{filename}' in store as '{final_title}' (₹{price_inr}, ID: {prod_id})")
         return {
             "id": prod_id,
-            "title": title,
+            "title": final_title,
             "subject": subject,
             "price_inr": price_inr,
             "original_price_inr": original_price_inr,

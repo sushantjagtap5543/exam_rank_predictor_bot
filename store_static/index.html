@@ -644,19 +644,33 @@
                     <p style="font-size:11px; color:#94a3b8; margin-top:4px;">💡 GPay, PhonePe किंवा Paytm मधील ट्रान्झॅक्शन हिस्ट्रीमधून १२-अंकी UTR नंबर कॉपी करून येथे टाका.</p>
                 </div>
 
-                <button class="btn-buy btn-full" style="background:#10b981; font-size:15px; padding:14px; margin-top:10px;" onclick="confirmPayment()">🔐 पेमेंट पडताळणी करा आणि ई-बुक मिळवा (Verify Payment & Download)</button>
+                <button class="btn-buy btn-full" style="background:#10b981; font-size:15px; padding:14px; margin-top:10px;" onclick="confirmPayment()">📩 १२-अंकी UTR सबमिट करा (Submit UTR for Verification)</button>
                 <button class="btn-sample btn-full" style="margin-top:8px;" onclick="backToStep1()">मागे जा</button>
             </div>
 
             <div id="modalStep3" style="display:none; text-align:center;">
-                <div style="font-size:52px; margin-bottom:10px;">🎉</div>
-                <h3 style="color:#ffffff; font-size:22px;">पेमेंट यशस्वी! अभिनंदन!</h3>
-                <p style="color:var(--accent-emerald); font-size:14.5px; margin: 10px 0;">तुमचे ई-बुक <b id="finalEmailSpan"></b> या ईमेलवर पाठवले आहे.</p>
-                <div style="background:var(--bg-card); padding:16px; border-radius:10px; border:1px solid var(--border); margin:16px 0; text-align:left;">
-                    <p style="font-size:13px; color:var(--text-muted); margin-bottom:4px;"><b>Order Reference:</b> <code id="finalOrderToken"></code></p>
-                    <p style="font-size:13px; color:var(--text-muted);"><b>Format:</b> High-Res Official PDF (Mobile & Print)</p>
+                <div id="step3Icon" style="font-size:52px; margin-bottom:10px;">⏳</div>
+                <h3 id="step3Title" style="color:#ffffff; font-size:20px;">UTR पडताळणी प्रलंबित (Pending Verification)</h3>
+                <p id="step3Sub" style="color:var(--accent-gold); font-size:14px; margin: 8px 0;">
+                    तुमचा १२-अंकी UTR (<code id="submittedUtrSpan" style="color:#38bdf8; font-weight:700;"></code>) ॲडमिन पडताळणीसाठी यशस्वीरित्या नोंदवला गेला आहे.
+                </p>
+                <div style="background:var(--bg-card); padding:16px; border-radius:10px; border:1px solid var(--border); margin:14px 0; text-align:left;">
+                    <p style="font-size:13px; color:var(--text-muted); margin-bottom:5px;"><b>Order Reference:</b> <code id="finalOrderToken"></code></p>
+                    <p style="font-size:13px; color:var(--text-muted); margin-bottom:5px;"><b>ईमेल (Email):</b> <b id="finalEmailSpan" style="color:#ffffff;"></b></p>
+                    <div style="margin-top:10px; padding:10px; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; border-radius:4px; font-size:12px; color:#cbd5e1; line-height:1.5;">
+                        ℹ️ <b>पुढील पायरी:</b> ॲडमिनद्वारे बँकेत UTR तपासताच (साधारण २ ते ५ मिनिटांत), तुमचे खरेदी केलेले ई-बुक तुमच्या ईमेलवर थेट पाठवले जाईल आणि खालील डाऊनलोड बटण आपोआप सुरू होईल!
+                    </div>
                 </div>
-                <a id="instantDownloadBtn" href="#" target="_blank" class="btn-buy btn-full" style="text-decoration:none; display:inline-block; background:#10b981; color:#fff;">📥 Download PDF Now (तात्काळ डाऊनलोड करा)</a>
+
+                <div id="pollingStatusBox" style="margin: 12px 0;">
+                    <div style="font-size:12.5px; color:#94a3b8; margin-bottom:8px;">
+                        <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#facc15; margin-right:6px;"></span>
+                        ॲडमिन मंजुरीची वाट पाहत आहे (Waiting for Admin Approval)...
+                    </div>
+                    <button class="btn-sample btn-full" style="padding:10px; font-weight:700;" onclick="checkOrderStatusManual()">🔄 मंजुरी स्थिती तपासा (Check Status)</button>
+                </div>
+
+                <a id="instantDownloadBtn" href="#" target="_blank" class="btn-buy btn-full" style="display:none; text-decoration:none; background:#10b981; color:#fff; font-size:15px; padding:14px; margin-top:10px;">📥 ई-बुक डाऊनलोड करा (Download PDF Now)</a>
             </div>
         </div>
     </div>
@@ -841,59 +855,106 @@
             setTimeout(() => { btn.innerText = '📋 Copy'; }, 2500);
         }
 
+        let pollingTimer = null;
+
+        function startOrderStatusPolling(token) {
+            if (pollingTimer) clearInterval(pollingTimer);
+            pollingTimer = setInterval(async () => {
+                await checkOrderStatus(token);
+            }, 5000);
+        }
+
+        async function checkOrderStatus(token) {
+            try {
+                const res = await fetch('/api/order_status?token=' + encodeURIComponent(token));
+                const data = await res.json();
+                if (data.is_approved) {
+                    if (pollingTimer) clearInterval(pollingTimer);
+                    document.getElementById('step3Icon').innerText = '🎉';
+                    document.getElementById('step3Title').innerText = 'पेमेंट मंजूर! अभिनंदन!';
+                    document.getElementById('step3Title').style.color = '#10b981';
+                    document.getElementById('step3Sub').innerText = 'तुमचा UTR ॲडमिनने मंजूर केला आहे आणि ई-बुक तुमच्या ईमेलवर पाठवले आहे!';
+                    document.getElementById('step3Sub').style.color = '#10b981';
+                    const pollBox = document.getElementById('pollingStatusBox');
+                    if (pollBox) pollBox.style.display = 'none';
+                    const dlBtn = document.getElementById('instantDownloadBtn');
+                    dlBtn.href = data.download_url || ('/download/' + token);
+                    dlBtn.style.display = 'block';
+                    dlBtn.innerText = '📥 ई-बुक डाऊनलोड करा (Download PDF Now)';
+                } else if (data.is_rejected) {
+                    if (pollingTimer) clearInterval(pollingTimer);
+                    document.getElementById('step3Icon').innerText = '❌';
+                    document.getElementById('step3Title').innerText = 'ऑर्डर नाकारली (Order Rejected)';
+                    document.getElementById('step3Title').style.color = '#f87171';
+                    document.getElementById('step3Sub').innerText = 'अवैध किंवा चुकीचा UTR असल्यामुळे ॲडमिनने ही ऑर्डर नाकारली आहे.';
+                    document.getElementById('step3Sub').style.color = '#f87171';
+                    const pollBox = document.getElementById('pollingStatusBox');
+                    if (pollBox) pollBox.innerHTML = '<button class="btn-sample btn-full" onclick="backToStep1()">मागे जा व योग्य UTR टाका</button>';
+                }
+            } catch(e) {}
+        }
+
+        async function checkOrderStatusManual() {
+            if (!currentOrderToken) return;
+            const btn = document.querySelector('#pollingStatusBox button');
+            if (btn) btn.innerText = 'तपासत आहे... ⏳';
+            await checkOrderStatus(currentOrderToken);
+            if (btn) btn.innerText = '🔄 मंजुरी स्थिती तपासा (Check Status)';
+        }
+
         async function confirmPayment() {
             const utrEl = document.getElementById('utrInput');
             const userUtr = utrEl ? utrEl.value.trim() : "";
             if (!userUtr || userUtr.length < 8) {
-                alert('⚠️ कृपया पेमेंट पूर्ण केल्यानंतर UPI ॲपमधील (GPay/PhonePe/Paytm) १२-अंकी UTR किंवा ट्रान्झॅक्शन Ref नंबर अचूक टाका.\n\nपेमेंट पडताळणी पूर्ण झाल्याशिवाय ई-बुक डाऊनलोड उपलब्ध होणार नाही.');
+                alert('⚠️ कृपया पेमेंट पूर्ण केल्यानंतर UPI ॲपमधील (GPay/PhonePe/Paytm) १२-अंकी UTR किंवा ट्रान्झॅक्शन Ref नंबर अचूक टाका.');
                 if (utrEl) utrEl.focus();
                 return;
             }
 
             const email = document.getElementById('customerEmail').value.trim();
             const confirmBtn = document.querySelector('#modalStep2 button.btn-buy');
-            const origText = confirmBtn ? confirmBtn.innerText : '🔐 पेमेंट पडताळणी करा आणि ई-बुक मिळवा (Verify Payment & Download)';
+            const origText = confirmBtn ? confirmBtn.innerText : '📩 १२-अंकी UTR सबमिट करा';
 
             if (confirmBtn) {
                 confirmBtn.disabled = true;
-                confirmBtn.innerText = 'व्हेरिफाय करत आहे... ⏳';
+                confirmBtn.innerText = 'सबमिट करत आहे... ⏳';
             }
 
             try {
-                let success = false;
-                let downloadUrl = `/download/${currentOrderToken}`;
-                let message = '';
-
-                if (window.location.protocol === 'file:') {
-                    // Local static preview verification
-                    success = (userUtr.length >= 8);
-                    downloadUrl = `https://t.me/ExamRankersIndiaBot?start=download_${currentProduct.id}`;
-                } else {
-                    const res = await fetch('/api/verify', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            order_token: currentOrderToken,
-                            utr: userUtr
-                        })
-                    });
-                    const data = await res.json();
-                    success = data.success;
-                    downloadUrl = data.download_url || `/download/${currentOrderToken}`;
-                    message = data.message;
-                }
-
-                if (success) {
+                const res = await fetch('/api/verify', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        order_token: currentOrderToken,
+                        utr: userUtr
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
                     document.getElementById('finalEmailSpan').innerText = email;
                     document.getElementById('finalOrderToken').innerText = currentOrderToken;
-                    document.getElementById('instantDownloadBtn').href = downloadUrl;
+                    const utrSpan = document.getElementById('submittedUtrSpan');
+                    if (utrSpan) utrSpan.innerText = userUtr;
+
                     document.getElementById('modalStep2').style.display = 'none';
                     document.getElementById('modalStep3').style.display = 'block';
+
+                    if (data.status === 'approved') {
+                        document.getElementById('step3Icon').innerText = '🎉';
+                        document.getElementById('step3Title').innerText = 'पेमेंट मंजूर! अभिनंदन!';
+                        document.getElementById('step3Title').style.color = '#10b981';
+                        document.getElementById('step3Sub').innerText = 'तुमचे ई-बुक ईमेलवर पाठवले आहे!';
+                        document.getElementById('instantDownloadBtn').href = data.download_url || `/download/${currentOrderToken}`;
+                        document.getElementById('instantDownloadBtn').style.display = 'block';
+                        document.getElementById('pollingStatusBox').style.display = 'none';
+                    } else {
+                        startOrderStatusPolling(currentOrderToken);
+                    }
                 } else {
-                    alert('❌ पेमेंट व्हेरिफाय होऊ शकले नाही: ' + (message || 'कृपया UTR तपासा व पुन्हा प्रयत्न करा.'));
+                    alert('❌ त्रुटी: ' + (data.message || 'कृपया UTR तपासा व पुन्हा प्रयत्न करा.'));
                 }
             } catch (e) {
-                alert('❌ सर्व्हरशी संपर्क होऊ शकला नाही. कृपया इंटरनेट तपासा किंवा थेट बॉटवरून संपर्क करा.');
+                alert('❌ सर्व्हरशी संपर्क होऊ शकला नाही. कृपया इंटरनेट तपासा व पुन्हा प्रयत्न करा.');
             } finally {
                 if (confirmBtn) {
                     confirmBtn.disabled = false;
