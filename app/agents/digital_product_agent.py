@@ -17,6 +17,35 @@ from .base_agent import BaseSeniorAgent
 
 logger = logging.getLogger(__name__)
 
+CANONICAL_SUBJECTS = [
+    "Current Affairs",
+    "PYQ & Response Sheets",
+    "Marathi",
+    "English",
+    "General Knowledge",
+    "Maths & Reasoning"
+]
+
+def normalize_product_subject(raw_subject: Optional[str]) -> str:
+    """Normalizes any free-form subject string into one of the 6 canonical categories."""
+    if not raw_subject:
+        return "General Knowledge"
+    s = raw_subject.strip()
+    if s in CANONICAL_SUBJECTS:
+        return s
+    s_lower = s.lower()
+    if any(k in s_lower for k in ["ca", "current", "ghadamodi", "chalu"]):
+        return "Current Affairs"
+    if any(k in s_lower for k in ["pyq", "response", "sheet", "qbank", "question_bank", "oneliner", "comprehensive"]):
+        return "PYQ & Response Sheets"
+    if any(k in s_lower for k in ["marathi", "vyakaran"]):
+        return "Marathi"
+    if any(k in s_lower for k in ["english", "grammar", "vocab"]):
+        return "English"
+    if any(k in s_lower for k in ["math", "reason", "ankganit", "buddhimate", "logic", "aptitude"]):
+        return "Maths & Reasoning"
+    return "General Knowledge"
+
 MONTHS_2026_DATA = [
     ("prod_ca_2026_11", "नोव्हेंबर २०२६ चालू घडामोडी Top 200 MCQs (Live Daily Edition)", "नोव्हेंबर २०२६ मधील सर्व चालू घडामोडी + दैनंदिन अद्ययावत प्रश्न", "⚡ LIVE DAILY UPDATED (₹19)", 52, "current_affairs_2026_11_top200.pdf", "दररोज अद्ययावत होणारे चालू घडामोडींचे २०० दर्जेदार बहुपर्यायी प्रश्न, सविस्तर स्पष्टीकरणे आणि स्मरण क्लृप्त्या."),
     ("prod_ca_2026_10", "ऑक्टोबर २०२६ चालू घडामोडी Top 200 MCQs (TCS/IBPS स्पेशल)", "ऑक्टोबर २०२६ संपूर्ण महिना कव्हर - सविस्तर स्पष्टीकरण व ट्रिक्स", "🔥 BESTSELLER (₹19)", 50, "current_affairs_2026_10_top200.pdf", "ऑक्टोबर २०२६ मधील राष्ट्रीय व राज्यस्तरीय सर्व महत्त्वपूर्ण घडामोडी, योजना व नियुक्त्यांचा २०० प्रश्नसंच."),
@@ -296,7 +325,27 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            logger.info("digital_products and product_orders tables initialized.")
+            # Add Cashfree & payment columns if not present
+            existing_cols = [c[1] for c in db.execute("PRAGMA table_info(product_orders)").fetchall()]
+            new_cols = {
+                "cf_order_id": "TEXT",
+                "payment_session_id": "TEXT",
+                "payment_method": "TEXT",
+                "notes": "TEXT",
+                "dispute_status": "TEXT DEFAULT 'none'"
+            }
+            for col, ctype in new_cols.items():
+                if col not in existing_cols:
+                    try:
+                        db.execute(f"ALTER TABLE product_orders ADD COLUMN {col} {ctype}")
+                    except Exception as e:
+                        logger.debug(f"Column {col} already exists or error: {e}")
+
+            # Clean/normalize any historical non-canonical subjects in digital_products table
+            db.execute("UPDATE digital_products SET subject = 'PYQ & Response Sheets' WHERE subject IN ('Comprehensive', 'Response Sheets', 'PYQ')")
+            db.execute("UPDATE digital_products SET subject = 'General Knowledge' WHERE subject IN ('General Studies', 'General', 'GS', 'GK')")
+            db.commit()
+            logger.info("digital_products and product_orders tables initialized and verified.")
 
     def create_product(self, data: Dict[str, Any], db_path: str = "bot.db") -> Dict[str, Any]:
         """Manually creates a new product in the digital_products table with full admin control."""
@@ -305,7 +354,8 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         prod_id = data.get("id") or f"prod_{uuid.uuid4().hex[:8]}"
         title = data.get("title", "नवीन डिजिटल ई-बुक").strip()
         subtitle = data.get("subtitle", "TCS/IBPS परीक्षा विशेष ई-बुक").strip()
-        subject = data.get("subject", "General").strip()
+        raw_subject = data.get("subject", "General Knowledge").strip()
+        subject = normalize_product_subject(raw_subject)
         tier = data.get("tier", "Manual").strip()
         price_inr = int(data.get("price_inr", 19))
         original_price_inr = int(data.get("original_price_inr") or max(price_inr * 3, 99))
@@ -540,7 +590,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
 
         final_title = title or inferred_title
         final_subtitle = subtitle or "TCS/IBPS परीक्षा विशेष अधिकृत ई-बुक"
-        final_subject = subject or inferred_subject
+        final_subject = normalize_product_subject(subject or inferred_subject)
         final_icon = icon or inferred_icon
         final_badge = badge or inferred_badge
         final_desc = description or f"TCS, IBPS व MPSC परीक्षांसाठी उपयुक्त अधिकृत डिजिटल ई-बुक ({filename}). सविस्तर स्पष्टीकरणासह तात्काळ डाऊनलोड उपलब्ध."

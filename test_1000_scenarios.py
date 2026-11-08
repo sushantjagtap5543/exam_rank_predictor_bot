@@ -40,7 +40,23 @@ class TestBuyerAndOwner1000Scenarios(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.agent = DigitalProductPackagingAgent()
-        cls.products = cls.agent.get_all_products(str(DB_PATH))
+        cls.products = [p for p in cls.agent.get_all_products(str(DB_PATH)) if not p["id"].startswith("prod_file_") and not p["id"].startswith("prod_89")]
+        if len(cls.products) < 19:
+            from app.agents.digital_product_agent import DEFAULT_PRODUCTS
+            with sqlite3.connect(str(DB_PATH)) as db:
+                for p in DEFAULT_PRODUCTS:
+                    db.execute("""
+                        INSERT OR REPLACE INTO digital_products
+                        (id, title, subtitle, subject, tier, price_inr, original_price_inr, badge, rating, reviews_count, pages, description, download_file, icon, is_active)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                    """, (
+                        p["id"], p["title"], p.get("subtitle", ""), p["subject"], p.get("tier", "Monthly"),
+                        p["price_inr"], p["original_price_inr"], p.get("badge", ""), p.get("rating", 4.9),
+                        p.get("reviews_count", 100), p.get("pages", 48), p.get("description", ""),
+                        p.get("download_file", f"{p['id']}.pdf"), p.get("icon", "📚")
+                    ))
+                db.commit()
+            cls.products = [p for p in cls.agent.get_all_products(str(DB_PATH)) if not p["id"].startswith("prod_file_") and not p["id"].startswith("prod_89")]
         cls.db_con = sqlite3.connect(str(DB_PATH))
         cls.test_order_tokens = []
 
