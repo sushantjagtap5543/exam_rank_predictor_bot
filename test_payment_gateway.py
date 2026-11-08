@@ -123,7 +123,7 @@ class TestPaymentGatewaySecurity(unittest.TestCase):
 
     def test_03_qr_code_generation(self):
         """Verifies that offline QR generation produces non-empty PNG bytes and data URIs."""
-        data = "upi://pay?pa=9970095256-2@ybl&pn=ExamRankers&am=99&cu=INR"
+        data = "upi://pay?pa=merchant@upi&pn=ExamRankers&am=99&cu=INR"
         qr_bytes = generate_qr_bytes(data)
         self.assertGreater(len(qr_bytes), 100, "QR code PNG bytes must be generated locally")
         self.assertEqual(qr_bytes[:8], b"\x89PNG\r\n\x1a\n", "Must have valid PNG file magic bytes")

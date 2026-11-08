@@ -1215,7 +1215,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["buying_product_price"] = prod.get("price_inr", 19)
         context.user_data["awaiting_store_utr"] = True
 
-        upi_id = os.getenv("UPI_ID", "9970095256-2@ybl").strip()
+        upi_id = os.getenv("UPI_ID", "").strip()
         upi_name = os.getenv("UPI_NAME", "ExamRankers India").strip()
         price = prod.get("price_inr", 19)
         upi_uri = f"upi://pay?pa={upi_id}&pn={urllib.parse.quote(upi_name)}&am={price}&cu=INR&tn=Store_{prod_id[:8]}"
@@ -4398,8 +4398,8 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         log_store_visitor(client_ip, ua, ref, tg_id=tg_uid, page_path=path or "/", action="view_store", product_id=prod_param)
 
         try:
-            html = render_digital_store_html()
-            html_bytes = html.encode("utf-8")
+            store_page_html = render_digital_store_html()
+            html_bytes = store_page_html.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(html_bytes)))

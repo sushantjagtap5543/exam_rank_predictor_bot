@@ -1,0 +1,17 @@
+{
+  "name": "ExamRankers™ Store",
+  "short_name": "ExamRankers",
+  "description": "Maharashtra TCS & IBPS Official Digital Exam Preparation Micro-Books & Question Banks",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080c14",
+  "theme_color": "#080c14",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

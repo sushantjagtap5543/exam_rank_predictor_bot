@@ -1,0 +1,53 @@
+name: ExamRankers CI Quality Gate
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    name: Security & Quality Gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run 1000 Scenarios Suite
+        run: |
+          python test_1000_scenarios.py
+
+      - name: Run Free AI Models & Question Bank Suite
+        run: |
+          python test_free_models_and_qbank.py
+
+      - name: Run 15 Autonomous Agents Suite
+        run: |
+          python test_all_agents.py
+
+      - name: Run Cashfree Payment Gateway & Order Monetization Suite
+        run: |
+          python test_payment_gateway.py
+
+      - name: Run Live Security Attack Validation Suite (9 Vectors)
+        env:
+          ADMIN_API_KEY: "test-admin-secret-ci-999"
+          DOWNLOAD_SIGNING_KEY: "test-signing-secret-ci-888"
+          CASHFREE_SECRET_KEY: "test-cf-secret-ci-777"
+          CASHFREE_APP_ID: "test-cf-app-ci-111"
+          CASHFREE_ENV: "sandbox"
+        run: |
+          python test_security_attack_script.py

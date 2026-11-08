@@ -16,6 +16,7 @@ from app.ai_client import get_ai_client, OPENROUTER_FREE_MODELS
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 FALLBACK_MODELS = OPENROUTER_FREE_MODELS
 
 # Circuit breaker for invalid OpenRouter credentials (avoids stalling commands when API key is 401/403)

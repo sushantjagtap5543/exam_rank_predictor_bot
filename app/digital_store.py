@@ -767,7 +767,7 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None) -> str:
             <div class="trust-item"><span>✓</span> १००% अधिकृत TCS/IBPS पॅटर्न</div>
             <div class="trust-item"><span>✓</span> अवघ्या ₹१० ते ₹५० मध्ये</div>
             <div class="trust-item"><span>✓</span> तात्काळ Email व Web डाऊनलोड</div>
-            <div class="trust-item"><span>✓</span> ५०,०००+ समाधानी विद्यार्थी</div>
+            <div class="trust-item"><span>✓</span> TCS & IBPS अधिकृत प्रश्नसंच</div>
         </div>
 
         <div class="search-container">
