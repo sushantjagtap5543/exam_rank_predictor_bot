@@ -3865,6 +3865,16 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Logs detailed traceback, captures via Sentry if enabled, and alerts admins if critical."""
+    err_str = str(context.error) if context.error else ""
+    if "Conflict: terminated by other getUpdates request" in err_str:
+        logger.warning(
+            "⚠️ [TELEGRAM POLLING CONFLICT]: Another bot instance is currently active with this TELEGRAM_BOT_TOKEN "
+            "(e.g. running on Render/cloud deployment, in another open terminal window, or on a secondary device). "
+            "Telegram strictly permits only ONE polling instance per token. "
+            "Solution: Stop the other running instance, or run 'python run_store.py' if you only need the Web Store & Admin Panel locally."
+        )
+        return
+
     tb_string = "".join(traceback.format_exception(None, context.error, context.error.__traceback__)) if context.error else "Unknown Error"
     logger.error(f"Telegram Handler Exception: {context.error}\n{tb_string}")
     if os.getenv("SENTRY_DSN"):
