@@ -183,7 +183,7 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None) -> str:
 
     products_json = json.dumps(products)
     samples_json = json.dumps(SAMPLE_PREVIEWS)
-    upi_id = os.getenv("UPI_ID", "9970095256-2@ybl").strip()
+    upi_id = os.getenv("UPI_ID", "").strip()
     upi_name = os.getenv("UPI_NAME", "ExamRankers India").strip()
     razorpay_key_id = os.getenv("RAZORPAY_KEY_ID", "").strip()
 

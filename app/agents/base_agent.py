@@ -11,21 +11,12 @@ import logging
 import httpx
 from typing import Optional, Dict, Any, List
 
+from app.ai_client import get_ai_client, OPENROUTER_FREE_MODELS
+
 logger = logging.getLogger(__name__)
 
-OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
-FALLBACK_MODELS = [
-    "google/gemini-2.0-flash-exp:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
-    "meta-llama/llama-3.1-8b-instruct:free",
-    "mistralai/mistral-7b-instruct:free",
-    "deepseek/deepseek-r1:free",
-    "qwen/qwen-2.5-coder-32b-instruct:free",
-    "google/gemma-2-9b-it:free",
-    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-    "nvidia/nemotron-3.5-lightning:free"
-]
+FALLBACK_MODELS = OPENROUTER_FREE_MODELS
 
 # Circuit breaker for invalid OpenRouter credentials (avoids stalling commands when API key is 401/403)
 _AUTH_FAILED_UNTIL: float = 0.0

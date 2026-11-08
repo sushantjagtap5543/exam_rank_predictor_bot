@@ -125,6 +125,7 @@ def extract_pdf_text(path: str, max_ocr_pages: int = None) -> str:
     If the document has no digital text layer (scanned or printed as images),
     automatically falls back to RapidOCR.
     """
+    text = ""
     try:
         doc = fitz.open(path)
         sample_chars = sum(len(doc[i].get_text("text").strip()) for i in range(min(3, len(doc))))
@@ -429,14 +430,18 @@ def parse_answers(text: str):
         re.I
     )
 
-    if re.search(r"\bQ\.\s*\d+\b", text, re.I):
-        parts = re.split(r"(?=\bQ\.\s*\d+\b)", text, flags=re.I)
-    elif re.search(r"\bQuestion\s*(?:No\.?|Number)?\s*\d+\b", text, re.I):
-        parts = re.split(r"(?=\bQuestion\s*(?:No\.?|Number)?\s*\d+\b)", text, flags=re.I)
+    # Split questions ONLY at line starts to prevent mid-text mentions (e.g. "Refer to Q. 2") creating phantom questions
+    # Supports English ("Q. 1", "Question 1") and Marathi ("प्रश्न १", "प्रश्न क्र. १", "प्र. क्र. 1")
+    split_pattern = r"(?m)(?=^\s*(?:Q\s*\.\s*\d+|Question\s*(?:No\.?|Number)?\s*\d+|प्रश्न\s*(?:क्र\.?|क्रमांक)?\s*[\d१-९]+|प्र\s*\.\s*क्र\s*\.\s*[\d१-९]+|Question\s*ID\s*[:\-]))"
+    if re.search(split_pattern, text, re.I):
+        parts = re.split(split_pattern, text, flags=re.I)
+    elif re.search(r"(?m)^\s*Question\s*ID\s*[:\-]", text, re.I):
+        parts = re.split(r"(?m)(?=^\s*Question\s*ID\s*[:\-])", text, flags=re.I)
     else:
-        parts = re.split(r"(?=\bQuestion\s*ID\s*[:\-])", text, flags=re.I)
+        parts = re.split(r"(?m)(?=^\s*(?:Q\.\s*\d+|Question\s*\d+))", text, flags=re.I)
 
     current_section = "General Paper"
+    dev_digits = {"०": "0", "१": "1", "२": "2", "३": "3", "४": "4", "५": "5", "६": "6", "७": "7", "८": "8", "९": "9"}
 
     for block in parts:
         if not block.strip():
@@ -449,51 +454,55 @@ def parse_answers(text: str):
             if len(candidate_sec) > 3 and not candidate_sec.isdigit():
                 current_section = candidate_sec[:40]
 
-        qid_match = re.search(r"Question\s*ID\s*[:\-]+\s*(\w+)", block, re.I)
-        qnum_match = re.search(r"Q\.\s*(\d+)", block, re.I)
+        qid_match = re.search(r"(?:Question|प्रश्न)\s*(?:ID|आयडी)?\s*[:\-]+\s*(\w+)", block, re.I)
+        qnum_match = re.search(r"(?:Q\.\s*|Question\s*(?:No\.?|Number)?\s*|प्रश्न\s*(?:क्र\.?|क्रमांक)?\s*|प्र\s*\.\s*क्र\s*\.\s*)([\d१-९]+)", block, re.I)
 
         if not qid_match and not qnum_match:
             continue
 
-        qid = qid_match.group(1) if qid_match else qnum_match.group(1)
+        raw_qnum_str = qnum_match.group(1) if qnum_match else ""
+        norm_qnum_str = "".join(dev_digits.get(ch, ch) for ch in raw_qnum_str) if raw_qnum_str else ""
+        qid = qid_match.group(1) if qid_match else norm_qnum_str
 
         # 1. Direct Option ID match
-        selected_opt = re.search(r"Answer\s*Given\s*by\s*Candidate\s*[:\-].*?Option\s*ID\s*[:\-]*\s*(\w+)", block, re.I | re.S)
-        correct_opt = re.search(r"Correct\s*Answer\s*[:\-].*?Option\s*ID\s*[:\-]*\s*(\w+)", block, re.I | re.S)
+        selected_opt = re.search(r"(?:Answer\s*Given\s*by\s*Candidate|उमेदवाराने\s*दिलेले\s*उत्तर)\s*[:\-].*?Option\s*ID\s*[:\-]*\s*(\w+)", block, re.I | re.S)
+        correct_opt = re.search(r"(?:Correct\s*Answer|अधिकृत\s*अचूक\s*उत्तर)\s*[:\-].*?Option\s*ID\s*[:\-]*\s*(\w+)", block, re.I | re.S)
 
-        # 2. Chosen Option Number (1, 2, 3, 4 or --)
-        chosen_match = re.search(r"(?:Chosen|Selected|Given|Candidate)\s*(?:Option|Answer)\s*[:\-]+\s*([1-4]|-+)", block, re.I)
+        # 2. Chosen Option Number (1, 2, 3, 4, Marathi १-४, or --)
+        chosen_match = re.search(r"(?:Chosen|Selected|Given|Candidate|निवडलेला|दिलेला|दिलेले)\s*(?:Option|Answer|पर्याय|उत्तर)\s*[:\-]+\s*([1-4१-४]|-+)", block, re.I)
         # 3. Correct Option Number directly in text (e.g. Correct Option : 2 or checkmarks)
-        correct_num_match = re.search(r"(?:Correct|Right)\s*(?:Option|Answer)\s*[:\-]+\s*([1-4])\b", block, re.I)
+        correct_num_match = re.search(r"(?:Correct|Right|अचूक|बरोबर|योग्य)\s*(?:Option|Answer|पर्याय|उत्तर)\s*[:\-]+\s*([1-4१-४])\b", block, re.I)
 
         if not correct_num_match and not correct_opt:
             # Check for [Correct Option] from HTML or checkmark symbol (✓ / ✔ / ☑ / rightAns)
             tick_match = re.search(
-                r"\b([1-4])\s*[\.\):\-](?:(?!\b[1-4]\s*[\.\):\-]).)*?(?:\[Correct Option\]|[✓✔☑]|\brightAns\b)",
+                r"\b([1-4१-४])\s*[\.\):\-](?:(?!\b[1-4१-४]\s*[\.\):\-]).)*?(?:\[Correct Option\]|[✓✔☑]|\brightAns\b)",
                 block,
                 re.I | re.S
             )
             if not tick_match:
                 tick_match = re.search(
-                    r"(?:\[Correct Option\]|[✓✔☑]|\brightAns\b)(?:(?!\b[1-4]\s*[\.\):\-]).)*?\b([1-4])\s*[\.\):\-]",
+                    r"(?:\[Correct Option\]|[✓✔☑]|\brightAns\b)(?:(?!\b[1-4१-४]\s*[\.\):\-]).)*?\b([1-4१-४])\s*[\.\):\-]",
                     block,
                     re.I | re.S
                 )
             if tick_match:
                 correct_num_match = tick_match
 
-        status_match = re.search(r"Status\s*[:\-]+\s*([A-Za-z\s]+)", block, re.I)
+        status_match = re.search(r"(?:Status|स्थिती)\s*[:\-]+\s*([A-Za-z\s\u0900-\u097F]+)", block, re.I)
         opt_ids = dict(re.findall(r"Option\s*([1-4])\s*ID\s*[:\-]+\s*(\w+)", block, re.I))
 
         given_opt_num = None
         if chosen_match:
             val = chosen_match.group(1).strip()
+            val = dev_digits.get(val, val)
             if val.isdigit():
                 given_opt_num = val
 
         correct_opt_num = None
         if correct_num_match:
-            correct_opt_num = correct_num_match.group(1).strip()
+            cval = correct_num_match.group(1).strip()
+            correct_opt_num = dev_digits.get(cval, cval)
 
         selected_id = None
         if selected_opt:
@@ -605,6 +614,7 @@ def score_answers(records: list, exam_config: dict):
     positive_marks = float(exam_config.get("positive_marks", 1.0))
     negative_marks = float(exam_config.get("negative_marks", 0.0))
     external_key = exam_config.get("answer_key", {})
+    has_answer_keys = any(bool(r.get("correct_option_number") or r.get("correct_option_id")) for r in records) or bool(external_key)
 
     correct_count = 0
     wrong_count = 0
@@ -704,5 +714,8 @@ def score_answers(records: list, exam_config: dict):
         "positive_marks": positive_marks,
         "negative_marks": negative_marks,
         "sections": sections_stat,
-        "records": records
+        "records": records,
+        "has_answer_key": has_answer_keys,
+        "error": None if has_answer_keys or len(records) == 0 else "NO_ANSWER_KEY",
+        "warning": None if has_answer_keys or len(records) == 0 else "या रिस्पॉन्स शीटमध्ये अधिकृत उत्तरतालिका (Answer Key) आढळली नाही. केवळ उमेदवाराचे प्रतिसाद असल्याने रँक काढता येत नाही."
     }

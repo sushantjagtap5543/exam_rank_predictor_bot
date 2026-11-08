@@ -12,12 +12,17 @@
 2. **"Create App"** वर क्लिक करा.
 3. **GitHub** निवडा आणि तुमचे `exam_rank_predictor_bot` रिपॉझिटरी सिलेक्ट करा.
 4. **Builder:** Docker निवडा (किंवा Buildpack).
-5. **Environment Variables** सेक्शनमध्ये तुमचे सिक्रेट्स टाका:
-   - `TELEGRAM_BOT_TOKEN`: `8198751433:AAEt15U_UqH9m4Vb6u58Y41b-4r8qO0K_wA`
-   - `PAID_CHANNEL_ID`: `-1004381339759`
-   - `PAID_CHANNEL_LINK`: `https://t.me/+EjtGp-pH4hMxZDM1`
-   - `ADMIN_USER_IDS`: `705909048`
-   - `OPENROUTER_API_KEY`: `तुमची OpenRouter Key`
+5. **Environment Variables** सेक्शनमध्ये तुमचे सुरक्षित सिक्रेट्स टाका:
+   - `TELEGRAM_BOT_TOKEN`: `your_new_bot_token_from_botfather`
+   - `ADMIN_API_KEY`: `your_strong_random_secret_hex_key`
+   - `ADMIN_TELEGRAM_IDS`: `your_numeric_telegram_id`
+   - `PAID_CHANNEL_ID`: `your_telegram_channel_id` (उदा. `-1001234567890`)
+   - `PAID_CHANNEL_LINK`: `https://t.me/+YourPrivateChannelLink`
+   - `OPENROUTER_API_KEY`: `your_openrouter_free_key`
+
+> [!CAUTION]
+> **सुरक्षा सूचना (Revoke Leaked Tokens):**
+> जर पूर्वी वापरलेला टेलिग्राम बॉट टोकन लीक झाला असेल, तर लगेच Telegram मध्ये **@BotFather** कडे जाऊन `/revoke` कमांड देऊन नवीन टोकन जनरेट करा. सिस्टीम जुन्या किंवा लीक झालेल्या टोकन्सचा वापर करण्यास नकार देईल.
 6. **"Deploy"** वर क्लिक करा!
    - बॉट लगेच २४/७ लाईव्ह सुरू होईल.
 

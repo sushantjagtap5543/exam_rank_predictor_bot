@@ -140,7 +140,7 @@ def init_monetization_db():
 
 def get_upi_payment_details(user_id: int) -> dict:
     """Generates UPI intent link, QR code, and details for ₹99 channel subscription."""
-    upi_id = os.getenv("UPI_ID", "9970095256-2@ybl").strip()
+    upi_id = os.getenv("UPI_ID", "").strip()
     upi_name = os.getenv("UPI_NAME", "ExamRankers").strip()
     amount = os.getenv("CHANNEL_FEE_INR", "99").strip()
 
