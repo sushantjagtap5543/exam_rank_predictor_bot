@@ -102,7 +102,7 @@ from .monetization import (
     validate_utr_format,
     is_utr_already_used,
 )
-from .admin_panel import render_admin_dashboard_html
+from .admin_panel import render_admin_dashboard_html, render_admin_login_html
 from .digital_store import (
     render_digital_store_html,
     render_nano_banana_store_html,
@@ -202,6 +202,14 @@ def is_admin_request_authenticated(headers, query_params) -> bool:
     provided = headers.get("X-Admin-Key", "").strip()
     if not provided:
         provided = query_params.get("key", [""])[0].strip() or query_params.get("token", [""])[0].strip() or query_params.get("admin_key", [""])[0].strip()
+    if not provided:
+        cookie_header = headers.get("Cookie", "")
+        if "admin_key=" in cookie_header:
+            for part in cookie_header.split(";"):
+                part = part.strip()
+                if part.startswith("admin_key="):
+                    provided = urllib.parse.unquote(part.split("admin_key=", 1)[1].strip())
+                    break
     if not provided:
         return False
     return hmac.compare_digest(provided, admin_key)
@@ -4291,10 +4299,18 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         if path in ("/admin", "/admin/dashboard"):
             query_params = urllib.parse.parse_qs(parsed.query)
             if not is_admin_request_authenticated(self.headers, query_params):
+                has_attempted_key = bool(
+                    query_params.get("key") or query_params.get("token") or query_params.get("admin_key")
+                    or "admin_key=" in self.headers.get("Cookie", "")
+                )
+                err_msg = "प्रविष्ट केलेली ॲडमिन की अमान्य आहे. कृपया अचूक की टाका." if has_attempted_key else ""
+                login_html = render_admin_login_html(error_msg=err_msg)
+                login_bytes = login_html.encode("utf-8")
                 self.send_response(403)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(login_bytes)))
                 self.end_headers()
-                self.wfile.write("<h3>⛔ ४०३ अनधिकृत प्रवेश (403 Forbidden)</h3><p>ॲडमिन डॅशबोर्ड वापरण्यासाठी <code>X-Admin-Key</code> हेडर किंवा <code>?key=YOUR_ADMIN_API_KEY</code> आवश्यक आहे.</p>".encode("utf-8"))
+                self.wfile.write(login_bytes)
                 return
             try:
                 dash_html = render_admin_dashboard_html(DB_PATH)

@@ -577,6 +577,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             <a href="/" target="_blank" class="btn btn-outline">🛒 स्टोअर उघडा (Public Store)</a>
             <a href="https://t.me/ExamRankersIndiaBot" target="_blank" class="btn btn-outline">🤖 Telegram Bot</a>
             <button class="btn btn-gold" onclick="openAddModal()">➕ नवीन ई-बुक जोडा</button>
+            <button class="btn btn-outline" style="border-color:#ef4444; color:#f87171;" onclick="handleLogout()">🚪 लॉगआउट</button>
         </div>
     </header>
 
@@ -876,9 +877,26 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             const keyFromUrl = urlParams.get('key');
             if (keyFromUrl) {{
                 sessionStorage.setItem('admin_key', keyFromUrl);
+                document.cookie = "admin_key=" + encodeURIComponent(keyFromUrl) + "; path=/; max-age=86400; SameSite=Lax";
                 return keyFromUrl;
             }}
-            return sessionStorage.getItem('admin_key') || '';
+            let key = sessionStorage.getItem('admin_key');
+            if (!key) {{
+                const match = document.cookie.match(/(^|;)\\s*admin_key=([^;]+)/);
+                if (match) {{
+                    key = decodeURIComponent(match[2]);
+                    sessionStorage.setItem('admin_key', key);
+                }}
+            }}
+            return key || '';
+        }}
+
+        function handleLogout() {{
+            if (confirm('तुम्हाला ॲडमिन पोर्टलवरून लॉगआउट करायचे आहे का?')) {{
+                sessionStorage.removeItem('admin_key');
+                document.cookie = "admin_key=; path=/; max-age=0; SameSite=Lax";
+                window.location.href = '/admin';
+            }}
         }}
 
         async function adminFetch(url, options = {{}}) {{
@@ -1196,3 +1214,69 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
 </html>
 """
     return html
+
+def render_admin_login_html(error_msg: str = "") -> str:
+    err_html = f'<div style="background:rgba(239,68,68,0.15); border:1px solid #ef4444; border-radius:8px; padding:10px; color:#fca5a5; font-size:12.5px; margin-bottom:16px;">❌ {html.escape(error_msg)}</div>' if error_msg else ''
+    return f"""<!DOCTYPE html>
+<html lang="mr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ExamRankers™ Admin Studio — Login</title>
+    <style>
+        :root {{ --primary: #0284c7; --bg: #090d16; --card: #111827; --text: #f8fafc; }}
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }}
+        .login-box {{ background: var(--card); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 32px 28px; width: 100%; max-width: 440px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); text-align: center; }}
+        .logo-icon {{ font-size: 42px; margin-bottom: 12px; }}
+        h1 {{ font-size: 21px; font-weight: 800; color: #fff; margin-bottom: 6px; }}
+        p {{ font-size: 13px; color: #94a3b8; line-height: 1.5; margin-bottom: 20px; }}
+        .input-group {{ text-align: left; margin-bottom: 20px; }}
+        label {{ display: block; font-size: 12px; font-weight: 700; color: #cbd5e1; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }}
+        input[type="password"] {{ width: 100%; padding: 14px; background: #1e293b; border: 1px solid #334155; border-radius: 10px; color: #fff; font-size: 14px; outline: none; transition: 0.2s; }}
+        input:focus {{ border-color: var(--primary); box-shadow: 0 0 0 3px rgba(2,132,199,0.25); }}
+        .btn {{ width: 100%; padding: 14px; background: var(--primary); color: #fff; font-weight: 700; font-size: 15px; border-radius: 10px; border: none; cursor: pointer; transition: 0.2s; }}
+        .btn:hover {{ background: #0369a1; }}
+        .back-link {{ margin-top: 18px; display: block; color: #64748b; font-size: 13px; text-decoration: none; }}
+        .back-link:hover {{ color: #94a3b8; }}
+        .hint {{ font-size: 11.5px; color: #64748b; margin-top: 6px; }}
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <div class="logo-icon">🔐</div>
+        <h1>ExamRankers™ Admin Studio</h1>
+        <p>सुरक्षित ॲडमिन पोर्टलमध्ये प्रवेश करण्यासाठी तुमची अधिकृत <b>Admin API Key</b> प्रविष्ट करा:</p>
+
+        {err_html}
+
+        <form onsubmit="handleLogin(event)">
+            <div class="input-group">
+                <label>Admin Secret Key</label>
+                <input type="password" id="keyInput" placeholder="उदा. admin_prod_examrankers_sec_..." required autofocus />
+                <div class="hint">💡 ही की तुमच्या सर्व्हरच्या .env फाईलमध्ये ADMIN_API_KEY म्हणून सेव्ह आहे.</div>
+            </div>
+            <button type="submit" class="btn">🚀 ॲडमिन पोर्टल उघडा (Login)</button>
+        </form>
+
+        <a href="/" class="back-link">← मुख्य ई-बुक स्टोअरवर परत जा</a>
+    </div>
+
+    <script>
+        // Check if key is already stored in sessionStorage
+        const savedKey = sessionStorage.getItem('admin_key');
+        if (savedKey && !window.location.search.includes('key=')) {{
+            window.location.href = '/admin?key=' + encodeURIComponent(savedKey);
+        }}
+
+        function handleLogin(e) {{
+            e.preventDefault();
+            const val = document.getElementById('keyInput').value.trim();
+            if (!val) return;
+            sessionStorage.setItem('admin_key', val);
+            document.cookie = "admin_key=" + encodeURIComponent(val) + "; path=/; max-age=86400; SameSite=Lax";
+            window.location.href = '/admin?key=' + encodeURIComponent(val);
+        }}
+    </script>
+</body>
+</html>"""
