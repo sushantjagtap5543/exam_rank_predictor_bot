@@ -86,6 +86,10 @@ class CashfreeClient:
             }
 
         cust_id = customer_id or f"cust_{hashlib.sha256(customer_email.lower().encode()).hexdigest()[:16]}"
+        safe_return_url = return_url or f"https://exam-rankers-bot.onrender.com/order/{order_id}"
+        if safe_return_url.startswith("http://"):
+            safe_return_url = "https://" + safe_return_url[7:]
+
         payload = {
             "order_id": order_id,
             "order_amount": round(final_amount, 2),
@@ -96,7 +100,7 @@ class CashfreeClient:
                 "customer_phone": re_clean_phone(customer_phone)
             },
             "order_meta": {
-                "return_url": return_url or f"/order/{order_id}?order_id={order_id}",
+                "return_url": safe_return_url,
                 "notify_url": notify_url or os.getenv("CASHFREE_WEBHOOK_URL", "")
             },
             "order_note": order_note[:100]
