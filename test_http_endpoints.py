@@ -19,6 +19,7 @@ class TestHTTPEndpoints(unittest.TestCase):
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
         cls.base_url = "http://127.0.0.1:8769"
+        cls.admin_key = os.getenv("ADMIN_API_KEY", "admin_prod_examrankers_sec_997009")
 
     @classmethod
     def tearDownClass(cls):
@@ -30,7 +31,13 @@ class TestHTTPEndpoints(unittest.TestCase):
         self.assertEqual(req.read().decode("utf-8"), "OK")
 
     def test_admin_dashboard(self):
-        req = urllib.request.urlopen(f"{self.base_url}/admin")
+        # 1. Unauthenticated request without key must return 403 Forbidden
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(f"{self.base_url}/admin")
+        self.assertEqual(ctx.exception.code, 403)
+
+        # 2. Authenticated request with key returns 200 OK
+        req = urllib.request.urlopen(f"{self.base_url}/admin?key={self.admin_key}")
         self.assertEqual(req.status, 200)
         content = req.read().decode("utf-8")
         self.assertIn("Admin Studio", content)
@@ -62,7 +69,7 @@ class TestHTTPEndpoints(unittest.TestCase):
         req = urllib.request.Request(
             f"{self.base_url}/api/admin/create_product",
             data=json.dumps(new_prod_payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json", "X-Admin-Key": self.admin_key}
         )
         resp = urllib.request.urlopen(req)
         self.assertEqual(resp.status, 200)
@@ -76,7 +83,7 @@ class TestHTTPEndpoints(unittest.TestCase):
         up_req = urllib.request.Request(
             f"{self.base_url}/api/admin/update_product",
             data=json.dumps({"product_id": prod_id, "price_inr": 45, "title": "अद्ययावत मॅन्युअल ई-बुक"}).encode("utf-8"),
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json", "X-Admin-Key": self.admin_key}
         )
         up_resp = urllib.request.urlopen(up_req)
         self.assertEqual(up_resp.status, 200)
@@ -92,7 +99,7 @@ class TestHTTPEndpoints(unittest.TestCase):
         tog_req = urllib.request.Request(
             f"{self.base_url}/api/admin/toggle_product_status",
             data=json.dumps({"product_id": prod_id}).encode("utf-8"),
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json", "X-Admin-Key": self.admin_key}
         )
         tog_resp = urllib.request.urlopen(tog_req)
         self.assertEqual(tog_resp.status, 200)
@@ -103,7 +110,7 @@ class TestHTTPEndpoints(unittest.TestCase):
         del_req = urllib.request.Request(
             f"{self.base_url}/api/admin/delete_product",
             data=json.dumps({"product_id": prod_id}).encode("utf-8"),
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json", "X-Admin-Key": self.admin_key}
         )
         del_resp = urllib.request.urlopen(del_req)
         self.assertEqual(del_resp.status, 200)
@@ -115,7 +122,7 @@ class TestHTTPEndpoints(unittest.TestCase):
         req = urllib.request.Request(
             f"{self.base_url}/api/admin/upload_pdf",
             data=json.dumps({"filename": "test_admin_upload.pdf", "base64_data": b64_str}).encode("utf-8"),
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json", "X-Admin-Key": self.admin_key}
         )
         resp = urllib.request.urlopen(req)
         self.assertEqual(resp.status, 200)
@@ -135,7 +142,7 @@ class TestHTTPEndpoints(unittest.TestCase):
         req = urllib.request.Request(
             f"{self.base_url}/api/admin/order_action",
             data=json.dumps({"order_token": "ORD_TEST_ACTION", "action": "approve"}).encode("utf-8"),
-            headers={"Content-Type": "application/json"}
+            headers={"Content-Type": "application/json", "X-Admin-Key": self.admin_key}
         )
         resp = urllib.request.urlopen(req)
         self.assertEqual(resp.status, 200)

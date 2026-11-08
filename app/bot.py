@@ -4021,7 +4021,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         if path.startswith("/api/order_status"):
             query = urllib.parse.urlparse(self.path).query
             params = urllib.parse.parse_qs(query)
-            token = params.get("token", [""])[0].strip()
+            token = params.get("token", [""])[0].strip() or params.get("q", [""])[0].strip() or params.get("order_id", [""])[0].strip()
 
             if not token:
                 self.send_response(400)
@@ -4037,9 +4037,9 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                     SELECT o.*, p.title as prod_title, p.download_file, p.pages
                     FROM product_orders o
                     LEFT JOIN digital_products p ON o.product_id = p.id
-                    WHERE o.order_token = ?
+                    WHERE o.order_token = ? OR o.cf_order_id = ?
                     ORDER BY o.id DESC LIMIT 1
-                """, (token,)).fetchone()
+                """, (token, token)).fetchone()
 
             if not order:
                 self.send_response(404)
@@ -4121,7 +4121,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.send_response(403)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
-                self.wfile.write("<h3>⏳ पेमेंट पडताळणी प्रलंबित आहे (Pending Verification)</h3>".encode("utf-8"))
+                self.wfile.write("<h3>⛔ डाऊनलोड लॉक आहे — पेमेंट पूर्ण झालेले नाही (Download Disabled)</h3><p>या ऑर्डरचे पेमेंट अजून पूर्ण झालेले नाही. केवळ पेमेंट यशस्वीरित्या पूर्ण झाल्यावरच अधिकृत PDF डाऊनलोड उपलब्ध होते.</p>".encode("utf-8"))
                 return
 
             prod_id = order_data.get("product_id")
@@ -4160,6 +4160,24 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 if r:
                     order_info = dict(r)
 
+            # Realtime Cashfree status verification if order not yet confirmed
+            if order_info and order_info.get("status") not in ("approved", "delivered", "paid"):
+                cf_target_id = order_info.get("cf_order_id") or order_info.get("order_token")
+                if cf_target_id:
+                    try:
+                        cf_client = get_cashfree_client()
+                        if cf_client.is_configured:
+                            cf_data = cf_client.get_order(cf_target_id)
+                            if (cf_data.get("order_status") or "").upper() == "PAID":
+                                with sqlite3.connect(DB_PATH) as db:
+                                    db.execute("UPDATE product_orders SET status = 'paid', delivery_status = 'ready_for_download', delivered_at = CURRENT_TIMESTAMP WHERE id = ?", (order_info["id"],))
+                                    db.execute("UPDATE digital_products SET sales_count = sales_count + 1 WHERE id = ?", (order_info["product_id"],))
+                                    db.commit()
+                                order_info["status"] = "paid"
+                                order_info["delivery_status"] = "ready_for_download"
+                    except Exception as e:
+                        logger.error(f"Error checking Cashfree order status on return: {e}")
+
             status = order_info.get("status", "pending") if order_info else "unknown"
             is_paid = status in ("approved", "delivered", "paid")
             title = order_info.get("prod_title", "स्पर्धा परीक्षा ई-बुक") if order_info else "Digital Product"
@@ -4186,6 +4204,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         .btn:hover {{ background: #0369a1; }}
         .btn-success {{ background: var(--success); }}
         .btn-success:hover {{ background: #15803d; }}
+        .btn-disabled {{ background: #64748b; opacity: 0.55; cursor: not-allowed; }}
         .meta-table {{ width: 100%; margin: 20px 0; text-align: left; font-size: 13px; border-collapse: collapse; }}
         .meta-table td {{ padding: 8px 0; border-bottom: 1px solid #f1f5f9; }}
         .meta-table td:last-child {{ text-align: right; font-weight: 700; color: #0f172a; }}
@@ -4197,7 +4216,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             {'✅ पेमेंट यशस्वी (PAID)' if is_paid else '⏳ पेमेंट प्रक्रियेत आहे (PENDING)'}
         </div>
         <h1>{html.escape(title)}</h1>
-        <p>{'तुमचे पेमेंट यशस्वीरित्या जमा झाले आहे. खालील १-क्लिक बटणावर क्लिक करून तुमची PDF लगेच डाऊनलोड करा:' if is_paid else 'तुमचे पेमेंट पडताळले जात आहे. कृपया १ मिनिट थांबा किंवा पान रिफ्रेश करा.'}</p>
+        <p>{'तुमचे पेमेंट यशस्वीरित्या जमा झाले आहे. खालील १-क्लिक बटणावर क्लिक करून तुमची PDF लगेच डाऊनलोड करा:' if is_paid else 'पेमेंट पूर्ण झाल्यावर डाऊनलोड बटण सक्रिय केले जाईल. कृपया पेमेंट पूर्ण करा:'}</p>
         
         <table class="meta-table">
             <tr><td>ऑर्डर आयडी</td><td><code>{html.escape(order_id[:16])}...</code></td></tr>
@@ -4205,7 +4224,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             <tr><td>स्थिती</td><td>{html.escape(status.upper())}</td></tr>
         </table>
 
-        {'<a href="' + signed_url + '" class="btn btn-success">📥 अधिकृत PDF डाऊनलोड करा (Download Now)</a>' if is_paid else '<button onclick="location.reload()" class="btn">🔄 स्थिती पुन्हा तपासा (Refresh Status)</button>'}
+        {('<a href="' + signed_url + '" class="btn btn-success">📥 अधिकृत PDF डाऊनलोड करा (Download Now)</a>') if is_paid else ('<button disabled class="btn btn-disabled" style="margin-bottom:12px;">⛔ डाऊनलोड लॉक आहे — कृपया आधी पेमेंट पूर्ण करा</button><button onclick="location.reload()" class="btn">🔄 पेमेंट स्थिती तपासा (Check Status)</button>')}
         <div style="margin-top: 16px;">
             <a href="/" style="color: #64748b; font-size: 13px; text-decoration: none;">← मुख्य स्टोअरवर परत जा</a>
         </div>

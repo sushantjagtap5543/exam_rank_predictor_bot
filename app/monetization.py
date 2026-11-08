@@ -75,14 +75,14 @@ def is_utr_already_used(utr: str, db_path: str = None) -> bool:
         with sqlite3.connect(path) as db:
             # Check VIP payments
             p_row = db.execute(
-                "SELECT id FROM payments WHERE LOWER(TRIM(utr)) = ? AND status = 'approved'",
+                "SELECT id FROM payments WHERE LOWER(TRIM(utr)) = ? AND status IN ('approved', 'paid')",
                 (clean_utr,)
             ).fetchone()
             if p_row:
                 return True
             # Check store product orders
             o_row = db.execute(
-                "SELECT id FROM product_orders WHERE LOWER(TRIM(utr)) = ? AND status = 'approved'",
+                "SELECT id FROM product_orders WHERE LOWER(TRIM(utr)) = ? AND status IN ('approved', 'paid', 'delivered')",
                 (clean_utr,)
             ).fetchone()
             if o_row:

@@ -760,45 +760,16 @@
                     <b>⚠️ नो रिफंड पॉलिसी (Strict No-Refund Policy):</b> हे डिजिटल उत्पादन खरेदीनंतर तात्काळ इलेक्ट्रॉनिक स्वरूपात डाऊनलोड व ईमेलवर उपलब्ध होत असल्याने कोणतीही रक्कम परत (Refund) केली जाणार नाही.
                 </div>
 
-                <label class="form-label">१. तुमचा ईमेल आयडी टाका (यावर PDF पाठवली जाईल) *</label>
+                <label class="form-label">१. तुमचा ईमेल आयडी टाका (ऑर्डर पावती व ट्रॅकिंगसाठी) *</label>
                 <input type="email" id="customerEmail" class="form-input" placeholder="name@example.com" required>
 
                 <label class="form-label">२. मोबाईल नंबर (ऐच्छिक)</label>
                 <input type="text" id="customerContact" class="form-input" placeholder="10-अंकी मोबाईल नंबर">
 
-                <button class="btn-buy btn-full" style="min-height:44px;" onclick="proceedToPayment()">👉 पेमेंटसाठी पुढे जा (Pay via Cashfree / UPI)</button>
-            </div>
-
-            <div id="modalStep2" style="display:none; text-align:center;">
-                <h3 style="color:#ffffff; font-size:18px;">📲 UPI QR स्कॅन करून ₹<span id="qrAmountSpan">19</span> भरा</h3>
-                <p style="color:var(--text-muted); font-size:13px; margin-top:4px;">GPay, PhonePe, Paytm, BHIM किंवा Cred वरून स्कॅन करा:</p>
-
-                <div class="qr-card">
-                    <img id="upiQrImg" src="" alt="UPI QR Code">
-                    <div style="font-size:12px; font-weight:700; color:#0f172a; margin-top:6px;">ExamRankers India Verified</div>
+                <button class="btn-buy btn-full" style="min-height:44px;" onclick="proceedToPayment()">👉 अधिकृत Cashfree गेटवेद्वारे सुरक्षित पेमेंट करा (Pay via Cashfree)</button>
+                <div style="text-align:center; margin-top:8px; font-size:11.5px; color:#94a3b8;">
+                    🔒 सुरक्षित 128-bit SSL पेमेंट (UPI, GPay, PhonePe, Cards, NetBanking द्वारे समर्थित)
                 </div>
-
-                <div class="copy-pill" onclick="copyUPI()">
-                    <span>UPI ID: <b id="displayMerchantUpi" style="color:var(--accent-gold);">examrankers@upi</b></span>
-                    <span id="copyBtnText" style="color:#38bdf8; font-weight:700;">📋 Copy</span>
-                </div>
-
-                <div style="margin: 10px 0;">
-                    <a id="upiIntentBtn" href="#" class="btn-sample" style="display:inline-block; width:100%; padding:10px; background:rgba(250,204,21,0.1); border-color:var(--accent-gold); color:var(--accent-gold); text-decoration:none;">⚡ थेट मोबाईल UPI ॲपमध्ये उघडा (Open in GPay/PhonePe)</a>
-                </div>
-
-                <div style="margin:10px 0; padding:10px 12px; background:rgba(239, 68, 68, 0.08); border:1px solid rgba(239, 68, 68, 0.25); border-radius:8px; font-size:11.5px; color:#fca5a5; text-align:left; line-height:1.5;">
-                    <b>⚠️ नो रिफंड पॉलिसी:</b> डिजिटल ई-बुक खरेदीनंतर कोणतीही रक्कम परत (Refund) केली जात नाही.
-                </div>
-
-                <div style="text-align:left; margin-top:14px;">
-                    <label class="form-label">१२-अंकी UPI UTR / Ref No. <span style="color:#ef4444; font-weight:700;">* (अनिवार्य / Mandatory — पेमेंट पडताळणी आवश्यक)</span></label>
-                    <input type="text" id="utrInput" class="form-input" placeholder="उदा. 431289456789" required>
-                    <p style="font-size:11px; color:#94a3b8; margin-top:4px;">💡 GPay, PhonePe किंवा Paytm मधील ट्रान्झॅक्शन हिस्ट्रीमधून १२-अंकी UTR नंबर कॉपी करून येथे टाका.</p>
-                </div>
-
-                <button class="btn-buy btn-full" style="background:#10b981; font-size:15px; padding:14px; margin-top:10px;" onclick="confirmPayment()">📩 १२-अंकी UTR सबमिट करा (Submit UTR for Verification)</button>
-                <button class="btn-sample btn-full" style="margin-top:8px;" onclick="backToStep1()">मागे जा</button>
             </div>
 
             <div id="modalStep3" style="display:none; text-align:center;">
@@ -1097,10 +1068,8 @@
             document.getElementById('modalSub').innerText = currentProduct.subtitle || currentProduct.description;
             document.getElementById('modalPrice').innerText = '₹' + currentProduct.price_inr;
             document.getElementById('modalOrigPrice').innerText = '₹' + currentProduct.original_price_inr;
-            document.getElementById('qrAmountSpan').innerText = currentProduct.price_inr;
 
             document.getElementById('modalStep1').style.display = 'block';
-            document.getElementById('modalStep2').style.display = 'none';
             document.getElementById('modalStep3').style.display = 'none';
             document.getElementById('checkoutModal').classList.add('active');
         }
@@ -1113,85 +1082,41 @@
             }
 
             const proceedBtn = document.querySelector('#modalStep1 button.btn-buy');
-            const origProceedText = proceedBtn ? proceedBtn.innerText : 'पेमेंटसाठी पुढे जा';
+            const origProceedText = proceedBtn ? proceedBtn.innerText : 'पेमेंट करा';
             if (proceedBtn) {
                 proceedBtn.disabled = true;
-                proceedBtn.innerText = currentLang === 'en' ? 'Processing Checkout... ⏳' : 'प्रक्रिया सुरू आहे... ⏳';
+                proceedBtn.innerText = currentLang === 'en' ? 'Initializing Cashfree Payment... ⏳' : 'सुरक्षित कॅशफ्री पेमेंट सुरू होत आहे... ⏳';
             }
 
-            const amount = currentProduct.price_inr;
-            currentOrderToken = 'ORD_' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).substring(2, 6).toUpperCase();
-
-            // Register order via backend API and launch Cashfree if available
-            if (window.location.protocol !== 'file:') {
-                try {
-                    const res = await fetch('/api/checkout', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            product_id: currentProduct.id,
-                            email: email
-                        })
+            try {
+                const res = await fetch('/api/checkout', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_id: currentProduct.id,
+                        email: email
+                    })
+                });
+                const data = await res.json();
+                if (data && data.success && data.payment_session_id && typeof Cashfree !== 'undefined') {
+                    const cashfree = Cashfree({ mode: data.cf_environment || "production" });
+                    cashfree.checkout({
+                        paymentSessionId: data.payment_session_id,
+                        redirectTarget: "_self"
                     });
-                    const data = await res.json();
-                    if (data && data.order_id) {
-                        currentOrderToken = data.order_id;
-                    }
-                    if (data && data.payment_session_id && typeof Cashfree !== 'undefined') {
-                        const cashfree = Cashfree({ mode: data.cf_environment || "sandbox" });
-                        cashfree.checkout({
-                            paymentSessionId: data.payment_session_id,
-                            redirectTarget: "_self"
-                        });
-                        return;
-                    }
-                } catch (e) {
-                    console.log('Checkout API note:', e);
-                } finally {
-                    if (proceedBtn) {
-                        proceedBtn.disabled = false;
-                        proceedBtn.innerText = origProceedText;
-                    }
+                    return;
+                } else {
+                    alert(data.message || (currentLang === 'en' ? 'Failed to initialize payment gateway. Please retry.' : 'पेमेंट गेटवे सुरू करण्यात अडचण आली. कृपया पुन्हा प्रयत्न करा.'));
+                }
+            } catch (e) {
+                console.error('Checkout API error:', e);
+                alert(currentLang === 'en' ? 'Network error connecting to payment gateway.' : 'पेमेंट गेटवेशी संपर्क करताना नेटवर्क त्रुटी आली. कृपया पुन्हा प्रयत्न करा.');
+            } finally {
+                if (proceedBtn) {
+                    proceedBtn.disabled = false;
+                    proceedBtn.innerText = origProceedText;
                 }
             }
-
-            // Fallback to Direct UPI Step
-            const note = encodeURIComponent('Store_' + currentProduct.id.slice(0,8));
-            const upiTarget = MERCHANT_UPI || "merchant@upi";
-            const upiUri = `upi://pay?pa=${upiTarget}&pn=${encodeURIComponent(MERCHANT_NAME)}&am=${amount}&cu=INR&tn=${note}`;
-            const qrLocal = `/api/qrcode?data=${encodeURIComponent(upiUri)}`;
-            const qrFallback = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(upiUri)}`;
-
-            const imgEl = document.getElementById('upiQrImg');
-            if (window.location.protocol === 'file:') {
-                imgEl.src = qrFallback;
-            } else {
-                imgEl.onerror = function() {
-                    if (this.src !== qrFallback) {
-                        this.src = qrFallback;
-                    }
-                };
-                imgEl.src = qrLocal;
-            }
-            const intentBtn = document.getElementById('upiIntentBtn');
-            if (intentBtn) intentBtn.href = upiUri;
-
-            document.getElementById('modalStep1').style.display = 'none';
-            document.getElementById('modalStep2').style.display = 'block';
-        }
-
-        function backToStep1() {
-            document.getElementById('modalStep2').style.display = 'none';
-            document.getElementById('modalStep1').style.display = 'block';
-        }
-
-        function copyUPI() {
-            const upiEl = document.getElementById('displayMerchantUpi');
-            const upiToCopy = MERCHANT_UPI || (upiEl ? upiEl.innerText.trim() : '') || 'merchant@upi';
-            navigator.clipboard.writeText(upiToCopy);
-            const btn = document.getElementById('copyBtnText');
-            if (btn) btn.innerText = '✅ Copied!';
-            setTimeout(() => { if (btn) btn.innerText = '📋 Copy'; }, 2500);
         }
 
         let pollingTimer = null;
@@ -1252,7 +1177,7 @@
         async function trackOrderSubmit() {
             const q = document.getElementById('trackQueryInput').value.trim();
             if (!q) {
-                alert('कृपया तुमचा १२-अंकी UTR किंवा Order Reference नंबर टाका.');
+                alert('कृपया तुमचा Order Reference Token (उदा. ORD_...) टाका.');
                 return;
             }
             const resBox = document.getElementById('trackResultBox');
@@ -1260,105 +1185,42 @@
             resBox.innerHTML = '<div style="color:#94a3b8; text-align:center; padding:12px;">तपासत आहे... ⏳</div>';
 
             try {
-                const res = await fetch('/api/order_status?q=' + encodeURIComponent(q));
+                const res = await fetch('/api/order_status?token=' + encodeURIComponent(q));
                 const data = await res.json();
                 if (!data.success) {
-                    resBox.innerHTML = '<div style="background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:8px; padding:14px; color:#fca5a5; font-size:13px; text-align:center;">❌ ऑर्डर सापडली नाही. कृपया अचूक UTR किंवा Order ID टाका.</div>';
+                    resBox.innerHTML = '<div style="background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:8px; padding:14px; color:#fca5a5; font-size:13px; text-align:center;">❌ ऑर्डर सापडली नाही. कृपया अचूक Order Token टाका.</div>';
                     return;
                 }
 
                 if (data.is_approved) {
                     resBox.innerHTML = `
                         <div style="background:rgba(16,185,129,0.1); border:1px solid #10b981; border-radius:10px; padding:16px; text-align:left;">
-                            <div style="color:#10b981; font-weight:700; font-size:14px; margin-bottom:6px;">✅ ॲडमिन मंजुरी पूर्ण! डाऊनलोड सक्रिय झाले आहे:</div>
+                            <div style="color:#10b981; font-weight:700; font-size:14px; margin-bottom:6px;">✅ पेमेंट यशस्वी! डाऊनलोड सक्रिय झाले आहे:</div>
                             <div style="color:#ffffff; font-weight:700; font-size:15px; margin-bottom:6px;">📖 ${data.product_title || 'Digital E-Book'}</div>
-                            <div style="font-size:12px; color:#94a3b8; margin-bottom:12px;">Order ID: <code>${data.order_token}</code> | UTR: <code>${data.utr}</code></div>
+                            <div style="font-size:12px; color:#94a3b8; margin-bottom:12px;">Order ID: <code>${data.order_token}</code></div>
                             <a href="${data.download_url}" target="_blank" class="btn-buy btn-full" style="text-decoration:none; display:inline-block; background:#10b981; color:#fff; text-align:center; padding:12px; font-weight:700;">
-                                📥 ई-बुक डाऊनलोड करा (Download PDF Now)
+                                📥 अधिकृत PDF डाऊनलोड करा (Download PDF Now)
                             </a>
                         </div>
                     `;
                 } else if (data.is_rejected) {
                     resBox.innerHTML = `
                         <div style="background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:8px; padding:14px; color:#fca5a5; font-size:13px; text-align:center;">
-                            ❌ ॲडमिनने हा UTR नाकारला आहे. अवैध किंवा अयोग्य UTR आढळल्यामुळे डाऊनलोड बंद आहे.
+                            ❌ ही ऑर्डर नाकारण्यात आली आहे. डाऊनलोड बंद आहे.
                         </div>
                     `;
                 } else {
                     resBox.innerHTML = `
                         <div style="background:rgba(250,204,21,0.1); border:1px solid #facc15; border-radius:8px; padding:14px; color:#fef08a; font-size:13px; text-align:left;">
-                            <div style="font-weight:700; color:#facc15; margin-bottom:4px;">⏳ ॲडमिन पडताळणी प्रलंबित आहे (Pending Admin Confirmation)</div>
-                            <div style="font-size:12px; color:#cbd5e1; margin-bottom:8px;">तुमचा UTR: <code>${data.utr}</code> ॲडमिन पडताळणी प्रक्रियेत आहे. ॲडमिनने मंजुरी देताच येथे डाऊनलोड बटण सुरू होईल.</div>
-                            <button class="btn-sample btn-full" style="padding:8px;" onclick="trackOrderSubmit()">🔄 पुन्हा तपासा (Refresh Status)</button>
+                            <div style="font-weight:700; color:#facc15; margin-bottom:4px;">⛔ डाऊनलोड लॉक आहे — पेमेंट पूर्ण झालेले नाही (Download Disabled)</div>
+                            <div style="font-size:12px; color:#cbd5e1; margin-bottom:10px;">या ऑर्डरचे पेमेंट प्रलंबित (Pending) आहे. पेमेंट पूर्ण झाल्यावरच अधिकृत PDF डाऊनलोड उपलब्ध होते.</div>
+                            <button disabled class="btn-disabled" style="opacity:0.55; cursor:not-allowed; background:#64748b; width:100%; padding:10px; border-radius:8px; border:none; color:#fff; font-weight:700; margin-bottom:8px;">⛔ डाऊनलोड लॉक आहे</button>
+                            <a href="/order/${data.order_token}" class="btn-buy btn-full" style="text-decoration:none; display:inline-block; background:#0284c7; color:#fff; text-align:center; padding:10px; font-size:13px;">👉 पेमेंट स्थिती तपासा / पेमेंट पूर्ण करा</a>
                         </div>
                     `;
                 }
             } catch (e) {
                 resBox.innerHTML = '<div style="color:#ef4444; font-size:12.5px; text-align:center;">❌ सर्व्हरशी संपर्क होऊ शकला नाही.</div>';
-            }
-        }
-
-        async function confirmPayment() {
-            const utrEl = document.getElementById('utrInput');
-            const userUtr = utrEl ? utrEl.value.trim() : "";
-            if (!userUtr || userUtr.length < 8) {
-                alert('⚠️ कृपया पेमेंट पूर्ण केल्यानंतर UPI ॲपमधील (GPay/PhonePe/Paytm) १२-अंकी UTR किंवा ट्रान्झॅक्शन Ref नंबर अचूक टाका.');
-                if (utrEl) utrEl.focus();
-                return;
-            }
-
-            const email = document.getElementById('customerEmail').value.trim();
-            const confirmBtn = document.querySelector('#modalStep2 button.btn-buy');
-            const origText = confirmBtn ? confirmBtn.innerText : '📩 १२-अंकी UTR सबमिट करा';
-
-            if (confirmBtn) {
-                confirmBtn.disabled = true;
-                confirmBtn.innerText = 'सबमिट करत आहे... ⏳';
-            }
-
-            try {
-                const res = await fetch('/api/verify', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        order_token: currentOrderToken,
-                        utr: userUtr
-                    })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    document.getElementById('finalEmailSpan').innerText = email;
-                    document.getElementById('finalOrderToken').innerText = currentOrderToken;
-                    const utrSpan = document.getElementById('submittedUtrSpan');
-                    if (utrSpan) utrSpan.innerText = userUtr;
-
-                    document.getElementById('modalStep2').style.display = 'none';
-                    document.getElementById('modalStep3').style.display = 'block';
-
-                    if (data.status === 'approved') {
-                        document.getElementById('step3Icon').innerText = '🎉';
-                        document.getElementById('step3Title').innerText = 'पेमेंट मंजूर! डाऊनलोड उपलब्ध!';
-                        document.getElementById('step3Title').style.color = '#10b981';
-                        document.getElementById('step3Sub').innerText = 'ॲडमिनने पेमेंट मंजूर केले आहे! तुमचे खरेदी केलेले ई-बुक खालील बटणावर क्लिक करून थेट डाऊनलोड करा:';
-                        const dlBtn = document.getElementById('instantDownloadBtn');
-                        dlBtn.href = data.download_url || `/download/${currentOrderToken}`;
-                        dlBtn.style.display = 'block';
-                        const bookTitle = data.product_title || (currentProduct ? currentProduct.title : 'PDF');
-                        dlBtn.innerText = '📥 ई-बुक डाऊनलोड करा (' + bookTitle + ')';
-                        document.getElementById('pollingStatusBox').style.display = 'none';
-                    } else {
-                        startOrderStatusPolling(currentOrderToken);
-                    }
-                } else {
-                    alert('❌ त्रुटी: ' + (data.message || 'कृपया UTR तपासा व पुन्हा प्रयत्न करा.'));
-                }
-            } catch (e) {
-                alert('❌ सर्व्हरशी संपर्क होऊ शकला नाही. कृपया इंटरनेट तपासा व पुन्हा प्रयत्न करा.');
-            } finally {
-                if (confirmBtn) {
-                    confirmBtn.disabled = false;
-                    confirmBtn.innerText = origText;
-                }
             }
         }
 

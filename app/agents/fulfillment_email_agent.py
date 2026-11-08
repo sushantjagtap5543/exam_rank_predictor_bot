@@ -77,8 +77,8 @@ class FulfillmentEmailAgent(BaseSeniorAgent):
         db_path: str = "bot.db"
     ) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
         """
-        Confirms payment UTR, marks order as approved, triggers automated email dispatch,
-        and returns order status and product download link.
+        Confirms payment, marks order as paid, and enables immediate digital download
+        on the store (strictly without sending attachments to Gmail/email).
         """
         with sqlite3.connect(db_path) as db:
             db.row_factory = sqlite3.Row
@@ -92,7 +92,7 @@ class FulfillmentEmailAgent(BaseSeniorAgent):
 
             db.execute("""
                 UPDATE product_orders
-                SET utr = ?, status = 'approved', delivery_status = 'processing'
+                SET utr = ?, status = 'paid', delivery_status = 'ready_for_download', delivered_at = CURRENT_TIMESTAMP
                 WHERE order_token = ?
             """, (utr.strip(), order_token))
 
@@ -102,28 +102,14 @@ class FulfillmentEmailAgent(BaseSeniorAgent):
                 WHERE id = ?
             """, (order_data["product_id"],))
 
-        # Ensure physical PDF is generated and synthesized
+        # Ensure physical PDF is generated and synthesized for immediate download
         from .digital_product_agent import DigitalProductPackagingAgent
         packaging = DigitalProductPackagingAgent()
         pdf_path = packaging.ensure_product_pdf(order_data["product_id"], db_path=db_path)
         product_data["pdf_path"] = str(pdf_path)
 
-        # Send email with digital product attached
-        email_sent, email_msg = self.send_product_email(
-            to_email=order_data["customer_email"],
-            product=product_data,
-            order_token=order_token,
-            attachment_path=pdf_path
-        )
-
-        with sqlite3.connect(db_path) as db:
-            db.execute("""
-                UPDATE product_orders
-                SET delivery_status = ?, delivered_at = CURRENT_TIMESTAMP
-                WHERE order_token = ?
-            """, ("sent" if email_sent else "pending_email", order_token))
-
-        return True, f"Payment confirmed! {email_msg}", product_data
+        logger.info(f"Order {order_token} successfully confirmed and unlocked for instant download (No email dispatch).")
+        return True, "पेमेंट यशस्वीरित्या प्राप्त झाले! ई-बुक तात्काळ डाऊनलोड करण्यासाठी तयार आहे.", product_data
 
     def send_product_email(
         self,
@@ -133,11 +119,11 @@ class FulfillmentEmailAgent(BaseSeniorAgent):
         attachment_path: Optional[Path] = None
     ) -> Tuple[bool, str]:
         """
-        Sends transactional delivery email with digital product to customer.
-        Uses SMTP settings from .env (e.g. Gmail / SendGrid / SES) if available.
+        Email delivery is disabled by architectural policy.
+        Digital products are delivered strictly via secure 1-click download on the store.
         """
-        smtp_host = os.getenv("SMTP_HOST", "").strip() or os.getenv("SMTP_SERVER", "").strip()
-        smtp_port = int(os.getenv("SMTP_PORT", "587"))
+        logger.info(f"Email dispatch bypassed for {to_email} (Product delivered via instant download link).")
+        return True, "ई-बुक थेट डाऊनलोडसाठी उपलब्ध आहे."
         smtp_user = os.getenv("SMTP_USER", "").strip()
         smtp_pass = os.getenv("SMTP_PASSWORD", "").strip() or os.getenv("SMTP_PASS", "").strip()
         sender_email = os.getenv("SENDER_EMAIL", "").strip() or os.getenv("SMTP_FROM", "").strip() or smtp_user or "support@examrankers.com"

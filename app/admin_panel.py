@@ -62,7 +62,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                     ORDER BY o.id DESC LIMIT 100
                 """).fetchall()
                 recent_orders = [dict(r) for r in orders_rows]
-                rev_row = db.execute("SELECT sum(amount_paid) FROM product_orders WHERE status = 'delivered' OR status = 'approved'").fetchone()
+                rev_row = db.execute("SELECT sum(amount_paid) FROM product_orders WHERE status IN ('delivered', 'approved', 'paid')").fetchone()
                 if rev_row and rev_row[0]:
                     total_revenue = float(rev_row[0])
             except Exception:
@@ -174,8 +174,8 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         """)
 
     # Compute order stats
-    pending_count = sum(1 for o in recent_orders if o.get("status") in ("pending", "pending_verification"))
-    approved_count = sum(1 for o in recent_orders if o.get("status") in ("approved", "delivered"))
+    pending_count = sum(1 for o in recent_orders if o.get("status") in ("pending", "pending_verification", "created"))
+    approved_count = sum(1 for o in recent_orders if o.get("status") in ("approved", "delivered", "paid"))
     rejected_count = sum(1 for o in recent_orders if o.get("status") == "rejected")
 
     # Build Order Rows HTML
@@ -191,7 +191,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         ts = o.get("created_at", "")
 
         deliv_badge = "badge-gray"
-        if delivery_status in ("sent", "delivered"):
+        if delivery_status in ("sent", "delivered", "ready_for_download"):
             deliv_badge = "badge-green"
         elif delivery_status == "pending_verification":
             deliv_badge = "badge-yellow"
@@ -199,7 +199,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             deliv_badge = "badge-rose"
 
         action_btns = ""
-        if status in ("pending", "pending_verification"):
+        if status in ("pending", "pending_verification", "created"):
             action_btns = f"""
                 <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
                     <button class="btn-sm btn-green" title="पेमेंट मंजूर करा व विद्यार्थ्याचे डाऊनलोड बटण सुरू करा" onclick="orderAction('{token}', 'approve')">✅ मंजूर करा (Enable Download)</button>
@@ -207,12 +207,11 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                     <a href="/download/{token}" target="_blank" class="btn-sm btn-outline" style="text-decoration:none;" title="संबंधित PDF तपासा">📥 फाईल पहा</a>
                 </div>
             """
-        elif status in ("approved", "delivered"):
+        elif status in ("approved", "delivered", "paid"):
             action_btns = f"""
                 <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap; align-items:center;">
                     <span class="badge badge-green" style="font-size:11px;">✅ Download Enabled</span>
-                    <a href="/download/{token}" target="_blank" class="btn-sm btn-green" style="text-decoration:none; padding:4px 10px; font-weight:700;" title="विद्यार्थ्याची खरेदी केलेली PDF डाऊनलोड करा">📥 Download PDF</a>
-                    <button class="btn-sm btn-outline" style="color:#94a3b8;" title="पर्यायी: पुन्हा ईमेलवर पाठवा" onclick="orderAction('{token}', 'resend_email')">📧 Email</button>
+                    <a href="/order/{token}" target="_blank" class="btn-sm btn-green" style="text-decoration:none; padding:4px 10px; font-weight:700;" title="विद्यार्थ्याची ऑर्डर पान पहा">📄 Order Page</a>
                 </div>
             """
         else:
@@ -223,7 +222,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             """
 
         status_class = "status-pending"
-        if status in ("approved", "delivered"):
+        if status in ("approved", "delivered", "paid"):
             status_class = "status-active"
         elif status == "rejected":
             status_class = "status-rejected"
@@ -872,6 +871,36 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
     </div>
 
     <script>
+        function getAdminKey() {{
+            const urlParams = new URLSearchParams(window.location.search);
+            const keyFromUrl = urlParams.get('key');
+            if (keyFromUrl) {{
+                sessionStorage.setItem('admin_key', keyFromUrl);
+                return keyFromUrl;
+            }}
+            return sessionStorage.getItem('admin_key') || '';
+        }}
+
+        async function adminFetch(url, options = {{}}) {{
+            const adminKey = getAdminKey();
+            const headers = options.headers || {{}};
+            if (adminKey) {{
+                headers['X-Admin-Key'] = adminKey;
+            }}
+            options.headers = headers;
+            let res = await fetch(url, options);
+            if (res.status === 403) {{
+                const promptKey = prompt('🔑 कृपया अधिकृत ॲडमिन API Key प्रविष्ट करा (Enter Admin Key):');
+                if (promptKey) {{
+                    sessionStorage.setItem('admin_key', promptKey.trim());
+                    headers['X-Admin-Key'] = promptKey.trim();
+                    options.headers = headers;
+                    res = await fetch(url, options);
+                }}
+            }}
+            return res;
+        }}
+
         function openAddModal() {{
             document.getElementById('addModal').style.display = 'flex';
         }}
@@ -903,7 +932,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             reader.onload = async function(e) {{
                 const base64Data = e.target.result.split(',')[1];
                 try {{
-                    const res = await fetch('/api/admin/upload_pdf', {{
+                    const res = await adminFetch('/api/admin/upload_pdf', {{
                         method: 'POST',
                         headers: {{ 'Content-Type': 'application/json' }},
                         body: JSON.stringify({{ filename: file.name, base64_data: base64Data }})
@@ -942,7 +971,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             }};
 
             try {{
-                const res = await fetch('/api/admin/create_product', {{
+                const res = await adminFetch('/api/admin/create_product', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
                     body: JSON.stringify(payload)
@@ -978,7 +1007,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             }};
 
             try {{
-                const res = await fetch('/api/admin/update_product', {{
+                const res = await adminFetch('/api/admin/update_product', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
                     body: JSON.stringify(payload)
@@ -998,7 +1027,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         // Toggle Product Active / Hidden
         async function toggleProductStatus(prodId) {{
             try {{
-                const res = await fetch('/api/admin/toggle_product_status', {{
+                const res = await adminFetch('/api/admin/toggle_product_status', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
                     body: JSON.stringify({{ product_id: prodId }})
@@ -1018,7 +1047,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         async function deleteProduct(prodId) {{
             if (!confirm('⚠️ हे ई-बुक स्टोअरमधून कायमचे हटवायचे का?')) return;
             try {{
-                const res = await fetch('/api/admin/delete_product', {{
+                const res = await adminFetch('/api/admin/delete_product', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
                     body: JSON.stringify({{ product_id: prodId }})
@@ -1041,7 +1070,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         async function purgeAllProducts() {{
             if (!confirm('🚨 सावधान! सर्व जुनी किंवा ऑटो-जनरेटेड ई-बुक्स स्टोअरमधून कायमची हटवायची का?\\n\\nयाने स्टोअर पूर्णपणे रिकामे होईल आणि तुम्ही स्वतः नवीन पुस्तके जोडू शकाल.')) return;
             try {{
-                const res = await fetch('/api/admin/purge_products', {{ method: 'POST' }});
+                const res = await adminFetch('/api/admin/purge_products', {{ method: 'POST' }});
                 const data = await res.json();
                 if (data.success) {{
                     alert('🧹 सर्व उत्पादने हटवली गेली! आता तुमचे स्टोअर पूर्णपणे मॅन्युअल नियंत्रणात आहे.');
@@ -1063,30 +1092,29 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 if (filter === 'all') {{
                     row.style.display = '';
                 }} else if (filter === 'pending') {{
-                    row.style.display = (status === 'pending' || status === 'pending_verification') ? '' : 'none';
+                    row.style.display = (status === 'pending' || status === 'pending_verification' || status === 'created') ? '' : 'none';
                 }} else if (filter === 'approved') {{
-                    row.style.display = (status === 'approved' || status === 'delivered') ? '' : 'none';
+                    row.style.display = (status === 'approved' || status === 'delivered' || status === 'paid') ? '' : 'none';
                 }} else if (filter === 'rejected') {{
                     row.style.display = (status === 'rejected') ? '' : 'none';
                 }}
             }});
         }}
 
-        // Order Action (Approve UTR & Enable Download Button / Reject / Resend Email)
+        // Order Action (Approve Payment & Enable Instant Download / Reject)
         async function orderAction(orderToken, action) {{
-            let actPrompt = 'या ऑर्डरचे पेमेंट मंजूर करून विद्यार्थ्याचे डाऊनलोड बटण (Download PDF) सुरू करायचे का?';
+            let actPrompt = 'या ऑर्डरचे पेमेंट मंजूर करून विद्यार्थ्याचे डाऊनलोड बटण (Download PDF) तात्काळ सक्रिय करायचे का?';
             if (action === 'reject') actPrompt = 'ही ऑर्डर नाकारायची (Reject) का?';
-            if (action === 'resend_email') actPrompt = 'विद्यार्थ्याला पुन्हा ईमेलवर PDF पाठवायची का?';
             if (!confirm(actPrompt)) return;
             try {{
-                const res = await fetch('/api/admin/order_action', {{
+                const res = await adminFetch('/api/admin/order_action', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
                     body: JSON.stringify({{ order_token: orderToken, action: action }})
                 }});
                 const data = await res.json();
                 if (data.success) {{
-                    alert('✅ ' + (data.message || 'कृती यशस्वी!'));
+                    alert('✅ ' + (data.message || 'कृती यशस्वी! डाऊनलोड बटण सुरू केले आहे.'));
                     location.reload();
                 }} else {{
                     alert('❌ त्रुटी: ' + data.message);
@@ -1105,7 +1133,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 return;
             }}
             try {{
-                const res = await fetch('/api/admin/update_price', {{
+                const res = await adminFetch('/api/admin/update_price', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
                     body: JSON.stringify({{ product_id: prodId, price_inr: newPrice }})
@@ -1123,7 +1151,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
 
         async function syncFolderPdfs() {{
             try {{
-                const res = await fetch('/api/admin/sync_products', {{ method: 'POST' }});
+                const res = await adminFetch('/api/admin/sync_products', {{ method: 'POST' }});
                 const data = await res.json();
                 alert('✅ फोल्डर सिंक यशस्वी! ' + (data.added || 0) + ' नवीन PDF ई-बुक्स स्टोअरमध्ये जोडली गेली.');
                 location.reload();
@@ -1135,7 +1163,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         async function generateQBank() {{
             if (!confirm('नवीन ४-स्तंभ विषयवार प्रश्नसंच (Question Bank) तयार करायचा का?')) return;
             try {{
-                const res = await fetch('/api/admin/generate_qbank', {{ method: 'POST' }});
+                const res = await adminFetch('/api/admin/generate_qbank', {{ method: 'POST' }});
                 const data = await res.json();
                 if (data.success) {{
                     alert('🎉 प्रश्नसंच तयार झाला व स्टोअरमध्ये आपोआप जोडला गेला!');
@@ -1151,7 +1179,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         async function generateChaluGhadamodi() {{
             if (!confirm('चालू घडामोडी मासिक संच PDF तयार करायची का?')) return;
             try {{
-                const res = await fetch('/api/admin/generate_chalu_ghadamodi', {{ method: 'POST' }});
+                const res = await adminFetch('/api/admin/generate_chalu_ghadamodi', {{ method: 'POST' }});
                 const data = await res.json();
                 if (data.success) {{
                     alert('🎉 चालू घडामोडी PDF तयार झाली व स्टोअरमध्ये जोडली गेली!');

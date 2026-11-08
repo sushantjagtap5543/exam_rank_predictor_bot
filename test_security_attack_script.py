@@ -55,6 +55,7 @@ class TestSecurityAttackSuite(unittest.TestCase):
         
         # Patch app.bot.DB_PATH for HTTP server handlers
         import app.bot
+        cls.orig_db_path = app.bot.DB_PATH
         app.bot.DB_PATH = str(cls.test_db)
 
         # Initialize schema using standard init_db and init_products_db
@@ -81,6 +82,8 @@ class TestSecurityAttackSuite(unittest.TestCase):
         cls.server.shutdown()
         cls.server.server_close()
         cls.tmp_dir.cleanup()
+        import app.bot
+        app.bot.DB_PATH = cls.orig_db_path
 
     # VECTOR 1: Unauthenticated request to /api/admin/* and /admin returns 403 Forbidden
     def test_vector_1_admin_endpoints_require_valid_admin_key(self):

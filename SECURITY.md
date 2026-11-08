@@ -77,3 +77,4 @@ Ensure the following environment variables are securely provisioned:
 | `ADMIN_TELEGRAM_ID` | Telegram numeric ID for admin | Integer ID (comma-separated for multiple) |
 | `STORAGE_DIR` | Persistent storage directory | Mounted Docker/Kubernetes volume |
 | `DB_PATH` | SQLite Database file path | Must reside in mounted persistent volume |
+
