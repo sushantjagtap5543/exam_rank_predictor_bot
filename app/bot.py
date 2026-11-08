@@ -783,13 +783,13 @@ def format_subjectwise_dashboard(sections: dict) -> str:
 
 async def auto_post_quizzes_background(bot, text: str, exam_name: str, records: list = None):
     """
-    Background Task triggered on every new response sheet:
-    1. Extracts all unposted questions from records or text.
-    2. Publishes questions 1-by-1 continuously to the channel with instant explanations & passages.
-    3. Generates and posts Daily Topic Weightage Breakdown to the channel.
-    4. Deduplicates via SQLite posted_quizzes table so no question is ever repeated.
-    5. Fully anonymized (zero student details).
+    Background Task: Extracts all unposted questions from records or text.
+    Auto-posting to public/VIP channel is disabled by default to prevent unwanted spam.
+    Admin publishes manually on-demand using /postquizzes at a steady rate (3-4 quizzes/min).
     """
+    if os.getenv("ENABLE_AUTO_QUIZ_POSTING", "").lower() not in ("true", "1", "yes"):
+        logger.info("Auto-posting quizzes to channel is paused (Manual Admin Control mode). Admin can publish via /postquizzes.")
+        return
     channel = os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID
     if not channel or channel.startswith("http"):
         return
@@ -1873,7 +1873,9 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
                     f"• चॅनेल क्विझेस शेड्यूलिंग व डिजिटल स्टोअर सिंक सुरू आहे... ⏳",
                     parse_mode="HTML"
                 )
-                asyncio.create_task(auto_post_quizzes_background(context.bot, text, "TCS/IBPS Master Bulk QBank", records=records))
+                # Auto-posting quizzes to channel is manual-only by admin via /postquizzes
+                if os.getenv("ENABLE_AUTO_QUIZ_POSTING", "").lower() in ("true", "1", "yes"):
+                    asyncio.create_task(auto_post_quizzes_background(context.bot, text, "TCS/IBPS Master Bulk QBank", records=records))
                 sync_res = packaging_agent.bulk_sync_questions_to_store_qbank(quizzes, db_path=DB_PATH)
                 total_bank = sync_res.get("total_questions_in_bank", len(quizzes))
                 new_added = sync_res.get("newly_added", len(quizzes))
@@ -2064,8 +2066,9 @@ async def _complete_analysis_impl(update: Update, context: ContextTypes.DEFAULT_
     swot_text = format_swot_telegram_message(swot)
     full_card = f"{card}\n\n{swot_text}"
 
-    # Background quiz publisher: extracts all questions and posts 1-by-1 continuously to channel
-    asyncio.create_task(auto_post_quizzes_background(context.bot, raw_text, exam_display_name, records=records))
+    # Candidate upload: questions are saved to SQLite DB; channel posting is manually controlled by Admin via /postquizzes
+    if os.getenv("ENABLE_AUTO_QUIZ_POSTING", "").lower() in ("true", "1", "yes"):
+        asyncio.create_task(auto_post_quizzes_background(context.bot, raw_text, exam_display_name, records=records))
 
     # Gated access: Only after candidate submits response sheet, generate single-use VIP channel invite
     channel_join_url = PAID_CHANNEL_LINK or "https://t.me/+EjtGp-pH4hMxZDM1"
@@ -2614,6 +2617,7 @@ async def post_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text(
             f"🚀 <b>एकूण {total_to_post} नवीन प्रश्न सापडले!</b>\n"
             f"📢 <b>चॅनेल:</b> <code>{channel}</code>\n"
+            f"⏱️ <b>गती:</b> दर मिनिटाला ३ ते ४ प्रश्न (~१७ सेकंदांचे सुरक्षित अंतर, नो रॅपिड फ्लड)\n"
             f"⚡ <i>आता १-बाय-१ सातत्याने पोस्टिंग सुरू आहे... कृपया थांबा.</i>",
             parse_mode="HTML"
         )
@@ -3731,11 +3735,11 @@ async def post_promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def three_hour_promo_scheduler_loop(application: Application):
     """
     Automated 3-Hour Bot Promotion Scheduler:
-    - Runs every 3 hours (10800 seconds).
-    - Posts the generated promotional banner (assets/promo_banner.jpg).
-    - Uses psychological FOMO, fear of cutoff loss, and missed opportunity triggers.
-    - Includes bot link & channel link.
+    Disabled by default to stop automatic promotional ads. Admin controls ad broadcasts manually via /post_promo.
     """
+    if os.getenv("ENABLE_AUTO_PROMO", "").lower() not in ("true", "1", "yes"):
+        logger.info("Automatic bot/store promo ads stopped (Manual Admin Control mode). Use /post_promo or /post_store_promo.")
+        return
     await asyncio.sleep(120)  # Wait 2 minutes after startup before initial promo
     while True:
         try:
@@ -3973,14 +3977,20 @@ async def set_bot_commands(application: Application):
         await application.bot.set_my_short_description(short_description=s_desc)
         logger.info("Telegram chat menu button [≡], scopes, and descriptions configured successfully!")
 
-        # Launch automated background schedulers (Quiz schedule removed; all quizzes posted on-demand via /postquizes)
-        asyncio.create_task(three_hour_promo_scheduler_loop(application))
-        asyncio.create_task(daily_mindmap_scheduler_loop(application))
-        asyncio.create_task(youtube_upload_watcher_loop(application))
+        # Background schedulers: Auto-advertisement & auto-posting stopped by default (Manual Admin Control mode)
+        # Promotional posts and store ads are triggered manually by admin via /post_promo or /post_store_promo
+        if os.getenv("ENABLE_AUTO_PROMO", "").lower() in ("true", "1", "yes"):
+            asyncio.create_task(three_hour_promo_scheduler_loop(application))
+        if os.getenv("ENABLE_AUTO_MINDMAP", "").lower() in ("true", "1", "yes"):
+            asyncio.create_task(daily_mindmap_scheduler_loop(application))
+        if os.getenv("ENABLE_AUTO_YT_BROADCAST", "").lower() in ("true", "1", "yes"):
+            asyncio.create_task(youtube_upload_watcher_loop(application))
+
+        # Core background tasks: Daily Current Affairs DB updater, Multi-Agent Health Orchestrator, Nightly SQLite Backup
         asyncio.create_task(daily_current_affairs_updater_loop(application))
         asyncio.create_task(continuous_autonomous_agency_orchestrator(application))
         asyncio.create_task(nightly_backup_scheduler_loop(application))
-        logger.info("Background Schedulers launched: 3-Hr Promo, Daily Mindmap, YouTube Watcher, Daily Current Affairs, Agency Orchestrator, Nightly Backup!")
+        logger.info("Background Schedulers launched: Daily Current Affairs DB updater, Agency Orchestrator, Nightly Backup (Auto-promotions STOPPED; manual admin control active).")
     except Exception as e:
         logger.warning(f"Could not set bot commands or description: {e}")
 
@@ -4033,6 +4043,21 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.end_headers()
             self.wfile.write(b"OK")
+            return
+
+        # 2a. API: Cashfree Webhook Endpoint Status (GET Verification)
+        if path == "/api/cashfree/webhook":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "status": "active",
+                "service": "Cashfree Webhook Listener",
+                "endpoint": "/api/cashfree/webhook",
+                "method": "POST",
+                "message": "Cashfree Webhook listener is live and healthy. Send payment event notifications via HTTP POST with valid HMAC signature."
+            }).encode("utf-8"))
             return
 
         # 2b. API: Order Approval Status Check (Strict Token-Only Lookup; Never returns email or UTR)

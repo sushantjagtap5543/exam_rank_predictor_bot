@@ -420,7 +420,8 @@ async def send_quizzes_to_channel(
     quizzes: list[dict],
     header_text: str = None,
     send_priority_topics: bool = False,
-    db_path: str = DEFAULT_DB_PATH
+    db_path: str = DEFAULT_DB_PATH,
+    delay_seconds: float = None
 ) -> int:
     """
     Sends native Telegram Quizzes to a specified Telegram channel or group.
@@ -428,10 +429,17 @@ async def send_quizzes_to_channel(
     - Completely anonymizes: zero candidate personal data.
     - Records question hash into posted_quizzes to prevent duplicate posts.
     - Optionally posts Top Priority Topics summary.
+    - Posts 1-by-1 with throttled pacing (default 17s ~ 3-4 quizzes per minute).
     """
     import asyncio
     if not channel_id or not quizzes:
         return 0
+
+    if delay_seconds is None:
+        try:
+            delay_seconds = float(os.getenv("QUIZ_POST_DELAY_SECONDS", "17.0"))
+        except (ValueError, TypeError):
+            delay_seconds = 17.0
 
     str_cid = str(channel_id).strip()
     if str_cid.startswith("http://") or str_cid.startswith("https://"):
@@ -493,7 +501,7 @@ async def send_quizzes_to_channel(
                 db_path=db_path
             )
             sent_count += 1
-            await asyncio.sleep(2.5)
+            await asyncio.sleep(delay_seconds)
         except Exception as e:
             err_msg = str(e).lower()
             if "retry in" in err_msg or "flood" in err_msg:
@@ -524,7 +532,7 @@ async def send_quizzes_to_channel(
                         db_path=db_path
                     )
                     sent_count += 1
-                    await asyncio.sleep(2.5)
+                    await asyncio.sleep(delay_seconds)
                 except Exception as retry_e:
                     logger.warning(f"Retry after backoff failed: {retry_e}")
             else:
