@@ -202,22 +202,23 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         if status in ("pending", "pending_verification"):
             action_btns = f"""
                 <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
-                    <button class="btn-sm btn-green" title="UTR पडताळून ईमेलवर PDF पाठवा" onclick="orderAction('{token}', 'approve')">✅ मंजूर व Email पाठवा</button>
+                    <button class="btn-sm btn-green" title="पेमेंट मंजूर करा व विद्यार्थ्याचे डाऊनलोड बटण सुरू करा" onclick="orderAction('{token}', 'approve')">✅ मंजूर करा (Enable Download)</button>
                     <button class="btn-sm btn-del" title="ऑर्डर नाकारा" onclick="orderAction('{token}', 'reject')">❌ नाकारा</button>
-                    <a href="/download/{token}" target="_blank" class="btn-sm btn-outline" style="text-decoration:none;" title="PDF तपासा">📥 PDF</a>
+                    <a href="/download/{token}" target="_blank" class="btn-sm btn-outline" style="text-decoration:none;" title="संबंधित PDF तपासा">📥 फाईल पहा</a>
                 </div>
             """
         elif status in ("approved", "delivered"):
             action_btns = f"""
-                <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
-                    <button class="btn-sm btn-outline" style="color:#38bdf8; border-color:#38bdf8;" title="पुन्हा ईमेल पाठवा" onclick="orderAction('{token}', 'resend_email')">📧 पुन्हा Email पाठवा</button>
-                    <a href="/download/{token}" target="_blank" class="btn-sm btn-outline" style="text-decoration:none;" title="PDF डाऊनलोड करा">📥 PDF</a>
+                <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap; align-items:center;">
+                    <span class="badge badge-green" style="font-size:11px;">✅ Download Enabled</span>
+                    <a href="/download/{token}" target="_blank" class="btn-sm btn-green" style="text-decoration:none; padding:4px 10px; font-weight:700;" title="विद्यार्थ्याची खरेदी केलेली PDF डाऊनलोड करा">📥 Download PDF</a>
+                    <button class="btn-sm btn-outline" style="color:#94a3b8;" title="पर्यायी: पुन्हा ईमेलवर पाठवा" onclick="orderAction('{token}', 'resend_email')">📧 Email</button>
                 </div>
             """
         else:
             action_btns = f"""
                 <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
-                    <button class="btn-sm btn-green" title="पुन्हा तपासून मंजूर करा" onclick="orderAction('{token}', 'approve')">🔄 पुन्हा मंजूर करा</button>
+                    <button class="btn-sm btn-green" title="पुन्हा तपासून डाऊनलोड सुरू करा" onclick="orderAction('{token}', 'approve')">🔄 पुन्हा मंजूर करा (Enable Download)</button>
                 </div>
             """
 
@@ -1071,9 +1072,9 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             }});
         }}
 
-        // Order Action (Approve UTR & Dispatch Email / Reject / Resend Email)
+        // Order Action (Approve UTR & Enable Download Button / Reject / Resend Email)
         async function orderAction(orderToken, action) {{
-            let actPrompt = 'या ऑर्डरचे पेमेंट मंजूर करून विद्यार्थ्याला ईमेलवर PDF पाठवायची का?';
+            let actPrompt = 'या ऑर्डरचे पेमेंट मंजूर करून विद्यार्थ्याचे डाऊनलोड बटण (Download PDF) सुरू करायचे का?';
             if (action === 'reject') actPrompt = 'ही ऑर्डर नाकारायची (Reject) का?';
             if (action === 'resend_email') actPrompt = 'विद्यार्थ्याला पुन्हा ईमेलवर PDF पाठवायची का?';
             if (!confirm(actPrompt)) return;

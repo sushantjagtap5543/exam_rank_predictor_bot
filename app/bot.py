@@ -3774,21 +3774,32 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(b"OK")
             return
 
-        # 2b. API: Order Approval Status Check (For Customer Storefront Real-time Polling)
+        # 2b. API: Order Approval Status Check (For Customer Storefront Real-time Polling & Order Lookup)
         if path.startswith("/api/order_status"):
             query = urllib.parse.urlparse(self.path).query
             params = urllib.parse.parse_qs(query)
             token = params.get("token", [""])[0].strip()
-            if not token:
+            utr_param = params.get("utr", [""])[0].strip()
+            email_param = params.get("email", [""])[0].strip()
+            q_param = params.get("q", [""])[0].strip()
+
+            search_val = token or utr_param or email_param or q_param
+            if not search_val:
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
-                self.wfile.write(json.dumps({"success": False, "message": "Missing token parameter."}).encode("utf-8"))
+                self.wfile.write(json.dumps({"success": False, "message": "Missing search parameter (token, utr, or email)."}).encode("utf-8"))
                 return
             with sqlite3.connect(DB_PATH) as db:
                 db.row_factory = sqlite3.Row
-                order = db.execute("SELECT * FROM product_orders WHERE order_token = ?", (token,)).fetchone()
+                order = db.execute("""
+                    SELECT o.*, p.title as prod_title, p.download_file, p.pages
+                    FROM product_orders o
+                    LEFT JOIN digital_products p ON o.product_id = p.id
+                    WHERE o.order_token = ? OR o.utr = ? OR LOWER(o.customer_email) = LOWER(?)
+                    ORDER BY o.id DESC LIMIT 1
+                """, (search_val, search_val, search_val)).fetchone()
             if not order:
                 self.send_response(404)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -3797,21 +3808,29 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "message": "Order not found."}).encode("utf-8"))
                 return
             order_data = dict(order)
+            ord_token = order_data.get("order_token", "")
             is_approved = order_data.get("status") in ("approved", "delivered")
             is_rejected = order_data.get("status") == "rejected"
+            prod_id = order_data.get("product_id", "")
+            prod_title = order_data.get("prod_title") or prod_id
+            download_file = order_data.get("download_file") or f"{prod_id}.pdf"
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(json.dumps({
                 "success": True,
-                "order_token": token,
+                "order_token": ord_token,
+                "product_id": prod_id,
+                "product_title": prod_title,
+                "download_file": download_file,
                 "status": order_data.get("status", "pending"),
                 "is_approved": is_approved,
                 "is_rejected": is_rejected,
                 "delivery_status": order_data.get("delivery_status", "pending"),
                 "customer_email": order_data.get("customer_email", ""),
-                "download_url": f"/download/{token}" if is_approved else None
+                "utr": order_data.get("utr", ""),
+                "download_url": f"/download/{ord_token}" if is_approved else None
             }).encode("utf-8"))
             return
 

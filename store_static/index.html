@@ -109,6 +109,25 @@
             background: var(--accent-cyan);
             color: #0f172a;
         }
+        .nav-btn-track {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-emerald);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            padding: 8px 16px;
+            border-radius: 999px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .nav-btn-track:hover {
+            background: var(--accent-emerald);
+            color: #0f172a;
+            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+        }
         /* Hero Section */
         .hero {
             position: relative;
@@ -528,6 +547,9 @@
             <div class="brand-title">ExamRankers<span>.Store</span></div>
         </a>
         <div class="nav-actions">
+            <button class="nav-btn-track" onclick="openTrackOrderModal()">
+                📥 ई-बुक डाऊनलोड करा (Download E-Book)
+            </button>
             <a href="https://t.me/ExamRankersIndiaBot" target="_blank" class="nav-btn-tg">
                 ✈️ Open Telegram Bot
             </a>
@@ -658,7 +680,7 @@
                     <p style="font-size:13px; color:var(--text-muted); margin-bottom:5px;"><b>Order Reference:</b> <code id="finalOrderToken"></code></p>
                     <p style="font-size:13px; color:var(--text-muted); margin-bottom:5px;"><b>ईमेल (Email):</b> <b id="finalEmailSpan" style="color:#ffffff;"></b></p>
                     <div style="margin-top:10px; padding:10px; background:rgba(56, 189, 248, 0.08); border-left:3px solid #38bdf8; border-radius:4px; font-size:12px; color:#cbd5e1; line-height:1.5;">
-                        ℹ️ <b>पुढील पायरी:</b> ॲडमिनद्वारे बँकेत UTR तपासताच (साधारण २ ते ५ मिनिटांत), तुमचे खरेदी केलेले ई-बुक तुमच्या ईमेलवर थेट पाठवले जाईल आणि खालील डाऊनलोड बटण आपोआप सुरू होईल!
+                        ℹ️ <b>पुढील पायरी:</b> ॲडमिनने UTR पडताळताच खालील डाऊनलोड बटण तात्काळ सक्रिय (Enable) होईल आणि तुम्ही तुमचे खरेदी केलेले ई-बुक थेट डाऊनलोड करू शकाल!
                     </div>
                 </div>
 
@@ -670,7 +692,32 @@
                     <button class="btn-sample btn-full" style="padding:10px; font-weight:700;" onclick="checkOrderStatusManual()">🔄 मंजुरी स्थिती तपासा (Check Status)</button>
                 </div>
 
-                <a id="instantDownloadBtn" href="#" target="_blank" class="btn-buy btn-full" style="display:none; text-decoration:none; background:#10b981; color:#fff; font-size:15px; padding:14px; margin-top:10px;">📥 ई-बुक डाऊनलोड करा (Download PDF Now)</a>
+                <a id="instantDownloadBtn" href="#" target="_blank" class="btn-buy btn-full" style="display:none; text-decoration:none; background:#10b981; color:#fff; font-size:15px; padding:14px; margin-top:10px; font-weight:700;">📥 या फाईलचे ई-बुक डाऊनलोड करा (Download PDF Now)</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Order Lookup & Direct Download Modal -->
+    <div class="modal-overlay" id="trackOrderModal">
+        <div class="modal" style="max-width: 520px;">
+            <button class="modal-close" onclick="closeModal('trackOrderModal')">&times;</button>
+            <div style="font-size:40px; text-align:center; margin-bottom:6px;">📥</div>
+            <h2 style="color:#ffffff; font-size:19px; text-align:center;">खरेदी केलेले ई-बुक डाऊनलोड करा</h2>
+            <p style="color:var(--text-muted); font-size:12.5px; text-align:center; margin-bottom:18px;">
+                तुमचा १२-अंकी UTR किंवा ऑर्डर टोकन टाकून थेट डाऊनलोड बटण मिळवा:
+            </p>
+
+            <div class="form-group" style="text-align:left;">
+                <label class="form-label">१२-अंकी UPI UTR किंवा Order Token *</label>
+                <input type="text" id="trackQueryInput" class="form-input" placeholder="उदा. 431289456789 किंवा ORD_..." required>
+            </div>
+
+            <button class="btn-buy btn-full" style="background:#2563eb; padding:12px; font-size:14.5px; margin-top:8px;" onclick="trackOrderSubmit()">
+                🔍 स्थिती तपासा व डाऊनलोड करा (Check & Download)
+            </button>
+
+            <div id="trackResultBox" style="margin-top:16px; display:none;">
+                <!-- Result injected via JS -->
             </div>
         </div>
     </div>
@@ -871,16 +918,17 @@
                 if (data.is_approved) {
                     if (pollingTimer) clearInterval(pollingTimer);
                     document.getElementById('step3Icon').innerText = '🎉';
-                    document.getElementById('step3Title').innerText = 'पेमेंट मंजूर! अभिनंदन!';
+                    document.getElementById('step3Title').innerText = 'पेमेंट मंजूर! डाऊनलोड उपलब्ध!';
                     document.getElementById('step3Title').style.color = '#10b981';
-                    document.getElementById('step3Sub').innerText = 'तुमचा UTR ॲडमिनने मंजूर केला आहे आणि ई-बुक तुमच्या ईमेलवर पाठवले आहे!';
+                    document.getElementById('step3Sub').innerText = 'ॲडमिनने पेमेंट मंजूर केले आहे! तुमचे खरेदी केलेले ई-बुक खालील बटणावर क्लिक करून थेट डाऊनलोड करा:';
                     document.getElementById('step3Sub').style.color = '#10b981';
                     const pollBox = document.getElementById('pollingStatusBox');
                     if (pollBox) pollBox.style.display = 'none';
                     const dlBtn = document.getElementById('instantDownloadBtn');
                     dlBtn.href = data.download_url || ('/download/' + token);
                     dlBtn.style.display = 'block';
-                    dlBtn.innerText = '📥 ई-बुक डाऊनलोड करा (Download PDF Now)';
+                    const bookTitle = data.product_title || (currentProduct ? currentProduct.title : 'PDF');
+                    dlBtn.innerText = '📥 ई-बुक डाऊनलोड करा (' + bookTitle + ')';
                 } else if (data.is_rejected) {
                     if (pollingTimer) clearInterval(pollingTimer);
                     document.getElementById('step3Icon').innerText = '❌';
@@ -900,6 +948,62 @@
             if (btn) btn.innerText = 'तपासत आहे... ⏳';
             await checkOrderStatus(currentOrderToken);
             if (btn) btn.innerText = '🔄 मंजुरी स्थिती तपासा (Check Status)';
+        }
+
+        function openTrackOrderModal() {
+            document.getElementById('trackOrderModal').classList.add('active');
+            document.getElementById('trackResultBox').style.display = 'none';
+            document.getElementById('trackQueryInput').value = '';
+            setTimeout(() => { document.getElementById('trackQueryInput').focus(); }, 200);
+        }
+
+        async function trackOrderSubmit() {
+            const q = document.getElementById('trackQueryInput').value.trim();
+            if (!q) {
+                alert('कृपया तुमचा १२-अंकी UTR किंवा Order Reference नंबर टाका.');
+                return;
+            }
+            const resBox = document.getElementById('trackResultBox');
+            resBox.style.display = 'block';
+            resBox.innerHTML = '<div style="color:#94a3b8; text-align:center; padding:12px;">तपासत आहे... ⏳</div>';
+
+            try {
+                const res = await fetch('/api/order_status?q=' + encodeURIComponent(q));
+                const data = await res.json();
+                if (!data.success) {
+                    resBox.innerHTML = '<div style="background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:8px; padding:14px; color:#fca5a5; font-size:13px; text-align:center;">❌ ऑर्डर सापडली नाही. कृपया अचूक UTR किंवा Order ID टाका.</div>';
+                    return;
+                }
+
+                if (data.is_approved) {
+                    resBox.innerHTML = `
+                        <div style="background:rgba(16,185,129,0.1); border:1px solid #10b981; border-radius:10px; padding:16px; text-align:left;">
+                            <div style="color:#10b981; font-weight:700; font-size:14px; margin-bottom:6px;">✅ ॲडमिन मंजुरी पूर्ण! डाऊनलोड सक्रिय झाले आहे:</div>
+                            <div style="color:#ffffff; font-weight:700; font-size:15px; margin-bottom:6px;">📖 ${data.product_title || 'Digital E-Book'}</div>
+                            <div style="font-size:12px; color:#94a3b8; margin-bottom:12px;">Order ID: <code>${data.order_token}</code> | UTR: <code>${data.utr}</code></div>
+                            <a href="${data.download_url}" target="_blank" class="btn-buy btn-full" style="text-decoration:none; display:inline-block; background:#10b981; color:#fff; text-align:center; padding:12px; font-weight:700;">
+                                📥 ई-बुक डाऊनलोड करा (Download PDF Now)
+                            </a>
+                        </div>
+                    `;
+                } else if (data.is_rejected) {
+                    resBox.innerHTML = `
+                        <div style="background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:8px; padding:14px; color:#fca5a5; font-size:13px; text-align:center;">
+                            ❌ ॲडमिनने हा UTR नाकारला आहे. अवैध किंवा अयोग्य UTR आढळल्यामुळे डाऊनलोड बंद आहे.
+                        </div>
+                    `;
+                } else {
+                    resBox.innerHTML = `
+                        <div style="background:rgba(250,204,21,0.1); border:1px solid #facc15; border-radius:8px; padding:14px; color:#fef08a; font-size:13px; text-align:left;">
+                            <div style="font-weight:700; color:#facc15; margin-bottom:4px;">⏳ ॲडमिन पडताळणी प्रलंबित आहे (Pending Admin Confirmation)</div>
+                            <div style="font-size:12px; color:#cbd5e1; margin-bottom:8px;">तुमचा UTR: <code>${data.utr}</code> ॲडमिन पडताळणी प्रक्रियेत आहे. ॲडमिनने मंजुरी देताच येथे डाऊनलोड बटण सुरू होईल.</div>
+                            <button class="btn-sample btn-full" style="padding:8px;" onclick="trackOrderSubmit()">🔄 पुन्हा तपासा (Refresh Status)</button>
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                resBox.innerHTML = '<div style="color:#ef4444; font-size:12.5px; text-align:center;">❌ सर्व्हरशी संपर्क होऊ शकला नाही.</div>';
+            }
         }
 
         async function confirmPayment() {
@@ -941,11 +1045,14 @@
 
                     if (data.status === 'approved') {
                         document.getElementById('step3Icon').innerText = '🎉';
-                        document.getElementById('step3Title').innerText = 'पेमेंट मंजूर! अभिनंदन!';
+                        document.getElementById('step3Title').innerText = 'पेमेंट मंजूर! डाऊनलोड उपलब्ध!';
                         document.getElementById('step3Title').style.color = '#10b981';
-                        document.getElementById('step3Sub').innerText = 'तुमचे ई-बुक ईमेलवर पाठवले आहे!';
-                        document.getElementById('instantDownloadBtn').href = data.download_url || `/download/${currentOrderToken}`;
-                        document.getElementById('instantDownloadBtn').style.display = 'block';
+                        document.getElementById('step3Sub').innerText = 'ॲडमिनने पेमेंट मंजूर केले आहे! तुमचे खरेदी केलेले ई-बुक खालील बटणावर क्लिक करून थेट डाऊनलोड करा:';
+                        const dlBtn = document.getElementById('instantDownloadBtn');
+                        dlBtn.href = data.download_url || `/download/${currentOrderToken}`;
+                        dlBtn.style.display = 'block';
+                        const bookTitle = data.product_title || (currentProduct ? currentProduct.title : 'PDF');
+                        dlBtn.innerText = '📥 ई-बुक डाऊनलोड करा (' + bookTitle + ')';
                         document.getElementById('pollingStatusBox').style.display = 'none';
                     } else {
                         startOrderStatusPolling(currentOrderToken);
