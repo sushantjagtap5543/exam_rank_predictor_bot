@@ -7,6 +7,13 @@ import tempfile
 import logging
 import shutil
 import re
+import io
+import time
+import hmac
+import hashlib
+import socket
+import ipaddress
+import traceback
 import asyncio
 import zipfile
 import http.server
@@ -15,7 +22,10 @@ import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Tuple
+from contextlib import closing
 from dotenv import load_dotenv
+import httpx
+from telegram.error import RetryAfter
 
 if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -144,13 +154,141 @@ english_faculty_agent = EnglishSeniorFaculty()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DB_PATH = os.getenv("DATABASE_PATH", str(PROJECT_ROOT / "bot.db"))
-STORAGE_DIR = Path(os.getenv("ADMIN_STORAGE_DIR", str(PROJECT_ROOT / "admin_storage"))).resolve()
+PERSISTENT_ROOT = Path(os.getenv("DATA_DIR") or os.getenv("PERSISTENT_STORAGE_DIR") or str(PROJECT_ROOT)).resolve()
+DB_PATH = os.getenv("DATABASE_PATH", str(PERSISTENT_ROOT / "bot.db"))
+STORAGE_DIR = Path(os.getenv("ADMIN_STORAGE_DIR", str(PERSISTENT_ROOT / "admin_storage"))).resolve()
 RESPONSE_DIR = STORAGE_DIR / "response_sheets"
 REPORT_DIR = STORAGE_DIR / "reports"
 ADMIN_IDS = {int(x.strip()) for x in (os.getenv("ADMIN_TELEGRAM_IDS") or os.getenv("ADMIN_USER_IDS") or "").split(",") if x.strip().isdigit()}
 PAID_CHANNEL_ID = os.getenv("PAID_CHANNEL_ID", "").strip()
 PAID_CHANNEL_LINK = get_paid_channel_link()
+DOWNLOAD_SECRET_KEY = os.getenv("DOWNLOAD_SECRET_KEY", "examrankers_secure_download_secret_key_32b")
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "").strip()
+
+from .cashfree_client import get_cashfree_client, CashfreeClient
+
+SENTRY_DSN = os.getenv("SENTRY_DSN", "").strip()
+if SENTRY_DSN:
+    try:
+        import sentry_sdk
+        sentry_sdk.init(dsn=SENTRY_DSN, traces_sample_rate=0.2)
+        logger.info("Sentry monitoring initialized successfully.")
+    except Exception as e:
+        logger.warning(f"Sentry init warning: {e}")
+
+LEAKED_OR_PLACEHOLDER_TOKENS = {
+    "your_telegram_bot_token_here",
+    "YOUR_TELEGRAM_BOT_TOKEN",
+    "8198751433:AAGf_4oG7YQf6QYj8v5r5d7f3h8k9l0m1n2",
+    "8780012402:AAGv4k7r9l0m1n2o3p4q5r6s7t8u9v0w1x2",
+}
+
+def validate_environment_security():
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    if not token or token in LEAKED_OR_PLACEHOLDER_TOKENS or token.startswith("8198751433:") or "your_telegram_bot_token" in token.lower():
+        raise SystemExit(
+            "FATAL SECURITY REFUSAL: Leaked, placeholder, or revoked TELEGRAM_BOT_TOKEN detected. "
+            "Please obtain a fresh, secure bot token from @BotFather, configure it in .env, "
+            "and revoke any previously exposed tokens immediately."
+        )
+    admin_key = os.getenv("ADMIN_API_KEY", "").strip()
+    if not admin_key or len(admin_key) < 8:
+        logger.warning("SECURITY NOTICE: ADMIN_API_KEY is not configured or too short. All /api/admin/* and /admin/* endpoints are disabled.")
+
+def is_admin_request_authenticated(headers, query_params) -> bool:
+    admin_key = os.getenv("ADMIN_API_KEY", "").strip()
+    if not admin_key or len(admin_key) < 8:
+        return False
+    provided = headers.get("X-Admin-Key", "").strip()
+    if not provided:
+        provided = query_params.get("key", [""])[0].strip() or query_params.get("token", [""])[0].strip() or query_params.get("admin_key", [""])[0].strip()
+    if not provided:
+        return False
+    return hmac.compare_digest(provided, admin_key)
+
+ALLOWED_RESPONSE_DOMAINS = (
+    ".digialm.com",
+    "digialm.com",
+    "cdn.digialm.com",
+    ".ibpsonline.ibps.in",
+    "ibpsonline.ibps.in",
+    ".tcsion.com",
+    "tcsion.com",
+)
+
+def validate_safe_url(url: str) -> Tuple[bool, str]:
+    try:
+        parsed = urllib.parse.urlparse(url.strip())
+        if parsed.scheme.lower() != "https":
+            return False, "सुरक्षा कारणास्तव फक्त HTTPS URL स्वीकारल्या जातात (Only HTTPS URLs allowed)."
+        hostname = (parsed.hostname or "").lower()
+        if not hostname:
+            return False, "अवैध URL (Invalid URL format)."
+        allowed = any(hostname == d or hostname.endswith("." + d.lstrip(".")) for d in ALLOWED_RESPONSE_DOMAINS)
+        if not allowed:
+            return False, "अवैध डोमेन. फक्त DigiALM, TCS iON किंवा IBPS ची अधिकृत लिंक टाका."
+        addr_info = socket.getaddrinfo(hostname, 443, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        for family, socktype, proto, canonname, sockaddr in addr_info:
+            ip_str = sockaddr[0]
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip_str.startswith("169.254."):
+                return False, "असुरक्षित सर्व्हर पत्ता (Private or reserved IP blocked)."
+        return True, ""
+    except socket.gaierror:
+        return False, "DNS Lookup अयशस्वी झाला (Unable to resolve host)."
+    except Exception as e:
+        return False, f"URL त्रुटी: {e}"
+
+def generate_signed_download_url(order_token: str, expires_in_seconds: int = 86400) -> str:
+    exp = int(time.time()) + expires_in_seconds
+    payload = f"{order_token}:{exp}"
+    sig = hmac.new(DOWNLOAD_SECRET_KEY.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return f"/download/{order_token}?exp={exp}&sig={sig}"
+
+def verify_signed_download_url(order_token: str, exp_str: str, sig_str: str) -> Tuple[bool, str]:
+    if not exp_str or not sig_str:
+        return False, "Missing signature or expiration parameter"
+    try:
+        exp = int(exp_str)
+        if time.time() > exp:
+            return False, "ही डाऊनलोड लिंक कालबाह्य (Expired) झाली आहे. कृपया नवीन लिंकसाठी सपोर्टशी संपर्क साधा."
+        expected_sig = hmac.new(DOWNLOAD_SECRET_KEY.encode("utf-8"), f"{order_token}:{exp}".encode("utf-8"), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected_sig, sig_str):
+            return False, "अवैध डाऊनलोड स्वाक्षरी (Invalid download signature)."
+        return True, ""
+    except Exception as e:
+        return False, f"Verification error: {e}"
+
+CHECKOUT_RATE_LIMITS: Dict[str, List[float]] = {}
+CHECKOUT_RATE_LIMIT_LOCK = threading.Lock()
+
+def is_ip_rate_limited(ip: str, max_requests: int = 10, window_seconds: int = 60) -> bool:
+    now = time.time()
+    with CHECKOUT_RATE_LIMIT_LOCK:
+        timestamps = CHECKOUT_RATE_LIMITS.setdefault(ip, [])
+        timestamps = [t for t in timestamps if now - t < window_seconds]
+        CHECKOUT_RATE_LIMITS[ip] = timestamps
+        if len(timestamps) >= max_requests:
+            return True
+        timestamps.append(now)
+        return False
+
+def backup_sqlite_database(db_path: str = DB_PATH, backup_dir: Optional[Path] = None) -> Optional[Path]:
+    """Uses sqlite3 Backup API to create an atomic, non-blocking backup."""
+    if backup_dir is None:
+        backup_dir = STORAGE_DIR / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_file = backup_dir / f"bot_backup_{timestamp}.db"
+    try:
+        with sqlite3.connect(db_path) as src, sqlite3.connect(str(backup_file)) as dst:
+            src.backup(dst, pages=100, sleep=0.01)
+        logger.info(f"SQLite backup successfully created at {backup_file}")
+        return backup_file
+    except Exception as e:
+        logger.error(f"Failed to create SQLite backup: {e}")
+        return None
+
 
 def get_youtube_link() -> str:
     """Returns the configured YouTube channel URL."""
@@ -245,25 +383,38 @@ def update_env_channel_id(channel_id: str):
         logger.warning(f"Could not persist PAID_CHANNEL_ID to .env: {e}")
 
 async def on_chat_member_updated(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Detects when the bot is added as an administrator to a channel or group."""
+    """Detects when the bot is added to a channel or group. Only bot administrators are allowed to connect channels."""
     my_member = update.my_chat_member
     chat = update.effective_chat
     if not my_member or not chat:
         return
     new_status = my_member.new_chat_member.status
+    acting_user = my_member.from_user
+
+    # Security check: If added by non-admin, immediately leave the unauthorized chat
+    if not acting_user or acting_user.id not in ADMIN_IDS:
+        if new_status in ("administrator", "member"):
+            logger.warning(f"Unauthorized chat addition by non-admin user {getattr(acting_user, 'id', 'Unknown')} to chat {chat.id}. Leaving chat.")
+            try:
+                await context.bot.leave_chat(chat.id)
+            except Exception as e:
+                logger.warning(f"Failed to leave unauthorized chat {chat.id}: {e}")
+        return
+
     if new_status in ("administrator", "creator"):
         channel_id = str(chat.id)
         channel_title = chat.title or "Channel"
         update_env_channel_id(channel_id)
-        logger.info(f"Bot added as administrator to {channel_title} ({channel_id})")
+        logger.info(f"Bot added as administrator to {channel_title} ({channel_id}) by admin {acting_user.id}")
         for admin_id in ADMIN_IDS:
             try:
                 await context.bot.send_message(
                     chat_id=admin_id,
                     text=(
                         f"🎉 <b>Bot Successfully Added to Channel!</b>\n\n"
-                        f"📢 <b>{channel_title}</b>\n"
-                        f"🆔 ID: <code>{channel_id}</code>\n\n"
+                        f"📢 <b>{html.escape(channel_title)}</b>\n"
+                        f"🆔 ID: <code>{html.escape(channel_id)}</code>\n"
+                        f"👤 Authorized by Admin ID: <code>{acting_user.id}</code>\n\n"
                         f"चॅनेल आयडी आपोआप सेव्ह झाला आहे. रिस्पॉन्स शीटमधील प्रश्न क्विझ स्वरूपात पाठवण्यासाठी:\n"
                         f"👉 <code>/postquizzes</code>"
                     ),
@@ -407,6 +558,17 @@ def init_db():
                 visited_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Security & Integrity: Unique constraints inside BEGIN IMMEDIATE
+        try:
+            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_uploads_roll_exam ON uploads(roll_number, exam_key) WHERE roll_number != '' AND roll_number IS NOT NULL")
+        except Exception as e:
+            logger.debug(f"Note on idx_uploads_roll_exam: {e}")
+
+        try:
+            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_utr_unique ON product_orders(utr) WHERE utr != '' AND utr IS NOT NULL AND utr NOT LIKE 'VERIFIED_%' AND utr NOT LIKE 'ADMIN_%'")
+        except Exception as e:
+            logger.debug(f"Note on idx_orders_utr_unique: {e}")
 
     try:
         init_monetization_db()
@@ -688,20 +850,23 @@ async def auto_post_quizzes_background(bot, text: str, exam_name: str, records: 
 # ----------------- TELEGRAM BOT HANDLERS ----------------- #
 
 def alert_admins_sync(text: str):
-    """Sends immediate notification to all Telegram bot admins synchronously."""
+    """Sends notification to Telegram bot admins asynchronously in a background thread."""
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     if not token or not ADMIN_IDS:
         return
-    for aid in ADMIN_IDS:
-        try:
-            import requests
-            requests.post(
-                f"https://api.telegram.org/bot{token}/sendMessage",
-                json={"chat_id": aid, "text": text, "parse_mode": "HTML"},
-                timeout=5
-            )
-        except Exception as e:
-            logger.warning(f"Could not alert admin {aid}: {e}")
+    def _send_bg():
+        for aid in ADMIN_IDS:
+            try:
+                with httpx.Client(timeout=5.0) as client:
+                    resp = client.post(
+                        f"https://api.telegram.org/bot{token}/sendMessage",
+                        json={"chat_id": aid, "text": text, "parse_mode": "HTML"},
+                    )
+                    if resp.status_code != 200:
+                        logger.warning(f"Admin alert to {aid} returned HTTP {resp.status_code}")
+            except Exception as e:
+                logger.warning(f"Could not alert admin {aid}: {e}")
+    threading.Thread(target=_send_bg, daemon=True).start()
 
 async def check_channel_membership(bot, user_id: int) -> bool:
     """Checks whether the user is an active member of the configured free/public Telegram channel."""
@@ -1421,11 +1586,15 @@ async def handle_url_sheet(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         )
         return
 
+    is_safe, err_msg = validate_safe_url(url)
+    if not is_safe:
+        await update.message.reply_text(f"❌ <b>सुरक्षा मर्यादा (Security Alert):</b>\n{html.escape(err_msg)}", parse_mode="HTML")
+        return
+
     status_msg = await update.effective_chat.send_message(
         "📥 <i>Downloading response sheet from URL and analyzing questions...</i>",
         parse_mode="HTML"
     )
-    import httpx
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
@@ -1433,8 +1602,18 @@ async def handle_url_sheet(update: Update, context: ContextTypes.DEFAULT_TYPE, u
     }
     clean_url = re.sub(r"(?<!:)//+", "/", url.strip())
     try:
-        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True, headers=headers) as client:
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=False, headers=headers) as client:
             resp = await client.get(clean_url)
+            if resp.is_redirect:
+                target_redir = resp.headers.get("location", "")
+                if target_redir.startswith("/"):
+                    parsed_base = urllib.parse.urlparse(clean_url)
+                    target_redir = f"{parsed_base.scheme}://{parsed_base.netloc}{target_redir}"
+                is_redir_safe, redir_err = validate_safe_url(target_redir)
+                if not is_redir_safe:
+                    await status_msg.edit_text(f"❌ <b>असुरक्षित रिडायरेक्ट (Unsafe Redirect Blocked):</b> {html.escape(redir_err)}", parse_mode="HTML")
+                    return
+                resp = await client.get(target_redir)
             resp.raise_for_status()
             content = resp.content
 
@@ -1948,6 +2127,10 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
         forward_chat = getattr(msg.forward_origin, "chat", None)
 
     if forward_chat and str(getattr(forward_chat, "type", "")) in ("channel", "supergroup", "group"):
+        if user.id not in ADMIN_IDS:
+            await msg.reply_text("⛔ <b>मर्यादित:</b> चॅनेल जोडण्याची परवानगी फक्त बॉट ॲडमिनिस्ट्रेटरना आहे (Admin Only).", parse_mode="HTML")
+            return
+
         f_id = str(forward_chat.id)
         f_title = forward_chat.title or "Channel"
         update_env_channel_id(f_id)
@@ -1964,8 +2147,8 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
         if is_admin and can_post:
             await msg.reply_text(
                 f"✅ <b>चॅनेल यशस्वीरित्या कनेक्ट झाले! (Channel Connected)</b>\n\n"
-                f"📢 चॅनेल नाव: <b>{f_title}</b>\n"
-                f"🆔 चॅनेल आयडी: <code>{f_id}</code>\n"
+                f"📢 चॅनेल नाव: <b>{html.escape(f_title)}</b>\n"
+                f"🆔 चॅनेल आयडी: <code>{html.escape(f_id)}</code>\n"
                 f"👑 <b>Admin Status:</b> ✅ Administrator (Post Messages Allowed)\n\n"
                 f"आता या चॅनेलवर थेट क्विझ पोल्स पाठवण्यासाठी खालील कमांड दाबा:\n"
                 f"👉 <code>/postquizzes</code>",
@@ -1975,7 +2158,7 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
             bot_info = await context.bot.get_me()
             add_link = f"https://t.me/{bot_info.username}?startchannel=true&admin=post_messages+edit_messages+delete_messages"
             await msg.reply_text(
-                f"📢 <b>चॅनेल सापडले: {f_title} (ID: <code>{f_id}</code>)</b>\n\n"
+                f"📢 <b>चॅनेल सापडले: {html.escape(f_title)} (ID: <code>{html.escape(f_id)}</code>)</b>\n\n"
                 f"⚠️ बॉट अजून या चॅनेलचा <b>Administrator नाही</b>.\n"
                 f"बॉटला चॅनेलमध्ये ॲड करण्यासाठी खालील १-क्लिक बटण दाबा 👇",
                 parse_mode="HTML",
@@ -1989,7 +2172,7 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
     caption_text = (msg.caption or "").strip()
     combined_text = f"{raw_text} {caption_text}".strip()
 
-    # Case A: Digital Store Product Purchase
+    # Case A: Digital Store Product Purchase (Manual Review Mode - NEVER Auto-Approve)
     if context.user_data.get("awaiting_store_utr") or (context.user_data.get("buying_product_id") and (msg.photo or re.search(r"\b[A-Za-z0-9]{8,22}\b", combined_text))):
         prod_id = context.user_data.get("buying_product_id", "prod_ca_monthly_top200")
         price = context.user_data.get("buying_product_price", 19)
@@ -1999,73 +2182,62 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
 
         utr_match = re.search(r"\b[A-Za-z0-9]{8,22}\b", combined_text)
         photo_id = msg.photo[-1].file_id if msg.photo else None
+        utr_val = utr_match.group(0) if utr_match else f"SCREENSHOT_{user.id}_{int(time.time())}"
 
-        if utr_match:
-            utr_val = utr_match.group(0)
-            if is_utr_already_used(utr_val, db_path=DB_PATH):
-                await msg.reply_text("⚠️ <b>हा UTR आधीच वापरला गेला आहे.</b> कृपया योग्य व नवीन ट्रान्झॅक्शन UTR नंबर पाठवा.", parse_mode="HTML")
-                return
-
-            order_res = fulfillment_agent.create_order(prod_id, customer_email, float(price), customer_telegram_id=user.id, db_path=DB_PATH)
-            order_token = order_res["order_token"]
-            success, fulfill_msg, prod_data = fulfillment_agent.confirm_and_fulfill_order(order_token, utr_val, db_path=DB_PATH)
-
-            context.user_data["awaiting_store_utr"] = False
-            context.user_data["buying_product_id"] = None
-
-            pdf_path = packaging_agent.ensure_product_pdf(prod_id)
-            confirm_msg = (
-                f"🎉 <b>पेमेंट यशस्वीरित्या कन्फर्म झाले!</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"📖 <b>पुस्तक:</b> {prod_data.get('title')}\n"
-                f"🎫 <b>Order ID:</b> <code>{order_token}</code>\n"
-                f"📧 <b>Email:</b> <code>{customer_email}</code>\n\n"
-                f"👇 <b>तुमचे खरेदी केलेले ई-बुक खाली पाठवले आहे, लगेच डाऊनलोड करा:</b>"
-            )
-            await safe_send_message(context.bot, update.effective_chat.id, confirm_msg, parse_mode="HTML")
-            if pdf_path.exists():
-                with open(pdf_path, "rb") as f:
-                    await context.bot.send_document(
-                        chat_id=update.effective_chat.id,
-                        document=f,
-                        filename=pdf_path.name,
-                        caption=f"📘 {prod_data.get('title')} — अधिकृत प्रत\n© ExamRankers India"
-                    )
-            # Alert admins
-            alert_admins_sync(
-                f"🛒 <b>नवीन डिजिटल ई-बुक खरेदी (Telegram Bot Sale)!</b>\n"
-                f"👤 Aspirant: {user.first_name} (@{user.username or 'NoUser'})\n"
-                f"📖 Book: <b>{prod_data.get('title')}</b> (₹{price})\n"
-                f"📝 UTR: <code>{utr_val}</code>\n"
-                f"📧 Email: <code>{customer_email}</code>"
-            )
+        if utr_match and is_utr_already_used(utr_val, db_path=DB_PATH):
+            await msg.reply_text("⚠️ <b>हा UTR आधीच वापरला गेला आहे.</b> कृपया योग्य व नवीन ट्रान्झॅक्शन UTR नंबर पाठवा.", parse_mode="HTML")
             return
 
-        elif photo_id:
-            utr_val = f"SCREENSHOT_{user.id}_{int(datetime.now().timestamp())}"
-            order_res = fulfillment_agent.create_order(prod_id, customer_email, float(price), customer_telegram_id=user.id, db_path=DB_PATH)
-            order_token = order_res["order_token"]
-            success, fulfill_msg, prod_data = fulfillment_agent.confirm_and_fulfill_order(order_token, utr_val, db_path=DB_PATH)
+        order_res = fulfillment_agent.create_order(prod_id, customer_email, float(price), customer_telegram_id=user.id, db_path=DB_PATH)
+        order_token = order_res["order_token"]
 
-            context.user_data["awaiting_store_utr"] = False
-            context.user_data["buying_product_id"] = None
-
-            pdf_path = packaging_agent.ensure_product_pdf(prod_id)
-            await safe_send_message(
-                context.bot,
-                update.effective_chat.id,
-                f"✅ <b>पेमेंट स्क्रीनशॉट प्राप्त झाला!</b>\nपुस्तकाची प्रत खाली दिली आहे:",
-                parse_mode="HTML"
+        with sqlite3.connect(DB_PATH) as db:
+            db.execute(
+                "UPDATE product_orders SET utr = ?, status = 'pending', delivery_status = 'pending_verification' WHERE order_token = ?",
+                (utr_val, order_token)
             )
-            if pdf_path.exists():
-                with open(pdf_path, "rb") as f:
-                    await context.bot.send_document(
-                        chat_id=update.effective_chat.id,
-                        document=f,
-                        filename=pdf_path.name,
-                        caption=f"📘 {prod_data.get('title')} — अधिकृत प्रत\n© ExamRankers India"
-                    )
-            return
+            db.commit()
+
+        context.user_data["awaiting_store_utr"] = False
+        context.user_data["buying_product_id"] = None
+
+        prod_data = packaging_agent.get_product_by_id(prod_id, db_path=DB_PATH) or {"title": prod_id}
+
+        await msg.reply_text(
+            "⏳ <b>पेमेंट पडताळणीसाठी पाठवले आहे (Pending Admin Verification)!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📖 <b>पुस्तक:</b> {html.escape(prod_data.get('title', ''))}\n"
+            f"🎫 <b>Order Token:</b> <code>{order_token}</code>\n"
+            f"📝 <b>UTR / Screenshot:</b> <code>{html.escape(utr_val)}</code>\n\n"
+            "ॲडमिनद्वारे पडताळणी पूर्ण होताच तुमचे पुस्तक येथे थेट पाठवले जाईल आणि डाऊनलोड उपलब्ध होईल!",
+            parse_mode="HTML"
+        )
+
+        # Notify admins with inline approval buttons
+        admin_kb = [
+            [
+                InlineKeyboardButton("✅ Approve & Deliver", callback_data=f"approve_store_ord:{order_token}"),
+                InlineKeyboardButton("❌ Reject", callback_data=f"reject_store_ord:{order_token}")
+            ]
+        ]
+        admin_alert = (
+            f"🛒 <b>नवीन डिजिटल ई-बुक खरेदी पडताळणी विनंती!</b>\n"
+            f"👤 Aspirant: {html.escape(user.first_name)} (@{html.escape(user.username or 'NoUser')})\n"
+            f"🆔 Telegram ID: <code>{user.id}</code>\n"
+            f"📖 Book: <b>{html.escape(prod_data.get('title', ''))}</b> (₹{price})\n"
+            f"🎫 Order Token: <code>{order_token}</code>\n"
+            f"📝 UTR: <code>{html.escape(utr_val)}</code>\n"
+            f"📧 Email: <code>{html.escape(customer_email)}</code>"
+        )
+        for admin_id in ADMIN_IDS:
+            try:
+                if photo_id:
+                    await context.bot.send_photo(chat_id=admin_id, photo=photo_id, caption=admin_alert, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(admin_kb))
+                else:
+                    await context.bot.send_message(chat_id=admin_id, text=admin_alert, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(admin_kb))
+            except Exception as e:
+                logger.warning(f"Could not notify admin {admin_id} of store order: {e}")
+        return
 
     # Case B: VIP ₹99 Paid Quiz Channel Payment Proof
     if context.user_data.get("awaiting_payment_proof") or (combined_text and "utr" in combined_text.lower()) or (msg.photo and context.user_data.get("awaiting_payment_proof")):
@@ -2654,12 +2826,21 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(chat_id=uid, text=message_text, parse_mode="HTML")
             sent += 1
+        except RetryAfter as e:
+            logger.warning(f"Telegram flood limit: sleeping {e.retry_after}s during broadcast")
+            await asyncio.sleep(e.retry_after + 0.1)
+            try:
+                await context.bot.send_message(chat_id=uid, text=message_text, parse_mode="HTML")
+                sent += 1
+            except Exception:
+                failed += 1
         except Exception:
             try:
                 await context.bot.send_message(chat_id=uid, text=message_text)
                 sent += 1
             except Exception:
                 failed += 1
+        await asyncio.sleep(0.05)  # Safe ~20 msgs/sec throttling
 
     await status_msg.edit_text(f"✅ <b>Broadcast Completed:</b>\n• Successfully Sent: {sent}\n• Failed/Blocked: {failed}", parse_mode="HTML")
 
@@ -3683,14 +3864,41 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Current action cancelled. Send /start to begin again.")
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.warning(f"Telegram network/bot update warning: {context.error}")
+    """Logs detailed traceback, captures via Sentry if enabled, and alerts admins if critical."""
+    tb_string = "".join(traceback.format_exception(None, context.error, context.error.__traceback__)) if context.error else "Unknown Error"
+    logger.error(f"Telegram Handler Exception: {context.error}\n{tb_string}")
+    if os.getenv("SENTRY_DSN"):
+        try:
+            import sentry_sdk
+            sentry_sdk.capture_exception(context.error)
+        except Exception:
+            pass
+
+async def nightly_backup_scheduler_loop(application: Application):
+    """Executes atomic SQLite backup once every 24 hours and delivers it to the primary bot administrator."""
+    await asyncio.sleep(60)
+    while True:
+        try:
+            backup_file = await asyncio.to_thread(backup_sqlite_database, DB_PATH)
+            if backup_file and backup_file.exists() and ADMIN_IDS:
+                primary_admin = sorted(list(ADMIN_IDS))[0]
+                with open(backup_file, "rb") as f:
+                    await application.bot.send_document(
+                        chat_id=primary_admin,
+                        document=f,
+                        filename=backup_file.name,
+                        caption=f"🛡️ <b>Automated 24h SQLite Backup</b>\nDate: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\nSize: {backup_file.stat().st_size // 1024} KB",
+                        parse_mode="HTML"
+                    )
+        except Exception as e:
+            logger.error(f"Error in nightly_backup_scheduler_loop: {e}")
+        await asyncio.sleep(86400)
 
 async def set_bot_commands(application: Application):
     """Configures the official Telegram chat menu button [≡], command scopes, and launches background schedulers."""
     user_commands = [
         BotCommand("start", "🚀 सुरू करा (Start Bot & Select Category)"),
         BotCommand("admin", "⚙️ ॲडमिन कंट्रोल पॅनेल (Admin Panel)"),
-        BotCommand("store", "🛒 डिजिटल ई-बुक्स स्टोअर (₹१० ते ₹५०)"),
         BotCommand("store", "🛒 डिजिटल ई-बुक्स स्टोअर (₹१० ते ₹५०)"),
         BotCommand("channel", "📢 मोफत टेलिग्राम चॅनेल (Free Study Group)"),
         BotCommand("wrong", "❌ चुकीचे प्रश्न व सविस्तर स्पष्टीकरण"),
@@ -3703,7 +3911,6 @@ async def set_bot_commands(application: Application):
     admin_commands = [
         BotCommand("start", "🚀 सुरू करा (Start Bot)"),
         BotCommand("admin", "⚙️ ॲडमिन कंट्रोल पॅनेल (Admin Panel)"),
-        BotCommand("store", "🛒 डिजिटल ई-बुक्स स्टोअर (₹१० ते ₹५०)"),
         BotCommand("store", "🛒 डिजिटल ई-बुक्स स्टोअर (₹१० ते ₹५०)"),
         BotCommand("channel", "📢 मोफत टेलिग्राम चॅनेल (Free Study Group)"),
         BotCommand("sync_channel", "🔄 चॅनेलचे नाव ताज्या परीक्षेनुसार बदला (Admin)"),
@@ -3754,7 +3961,8 @@ async def set_bot_commands(application: Application):
         asyncio.create_task(youtube_upload_watcher_loop(application))
         asyncio.create_task(daily_current_affairs_updater_loop(application))
         asyncio.create_task(continuous_autonomous_agency_orchestrator(application))
-        logger.info("Background Schedulers launched: 3-Hr Promo, Daily Mindmap, YouTube Watcher, Daily Current Affairs Updater, 24/7 Autonomous Agency Orchestrator!")
+        asyncio.create_task(nightly_backup_scheduler_loop(application))
+        logger.info("Background Schedulers launched: 3-Hr Promo, Daily Mindmap, YouTube Watcher, Daily Current Affairs, Agency Orchestrator, Nightly Backup!")
     except Exception as e:
         logger.warning(f"Could not set bot commands or description: {e}")
 
@@ -3809,32 +4017,30 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(b"OK")
             return
 
-        # 2b. API: Order Approval Status Check (For Customer Storefront Real-time Polling & Order Lookup)
+        # 2b. API: Order Approval Status Check (Strict Token-Only Lookup; Never returns email or UTR)
         if path.startswith("/api/order_status"):
             query = urllib.parse.urlparse(self.path).query
             params = urllib.parse.parse_qs(query)
             token = params.get("token", [""])[0].strip()
-            utr_param = params.get("utr", [""])[0].strip()
-            email_param = params.get("email", [""])[0].strip()
-            q_param = params.get("q", [""])[0].strip()
 
-            search_val = token or utr_param or email_param or q_param
-            if not search_val:
+            if not token:
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
-                self.wfile.write(json.dumps({"success": False, "message": "Missing search parameter (token, utr, or email)."}).encode("utf-8"))
+                self.wfile.write(json.dumps({"success": False, "message": "Missing order 'token' parameter. Lookup by email or UTR is prohibited for security."}).encode("utf-8"))
                 return
+
             with sqlite3.connect(DB_PATH) as db:
                 db.row_factory = sqlite3.Row
                 order = db.execute("""
                     SELECT o.*, p.title as prod_title, p.download_file, p.pages
                     FROM product_orders o
                     LEFT JOIN digital_products p ON o.product_id = p.id
-                    WHERE o.order_token = ? OR o.utr = ? OR LOWER(o.customer_email) = LOWER(?)
+                    WHERE o.order_token = ?
                     ORDER BY o.id DESC LIMIT 1
-                """, (search_val, search_val, search_val)).fetchone()
+                """, (token,)).fetchone()
+
             if not order:
                 self.send_response(404)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -3842,13 +4048,16 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "message": "Order not found."}).encode("utf-8"))
                 return
+
             order_data = dict(order)
             ord_token = order_data.get("order_token", "")
-            is_approved = order_data.get("status") in ("approved", "delivered")
+            is_approved = order_data.get("status") in ("approved", "delivered", "paid")
             is_rejected = order_data.get("status") == "rejected"
             prod_id = order_data.get("product_id", "")
             prod_title = order_data.get("prod_title") or prod_id
             download_file = order_data.get("download_file") or f"{prod_id}.pdf"
+            signed_url = generate_signed_download_url(ord_token) if is_approved else None
+
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -3863,20 +4072,30 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 "is_approved": is_approved,
                 "is_rejected": is_rejected,
                 "delivery_status": order_data.get("delivery_status", "pending"),
-                "customer_email": order_data.get("customer_email", ""),
-                "utr": order_data.get("utr", ""),
-                "download_url": f"/download/{ord_token}" if is_approved else None
+                "download_url": signed_url
             }).encode("utf-8"))
             return
 
-        # 3. Download Endpoint: /download/<order_token> (Strictly Protected: Paid & Approved Orders Only)
+        # 3. Download Endpoint: /download/<order_token> (Strictly Protected: Signed Expiring Links & Paid Status)
         if path.startswith("/download/"):
             token = path.split("/download/")[-1].strip()
+            query_params = urllib.parse.parse_qs(parsed.query)
+            exp_str = query_params.get("exp", [""])[0].strip()
+            sig_str = query_params.get("sig", [""])[0].strip()
+
             if not token:
                 self.send_response(400)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
                 self.end_headers()
                 self.wfile.write(b"Order token missing")
+                return
+
+            valid_sig, sig_err = verify_signed_download_url(token, exp_str, sig_str)
+            if not valid_sig:
+                self.send_response(403)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(f"<h3>⛔ डाऊनलोड लिंक अवैध किंवा कालबाह्य आहे (Access Denied)</h3><p>{html.escape(sig_err)}</p><p>कृपया अधिकृत स्टोअरवरून योग्य डाऊनलोड लिंक वापरा.</p>".encode("utf-8"))
                 return
 
             order_data = None
@@ -3893,24 +4112,19 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.send_response(404)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
-                self.wfile.write("<h3>❌ ऑर्डर सापडली नाही (Order Not Found)</h3><p>कृपया अधिकृत स्टोअरवरून खरेदी करा किंवा योग्य ऑर्डर टोकन वापरा.</p>".encode("utf-8"))
+                self.wfile.write("<h3>❌ ऑर्डर सापडली नाही (Order Not Found)</h3>".encode("utf-8"))
                 return
 
             # STRICT SECURITY GATE: Enforce approved payment before serving digital product!
             status = order_data.get("status")
-            if status != "approved" and status != "delivered":
+            if status not in ("approved", "delivered", "paid"):
                 self.send_response(403)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
-                if status == "rejected":
-                    msg = "<h3>❌ ऑर्डर नाकारण्यात आली आहे (Order Rejected)</h3><p>या ऑर्डरसाठी प्रविष्ट केलेला UTR अवैध किंवा चुकीचा आढळल्याने ॲडमिनने ही ऑर्डर नाकारली आहे. अधिक माहितीसाठी कृपया सपोर्टशी संपर्क साधा.</p>"
-                else:
-                    msg = f"<h3>⏳ UTR पडताळणी प्रलंबित आहे (Pending Admin Verification)</h3><p>ऑर्डर टोकन: <code>{token}</code></p><p>तुमचा १२-अंकी UTR अद्याप ॲडमिन पडताळणी प्रक्रियेत आहे. ॲडमिनने पडताळणी पूर्ण करताच ही लिंक सक्रिय होईल आणि तुमच्या ईमेलवर ({order_data.get('customer_email', '')}) फाईल थेट पाठवली जाईल.</p>"
-                self.wfile.write(msg.encode("utf-8"))
+                self.wfile.write("<h3>⏳ पेमेंट पडताळणी प्रलंबित आहे (Pending Verification)</h3>".encode("utf-8"))
                 return
 
             prod_id = order_data.get("product_id")
-
             pdf_path = packaging_agent.ensure_product_pdf(prod_id, db_path=DB_PATH)
             if not pdf_path or not os.path.exists(pdf_path):
                 self.send_response(404)
@@ -3931,10 +4145,78 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/pdf")
             self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
             self.send_header("Content-Length", str(file_size))
-            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             with open(pdf_path, "rb") as f:
                 self.wfile.write(f.read())
+            return
+
+        # 3b. Order Return Page: /order/<order_id>
+        if path.startswith("/order/"):
+            order_id = path.split("/order/")[-1].strip()
+            order_info = None
+            with sqlite3.connect(DB_PATH) as db:
+                db.row_factory = sqlite3.Row
+                r = db.execute("SELECT o.*, p.title as prod_title FROM product_orders o LEFT JOIN digital_products p ON o.product_id = p.id WHERE o.order_token = ? OR o.cf_order_id = ?", (order_id, order_id)).fetchone()
+                if r:
+                    order_info = dict(r)
+
+            status = order_info.get("status", "pending") if order_info else "unknown"
+            is_paid = status in ("approved", "delivered", "paid")
+            title = order_info.get("prod_title", "स्पर्धा परीक्षा ई-बुक") if order_info else "Digital Product"
+            amount = order_info.get("amount_paid", 19) if order_info else 19
+            signed_url = generate_signed_download_url(order_info["order_token"]) if (order_info and is_paid) else "#"
+
+            page_html = f"""<!DOCTYPE html>
+<html lang="mr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ऑर्डर स्थिती — ExamRankers™</title>
+    <style>
+        :root {{ --primary: #0284c7; --success: #16a34a; --text: #0f172a; --bg: #f8fafc; }}
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); padding: 20px 16px; min-height: 100vh; display: flex; align-items: center; justify-content: center; }}
+        .card {{ background: #fff; max-width: 480px; width: 100%; border-radius: 16px; padding: 28px 24px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.08); text-align: center; border: 1px solid #e2e8f0; }}
+        .badge {{ display: inline-block; padding: 6px 16px; border-radius: 9999px; font-weight: 700; font-size: 14px; margin-bottom: 16px; }}
+        .badge-paid {{ background: #dcfce7; color: #15803d; }}
+        .badge-pending {{ background: #fef9c3; color: #854d0e; }}
+        h1 {{ font-size: 20px; font-weight: 800; margin-bottom: 8px; color: #0f172a; }}
+        p {{ font-size: 14px; color: #64748b; line-height: 1.5; margin-bottom: 20px; }}
+        .btn {{ display: block; width: 100%; padding: 14px; background: var(--primary); color: #fff; font-weight: 700; font-size: 15px; border-radius: 12px; text-decoration: none; border: none; cursor: pointer; transition: 0.2s; }}
+        .btn:hover {{ background: #0369a1; }}
+        .btn-success {{ background: var(--success); }}
+        .btn-success:hover {{ background: #15803d; }}
+        .meta-table {{ width: 100%; margin: 20px 0; text-align: left; font-size: 13px; border-collapse: collapse; }}
+        .meta-table td {{ padding: 8px 0; border-bottom: 1px solid #f1f5f9; }}
+        .meta-table td:last-child {{ text-align: right; font-weight: 700; color: #0f172a; }}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="badge {'badge-paid' if is_paid else 'badge-pending'}">
+            {'✅ पेमेंट यशस्वी (PAID)' if is_paid else '⏳ पेमेंट प्रक्रियेत आहे (PENDING)'}
+        </div>
+        <h1>{html.escape(title)}</h1>
+        <p>{'तुमचे पेमेंट यशस्वीरित्या जमा झाले आहे. खालील १-क्लिक बटणावर क्लिक करून तुमची PDF लगेच डाऊनलोड करा:' if is_paid else 'तुमचे पेमेंट पडताळले जात आहे. कृपया १ मिनिट थांबा किंवा पान रिफ्रेश करा.'}</p>
+        
+        <table class="meta-table">
+            <tr><td>ऑर्डर आयडी</td><td><code>{html.escape(order_id[:16])}...</code></td></tr>
+            <tr><td>रक्कम</td><td>₹{amount}/-</td></tr>
+            <tr><td>स्थिती</td><td>{html.escape(status.upper())}</td></tr>
+        </table>
+
+        {'<a href="' + signed_url + '" class="btn btn-success">📥 अधिकृत PDF डाऊनलोड करा (Download Now)</a>' if is_paid else '<button onclick="location.reload()" class="btn">🔄 स्थिती पुन्हा तपासा (Refresh Status)</button>'}
+        <div style="margin-top: 16px;">
+            <a href="/" style="color: #64748b; font-size: 13px; text-decoration: none;">← मुख्य स्टोअरवर परत जा</a>
+        </div>
+    </div>
+    {'<script>setTimeout(function(){ location.reload(); }, 3500);</script>' if not is_paid else ''}
+</body>
+</html>"""
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(page_html.encode("utf-8"))
             return
 
         if path == "/favicon.ico":
@@ -3944,13 +4226,12 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
 
         # 4. Admin Store Visitors API Endpoint: /api/admin/visitors
         if path == "/api/admin/visitors":
-            token_arg = urllib.parse.parse_qs(parsed.query).get("token", [""])[0]
-            expected_token = (os.getenv("TELEGRAM_BOT_TOKEN") or "admin")[:16]
-            if token_arg != expected_token and str(token_arg) not in [str(x) for x in ADMIN_IDS]:
+            query_params = urllib.parse.parse_qs(parsed.query)
+            if not is_admin_request_authenticated(self.headers, query_params):
                 self.send_response(403)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(json.dumps({"error": "Unauthorized"}).encode("utf-8"))
+                self.wfile.write(json.dumps({"error": "Forbidden: Requires valid X-Admin-Key"}).encode("utf-8"))
                 return
 
             with get_connection() as db:
@@ -3965,7 +4246,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(json.dumps({
                 "total_visits": total_visits,
@@ -3980,13 +4260,19 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
 
         # Admin Web Dashboard: /admin or /admin/dashboard
         if path in ("/admin", "/admin/dashboard"):
+            query_params = urllib.parse.parse_qs(parsed.query)
+            if not is_admin_request_authenticated(self.headers, query_params):
+                self.send_response(403)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.end_headers()
+                self.wfile.write("<h3>⛔ ४०३ अनधिकृत प्रवेश (403 Forbidden)</h3><p>ॲडमिन डॅशबोर्ड वापरण्यासाठी <code>X-Admin-Key</code> हेडर किंवा <code>?key=YOUR_ADMIN_API_KEY</code> आवश्यक आहे.</p>".encode("utf-8"))
+                return
             try:
                 dash_html = render_admin_dashboard_html(DB_PATH)
                 dash_bytes = dash_html.encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(dash_bytes)))
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(dash_bytes)
                 return
@@ -4000,14 +4286,22 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
 
         # Admin PDF Preview/Download: /admin/download_pdf?file=...
         if path == "/admin/download_pdf":
-            file_name = urllib.parse.parse_qs(parsed.query).get("file", [""])[0]
+            query_params = urllib.parse.parse_qs(parsed.query)
+            if not is_admin_request_authenticated(self.headers, query_params):
+                self.send_response(403)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"Unauthorized: Missing or invalid X-Admin-Key")
+                return
+
+            file_name = query_params.get("file", [""])[0]
             if not file_name:
                 self.send_response(400)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
                 self.end_headers()
                 self.wfile.write(b"Filename missing")
                 return
-            
+
             safe_name = os.path.basename(file_name)
             candidate_dirs = [
                 STORAGE_DIR / "products",
@@ -4020,7 +4314,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 if p.exists() and p.is_file():
                     found_path = p
                     break
-            
+
             if not found_path:
                 try:
                     built = packaging_agent.ensure_product_pdf(safe_name.replace(".pdf", ""), db_path=DB_PATH)
@@ -4043,7 +4337,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Content-Type", "application/pdf")
                 self.send_header("Content-Disposition", f'inline; filename="{safe_name}"')
                 self.send_header("Content-Length", str(len(pdf_bytes)))
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(pdf_bytes)
                 return
@@ -4055,13 +4348,12 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
 
         # 5. Admin 1-Click ZIP Download for all store digital products
         if path == "/admin/download_all_products":
-            token_arg = urllib.parse.parse_qs(parsed.query).get("token", [""])[0]
-            expected_token = (os.getenv("TELEGRAM_BOT_TOKEN") or "admin")[:16]
-            if token_arg != expected_token and str(token_arg) not in [str(x) for x in ADMIN_IDS]:
+            query_params = urllib.parse.parse_qs(parsed.query)
+            if not is_admin_request_authenticated(self.headers, query_params):
                 self.send_response(403)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(b"Unauthorized: Invalid Admin Token")
+                self.wfile.write(b"Unauthorized: Missing or invalid X-Admin-Key")
                 return
 
             zip_path = STORAGE_DIR / "reports" / "ExamRankers_Full_Store_Content.zip"
@@ -4084,7 +4376,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/zip")
             self.send_header("Content-Disposition", 'attachment; filename="ExamRankers_Full_Store_Content.zip"')
             self.send_header("Content-Length", str(file_size))
-            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             with open(zip_path, "rb") as f:
                 self.wfile.write(f.read())
@@ -4129,12 +4420,25 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         path = parsed.path.rstrip("/")
 
         content_len = int(self.headers.get("Content-Length", 0))
-        post_body = self.rfile.read(content_len).decode("utf-8") if content_len > 0 else "{}"
+        if content_len > 1_048_576:
+            self.send_response(413)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Payload Too Large: Maximum request size is 1 MB"}).encode("utf-8"))
+            return
+
+        raw_body_bytes = b""
         data = {}
-        try:
-            data = json.loads(post_body)
-        except Exception:
-            pass
+        if content_len > 0:
+            raw_body_bytes = self.rfile.read(content_len)
+            try:
+                data = json.loads(raw_body_bytes.decode("utf-8"))
+            except Exception:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Bad Request: Malformed JSON payload"}).encode("utf-8"))
+                return
 
         client_ip = (
             self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
@@ -4144,6 +4448,16 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         )
         ua = self.headers.get("User-Agent", "Unknown")
         ref = self.headers.get("Referer", "")
+        query_params = urllib.parse.parse_qs(parsed.query)
+
+        # Security: All admin POST endpoints require valid X-Admin-Key
+        if path.startswith("/api/admin/"):
+            if not is_admin_request_authenticated(self.headers, query_params):
+                self.send_response(403)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Forbidden: Requires valid X-Admin-Key"}).encode("utf-8"))
+                return
 
         # Admin API: Sync folder PDFs to digital_products
         if path == "/api/admin/sync_products":
@@ -4513,50 +4827,127 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 return
 
         if path == "/api/checkout":
-            prod_id = data.get("product_id", "prod_ca_monthly_top200")
-            email = data.get("email", "")
-            amount = float(data.get("amount", 19))
-            res = fulfillment_agent.create_order(prod_id, email, amount, db_path=DB_PATH)
+            if is_ip_rate_limited(client_ip, max_requests=10, window_seconds=60):
+                self.send_response(429)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": "Too many requests. Please wait a minute."}).encode("utf-8"))
+                return
 
-            log_store_visitor(client_ip, ua, ref, page_path=path, action="checkout_initiated", product_id=prod_id, details=f"email:{email}, amount:{amount}")
+            prod_id = str(data.get("product_id", "")).strip()
+            email = str(data.get("email", "")).strip().lower()
 
-            # Optional Razorpay Gateway Integration
-            rz_key = os.getenv("RAZORPAY_KEY_ID", "").strip()
-            rz_secret = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
-            if rz_key and rz_secret:
-                try:
-                    import requests
-                    rz_resp = requests.post(
-                        "https://api.razorpay.com/v1/orders",
-                        auth=(rz_key, rz_secret),
-                        json={
-                            "amount": int(amount * 100),
-                            "currency": "INR",
-                            "receipt": res["order_token"],
-                            "notes": {"email": email, "product_id": prod_id}
-                        },
-                        timeout=5
-                    )
-                    if rz_resp.status_code == 200:
-                        rz_data = rz_resp.json()
-                        res["razorpay_order_id"] = rz_data.get("id")
-                        res["razorpay_key_id"] = rz_key
-                except Exception as e:
-                    logger.warning(f"Razorpay order generation skipped: {e}")
+            if not email or not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": "कृपया वैध ईमेल आयडी प्रविष्ट करा (Valid email required)."}).encode("utf-8"))
+                return
+
+            prod = packaging_agent.get_product_by_id(prod_id, db_path=DB_PATH)
+            if not prod:
+                self.send_response(404)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": "Product not found."}).encode("utf-8"))
+                return
+
+            # Price is STRICTLY bound to the digital_products table (never trusts client amount)
+            price_inr = int(prod.get("price_inr", 19))
+            res = fulfillment_agent.create_order(prod_id, email, float(price_inr), db_path=DB_PATH)
+            order_token = res["order_token"]
+
+            log_store_visitor(client_ip, ua, ref, page_path=path, action="checkout_initiated", product_id=prod_id, details=f"email:{email}, price:{price_inr}")
+
+            # Create Cashfree Order
+            cf_client = get_cashfree_client()
+            return_url = f"{get_store_web_url()}/order/{order_token}"
+            cf_res = cf_client.create_order(
+                order_id=order_token,
+                order_amount=float(price_inr),
+                customer_email=email,
+                customer_phone=str(data.get("phone", "9999999999")).strip() or "9999999999",
+                customer_id=f"cust_{hashlib.md5(email.encode()).hexdigest()[:12]}",
+                return_url=return_url
+            )
+
+            payment_session_id = cf_res.get("payment_session_id", "")
+            cf_order_id = cf_res.get("order_id", order_token)
+
+            with sqlite3.connect(DB_PATH) as db:
+                db.execute(
+                    "UPDATE product_orders SET cf_order_id = ?, payment_session_id = ? WHERE order_token = ?",
+                    (cf_order_id, payment_session_id, order_token)
+                )
+                db.commit()
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            self.wfile.write(json.dumps(res).encode("utf-8"))
+            self.wfile.write(json.dumps({
+                "success": True,
+                "order_id": order_token,
+                "payment_session_id": payment_session_id,
+                "amount": price_inr,
+                "cf_environment": os.getenv("CASHFREE_ENV", "sandbox")
+            }).encode("utf-8"))
+            return
+
+        # Cashfree Webhook Handler
+        if path == "/api/cashfree/webhook":
+            timestamp = self.headers.get("x-webhook-timestamp", "")
+            signature = self.headers.get("x-webhook-signature", "")
+
+            cf_client = get_cashfree_client()
+            valid_sig, sig_err = cf_client.verify_webhook_signature(raw_body_bytes, signature, timestamp)
+            if not valid_sig:
+                logger.warning(f"Cashfree webhook signature failure: {sig_err}")
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": f"Invalid webhook signature: {sig_err}"}).encode("utf-8"))
+                return
+
+            webhook_data = data.get("data", {})
+            cf_order_obj = webhook_data.get("order", {})
+            cf_payment_obj = webhook_data.get("payment", {})
+            order_id = cf_order_obj.get("order_id") or data.get("order_id", "")
+
+            if not order_id:
+                self.send_response(400)
+                self.end_headers()
+                return
+
+            # Re-fetch order from Cashfree API to ensure state validity
+            cf_verified = cf_client.get_order(order_id)
+            if cf_verified.get("order_status") == "PAID":
+                with sqlite3.connect(DB_PATH) as db:
+                    db.row_factory = sqlite3.Row
+                    local_order = db.execute("SELECT * FROM product_orders WHERE order_token = ? OR cf_order_id = ?", (order_id, order_id)).fetchone()
+                    if local_order:
+                        lo = dict(local_order)
+                        ord_token = lo["order_token"]
+                        paid_amt = float(cf_verified.get("order_amount", 0))
+                        expected_amt = float(lo.get("amount_paid", 0))
+                        if abs(paid_amt - expected_amt) <= 1.0:
+                            if lo.get("status") not in ("approved", "delivered"):
+                                payment_id = cf_payment_obj.get("cf_payment_id") or f"CF_{order_id}"
+                                fulfillment_agent.confirm_and_fulfill_order(ord_token, str(payment_id), db_path=DB_PATH)
+                                logger.info(f"Cashfree order {ord_token} marked PAID and fulfilled via webhook.")
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"status": "ok"}).encode("utf-8"))
             return
 
         if path == "/api/verify":
             order_token = data.get("order_token", "").strip()
             utr = data.get("utr", "").strip()
-            rz_payment_id = data.get("razorpay_payment_id", "").strip()
-            rz_order_id = data.get("razorpay_order_id", "").strip()
-            rz_sig = data.get("razorpay_signature", "").strip()
 
             if not order_token:
                 self.send_response(400)
@@ -4565,34 +4956,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "message": "Order reference token missing."}).encode("utf-8"))
                 return
-
-            # Check Razorpay signature if payment came via Razorpay
-            if rz_payment_id and rz_order_id and rz_sig:
-                import hmac, hashlib
-                rz_secret = os.getenv("RAZORPAY_KEY_SECRET", "").strip()
-                expected = hmac.new(rz_secret.encode(), f"{rz_order_id}|{rz_payment_id}".encode(), hashlib.sha256).hexdigest()
-                if hmac.compare_digest(expected, rz_sig):
-                    utr = f"RZP_{rz_payment_id}"
-                    success, msg, prod = fulfillment_agent.confirm_and_fulfill_order(order_token, utr, db_path=DB_PATH)
-                    self.send_response(200 if success else 400)
-                    self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self.send_header("Access-Control-Allow-Origin", "*")
-                    self.end_headers()
-                    self.wfile.write(json.dumps({
-                        "success": success,
-                        "status": "approved",
-                        "message": msg,
-                        "product": prod,
-                        "download_url": f"/download/{order_token}"
-                    }).encode("utf-8"))
-                    return
-                else:
-                    self.send_response(400)
-                    self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self.send_header("Access-Control-Allow-Origin", "*")
-                    self.end_headers()
-                    self.wfile.write(json.dumps({"success": False, "message": "Invalid Razorpay payment signature."}).encode("utf-8"))
-                    return
 
             # Direct UPI UTR verification
             if not validate_utr_format(utr):
@@ -4624,7 +4987,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                     self.end_headers()
                     self.wfile.write(json.dumps({"success": False, "message": "Order not found."}).encode("utf-8"))
                     return
-                
+
                 order_data = dict(order)
                 db.execute(
                     "UPDATE product_orders SET utr = ?, status = 'pending', delivery_status = 'pending_verification' WHERE order_token = ?",
@@ -4647,15 +5010,29 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             alert_text = (
                 f"🔔 <b>नवीन UTR पडताळणीसाठी प्राप्त! (UTR Verification Pending)</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"📖 ई-बुक: <b>{prod.get('title', 'Digital E-Book') if prod else prod_id}</b>\n"
+                f"📖 ई-बुक: <b>{html.escape(prod.get('title', 'Digital E-Book') if prod else prod_id)}</b>\n"
                 f"💰 रक्कम: <b>₹{order_data.get('amount_paid', 19)}/-</b>\n"
-                f"📧 ईमेल: <code>{order_data.get('customer_email', '')}</code>\n"
+                f"📧 ईमेल: <code>{html.escape(order_data.get('customer_email', ''))}</code>\n"
                 f"🎫 Order Token: <code>{order_token}</code>\n"
-                f"📝 UTR / Ref No: <code>{utr}</code>\n\n"
+                f"📝 UTR / Ref No: <code>{html.escape(utr)}</code>\n\n"
                 f"👉 <b>ॲडमिन पोर्टलवरून UTR तपासून त्वरित मंजुरी व ईमेल पाठवा:</b>\n"
                 f"http://localhost:8080/admin"
             )
             alert_admins_sync(alert_text)
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "success": True,
+                "status": "pending_verification",
+                "order_token": order_token,
+                "utr": utr,
+                "customer_email": order_data.get("customer_email", ""),
+                "message": "तुमचा १२-अंकी UTR पडताळणीसाठी (Verification) ॲडमिनकडे पाठवला आहे. ॲडमिनद्वारे UTR पडताळणी पूर्ण होताच तुमची PDF फाईल तुमच्या ईमेलवर पाठवली जाईल आणि डाऊनलोड उपलब्ध होईल!"
+            }).encode("utf-8"))
+            return
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -5347,8 +5724,7 @@ def start_health_check_server():
         logger.warning(f"Could not start health-check web server on port {port}: {e}")
 
 def main():
-    if not TOKEN:
-        raise RuntimeError("Set TELEGRAM_BOT_TOKEN in .env")
+    validate_environment_security()
     start_health_check_server()
     start_keep_alive_pinger()
     init_db()
@@ -5416,7 +5792,7 @@ def main():
     app.add_handler(MessageHandler((filters.TEXT & ~filters.COMMAND) | filters.PHOTO | filters.FORWARDED, handle_text_or_photo))
 
     logger.info("ExamRankers Telegram Bot started successfully!")
-    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=False)
 
 if __name__ == "__main__":
     main()
