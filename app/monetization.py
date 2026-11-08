@@ -91,8 +91,9 @@ def is_utr_already_used(utr: str, db_path: str = None) -> bool:
         logger.warning(f"Error checking UTR duplication: {e}")
     return False
 
-def init_monetization_db():
-    db_path = get_db_path()
+def init_monetization_db(db_path: str = None):
+    if not db_path:
+        db_path = get_db_path()
     with sqlite3.connect(db_path) as db:
         # Sponsored ads config
         db.execute("""

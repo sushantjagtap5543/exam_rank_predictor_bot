@@ -579,7 +579,7 @@ def init_db():
             logger.debug(f"Note on idx_orders_utr_unique: {e}")
 
     try:
-        init_monetization_db()
+        init_monetization_db(DB_PATH)
     except Exception as e:
         logger.warning(f"Could not initialize monetization tables: {e}")
 
@@ -1490,6 +1490,67 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.answer("⛔ Restricted to admin.", show_alert=True)
             return
         await channel_status_cmd(update, context)
+
+    elif data == "admin_sync_folder":
+        if update.effective_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Restricted to administrators only.", show_alert=True)
+            return
+        await q.answer("🔄 फोल्डर सिंक सुरू आहे...")
+        added_cnt = await asyncio.to_thread(packaging_agent.sync_folder_pdfs_to_products, DB_PATH)
+        all_prods = packaging_agent.get_all_products(DB_PATH)
+        await q.message.reply_text(
+            f"✅ <b>PDF फोल्डर सिंक यशस्वी!</b>\n\n"
+            f"• नवीन जोडलेली पुस्तके: <b>{added_cnt}</b>\n"
+            f"• स्टोअरमधील एकूण उत्पादने: <b>{len(all_prods)}</b>\n\n"
+            f"सर्व पुस्तके आता थेट वेब स्टोअरवर उपलब्ध आहेत:\n🔗 {get_store_web_url()}",
+            parse_mode="HTML"
+        )
+
+    elif data == "admin_gen_qbank":
+        if update.effective_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Restricted to administrators only.", show_alert=True)
+            return
+        await q.answer("📑 प्रश्नसंच तयार होत आहे...")
+        await question_bank_cmd(update, context)
+
+    elif data == "admin_gen_ca":
+        if update.effective_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Restricted to administrators only.", show_alert=True)
+            return
+        await q.answer("📰 चालू घडामोडी PDF तयार होत आहे...")
+        status_msg = await q.message.reply_text("⏳ <i>चालू घडामोडी PDF तयार होत आहे... कृपया थोडा वेळ थांबा.</i>", parse_mode="HTML")
+        try:
+            now = datetime.now()
+            curr_month_id = f"prod_ca_{now.year}_{now.month:02d}"
+            pdf_path = await asyncio.to_thread(packaging_agent.ensure_product_pdf, curr_month_id, db_path=DB_PATH)
+            if pdf_path and Path(pdf_path).exists():
+                with open(pdf_path, "rb") as f:
+                    await context.bot.send_document(
+                        chat_id=q.message.chat_id,
+                        document=f,
+                        filename=Path(pdf_path).name,
+                        caption=f"📰 <b>चालू घडामोडी विशेष ई-बुक तयार झाले!</b>\nमहिना: {now.strftime('%B %Y')}",
+                        parse_mode="HTML"
+                    )
+                await status_msg.delete()
+            else:
+                await status_msg.edit_text("⚠️ चालू घडामोडी PDF तयार करता आली नाही. कृपया लॉग तपासा.")
+        except Exception as e:
+            await status_msg.edit_text(f"⚠️ त्रुटी: {html.escape(str(e))}")
+
+    elif data == "admin_visitor_stats":
+        if update.effective_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Restricted to administrators only.", show_alert=True)
+            return
+        await q.answer()
+        await visitors_cmd(update, context)
+
+    elif data == "admin_dl_zip":
+        if update.effective_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Restricted to administrators only.", show_alert=True)
+            return
+        await q.answer()
+        await download_store_content_cmd(update, context)
 
     elif data == "analyze":
         keyboard = [[InlineKeyboardButton(cat, callback_data=f"cat:{cat}")] for cat in CATEGORIES]
@@ -2501,7 +2562,8 @@ async def paid_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines = ["<b>Recent ₹99 Channel Payment Submissions:</b>\n"]
     for pid, uid, uname, fname, status, created in rows:
         lines.append(f"• <b>#{pid}:</b> {fname} (@{uname or 'none'}) | ID: <code>{uid}</code> | <b>{status.upper()}</b> | {created}")
-    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    chat_id = update.effective_chat.id
+    await context.bot.send_message(chat_id=chat_id, text="\n".join(lines), parse_mode="HTML")
 
 async def post_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
@@ -2752,8 +2814,12 @@ async def quiz_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def visitors_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin command: Displays real-time details of visitors to the ExamRankers Digital Store."""
+    chat_id = update.effective_chat.id
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ Restricted to administrators.")
+        if update.callback_query:
+            await update.callback_query.answer("⛔ Restricted to administrators.", show_alert=True)
+        else:
+            await context.bot.send_message(chat_id=chat_id, text="⛔ Restricted to administrators.")
         return
 
     with get_connection() as db:
@@ -2788,7 +2854,8 @@ async def visitors_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         lines.append("<i>अद्याप कोणत्याही व्हिजिटरची नोंद झालेली नाही.</i>")
 
-    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    chat_id = update.effective_chat.id
+    await context.bot.send_message(chat_id=chat_id, text="\n".join(lines), parse_mode="HTML")
 
 async def set_ad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Allows admin to update active sponsor ad: /set_ad Text | Button | URL"""
@@ -5406,8 +5473,8 @@ async def admin_panel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Restricted to bot administrators.")
         return
 
-    admin_token = (os.getenv("TELEGRAM_BOT_TOKEN") or "admin")[:16]
-    web_admin_url = f"{get_store_web_url()}/admin?token={admin_token}"
+    admin_key = os.getenv("ADMIN_API_KEY", "").strip()
+    web_admin_url = f"{get_store_web_url()}/admin" + (f"?key={admin_key}" if admin_key else "")
 
     text = (
         "⚙️ <b>ExamRankers™ अधिकृत ॲडमिन कंट्रोल पॅनेल</b>\n"
@@ -5443,11 +5510,19 @@ async def admin_panel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def download_store_content_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin command: Packages all digital product PDFs into a single ZIP file for 1-click download."""
     user = update.effective_user
+    chat_id = update.effective_chat.id
     if user.id not in ADMIN_IDS:
-        await update.message.reply_text("⛔ Restricted to administrators only.")
+        if update.callback_query:
+            await update.callback_query.answer("⛔ Restricted to administrators only.", show_alert=True)
+        else:
+            await context.bot.send_message(chat_id=chat_id, text="⛔ Restricted to administrators only.")
         return
 
-    status_msg = await update.message.reply_text("⏳ <i>सर्व १८ डिजिटल ई-बुक्स गोळा करून ZIP आर्काइव्ह तयार करत आहे...</i>", parse_mode="HTML")
+    status_msg = await context.bot.send_message(
+        chat_id=chat_id,
+        text="⏳ <i>सर्व १८ डिजिटल ई-बुक्स गोळा करून ZIP आर्काइव्ह तयार करत आहे...</i>",
+        parse_mode="HTML"
+    )
 
     products = packaging_agent.get_all_products(DB_PATH)
     storage_products_dir = STORAGE_DIR / "products"
@@ -5469,8 +5544,8 @@ async def download_store_content_cmd(update: Update, context: ContextTypes.DEFAU
             zf.write(f, arcname=f.name)
 
     zip_size_mb = round(zip_path.stat().st_size / (1024 * 1024), 2)
-    admin_token = (os.getenv("TELEGRAM_BOT_TOKEN") or "admin")[:16]
-    web_dl_url = f"{get_store_web_url()}/admin/download_all_products?token={admin_token}"
+    admin_key = os.getenv("ADMIN_API_KEY", "").strip()
+    web_dl_url = f"{get_store_web_url()}/admin/download_all_products" + (f"?key={admin_key}" if admin_key else "")
 
     caption = (
         f"📦 <b>ExamRankers अधिकृत ई-स्टोअर संपूर्ण सामग्री (ZIP)</b>\n"
