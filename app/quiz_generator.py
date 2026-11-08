@@ -32,6 +32,63 @@ def normalize_question_text(q_text: str) -> str:
     t = re.sub(r"[^\w\s]", "", t, flags=re.UNICODE)
     return re.sub(r"\s+", " ", t).strip().lower()
 
+def resolve_quiz_correct_index(q_data: dict, raw_opts: list) -> int:
+    """
+    Robustly resolves 0-based correct option index across all formats:
+    - Explicit 'correct_option_index' (0..3)
+    - Explicit 'correct_option_number' (1..4)
+    - 'correct' or 'answer' field with option letter/num (A, B, C, D, पर्याय १/२/३/४, 1..4)
+    - Option text match
+    """
+    if "correct_option_index" in q_data and isinstance(q_data["correct_option_index"], int):
+        idx = q_data["correct_option_index"]
+        if 0 <= idx < len(raw_opts):
+            return idx
+    if "correct_option_number" in q_data:
+        try:
+            num = int(q_data["correct_option_number"])
+            if 1 <= num <= len(raw_opts):
+                return num - 1
+        except Exception:
+            pass
+
+    ans_text = str(q_data.get("answer") or q_data.get("correct") or "").strip()
+
+    # 1. Check for explicit English or numeric option markers (anchored to avoid matching letters inside words)
+    m = re.search(r"^(?:(?:पर्याय|option|opt)\s*)?([1-4]|[A-Da-d])(?:\b|[\)\:\.\s]|$)", ans_text, re.I)
+    if m:
+        marker = m.group(1).upper()
+        mapping = {"1": 0, "2": 1, "3": 2, "4": 3, "A": 0, "B": 1, "C": 2, "D": 3}
+        if marker in mapping and mapping[marker] < len(raw_opts):
+            return mapping[marker]
+
+    # Devanagari numerals: १ -> 0, २ -> 1, ३ -> 2, ४ -> 3
+    for dev_num, dev_idx in [("१", 0), ("२", 1), ("३", 2), ("४", 3)]:
+        if f"पर्याय {dev_num}" in ans_text or f"{dev_num})" in ans_text or f"{dev_num}." in ans_text or ans_text.startswith(dev_num):
+            if dev_idx < len(raw_opts):
+                return dev_idx
+
+    # 2. Match cleaned option text against ans_text / correct
+    clean_target = re.sub(r"^[A-Da-d1-4][\.\):\-]\s*", "", ans_text).strip().lower()
+    clean_target = re.sub(r"\[Correct Option\]|rightAns|[✓✔☑]", "", clean_target).strip()
+    for idx, opt in enumerate(raw_opts):
+        clean_opt = re.sub(r"^[A-Da-d1-4][\.\):\-]\s*", "", str(opt)).strip().lower()
+        clean_opt = re.sub(r"\[Correct Option\]|rightAns|[✓✔☑]", "", clean_opt).strip()
+        if clean_opt and clean_target:
+            if clean_opt == clean_target or clean_opt in clean_target or clean_target in clean_opt:
+                return idx
+
+    # 3. Check explanation field for any explicit option citation
+    exp_text = str(q_data.get("explanation") or "").strip()
+    m_exp = re.search(r"(?:पर्याय|option|opt)\s*([1-4]|[A-Da-d]|१|२|३|४)", exp_text, re.I)
+    if m_exp:
+        mark = m_exp.group(1).upper()
+        mapping = {"1": 0, "2": 1, "3": 2, "4": 3, "A": 0, "B": 1, "C": 2, "D": 3, "१": 0, "२": 1, "३": 2, "४": 3}
+        if mark in mapping and mapping[mark] < len(raw_opts):
+            return mapping[mark]
+
+    return 0
+
 def init_quiz_db(db_path: str = DEFAULT_DB_PATH):
     """Initializes the deduplication table for posted quizzes in bot.db."""
     dir_name = os.path.dirname(db_path)
@@ -75,7 +132,7 @@ def is_quiz_already_posted(question_hash: str, question_text: str = "", db_path:
                 return True
             if question_text:
                 norm_q = normalize_question_text(question_text)
-                if len(norm_q) > 15:
+                if len(norm_q) >= 6:
                     cur.execute("SELECT 1 FROM posted_quizzes WHERE normalized_q = ? LIMIT 1", (norm_q,))
                     if cur.fetchone() is not None:
                         return True
@@ -267,8 +324,15 @@ def extract_quizzes_from_records(
                     break
 
         if len(options_dict) >= 4 and str(c_num) in ("1", "2", "3", "4") and len(q_text) >= 5:
-            opts = [options_dict[str(k)][:95] for k in ["1", "2", "3", "4"]]
-            c_idx = int(c_num) - 1
+            # Clean each option: strip correct markers and prefixes
+            opts = []
+            for k in ["1", "2", "3", "4"]:
+                raw_o = str(options_dict.get(str(k), ""))
+                clean_o = re.sub(r"\[Correct Option\]|rightAns|[✓✔☑]", "", raw_o, flags=re.I)
+                clean_o = re.sub(r"^[A-Da-d1-4][\.\):\-]\s*", "", clean_o).strip()
+                opts.append(clean_o[:95])
+
+            c_idx = resolve_quiz_correct_index(r, opts)
             sec = r.get("section", "General")
 
             # Check deduplication against in-memory batch and database
@@ -279,8 +343,8 @@ def extract_quizzes_from_records(
                 continue
             seen_hashes.add(q_hash)
 
-            c_txt = options_dict[str(c_num)]
-            exp = f"अधिकृत उत्तर: पर्याय {c_num} ({c_txt[:50]}). {sec} पॅटर्ननुसार प्रमाणित स्पष्टीकरण."[:195]
+            c_txt = opts[c_idx] if 0 <= c_idx < len(opts) else options_dict.get(str(c_num), "")
+            exp = f"अधिकृत उत्तर: पर्याय {c_idx+1} ({c_txt[:50]}). {sec} पॅटर्ननुसार प्रमाणित स्पष्टीकरण."[:195]
 
             # If question has a passage, add prefix
             prefix = "[उताऱ्यावरील प्रश्न] " if passage else f"[{sec}] "

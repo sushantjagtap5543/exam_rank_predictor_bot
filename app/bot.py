@@ -2483,29 +2483,64 @@ async def quiz_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     track_user(user)
 
+    from app.quiz_generator import resolve_quiz_correct_index
+
+    # Pool of questions: curated daily questions + master qbank items
     daily = get_daily_latest_exam_questions()
-    questions = daily.get("questions", [])
+    questions = list(daily.get("questions", []))
+
+    # Also load from qbank_master.json for high diversity
+    try:
+        from pathlib import Path
+        import json
+        qb_file = Path("admin_storage/qbank_master.json")
+        if not qb_file.exists():
+            qb_file = Path(__file__).resolve().parent.parent / "admin_storage" / "qbank_master.json"
+        if qb_file.exists():
+            master_raw = json.loads(qb_file.read_text(encoding="utf-8"))
+            for m_item in master_raw[:250]:
+                opts = m_item.get("options", [])
+                if len(opts) >= 4:
+                    questions.append({
+                        "subject": m_item.get("subject", "General"),
+                        "question": re.sub(r"^\[.*?\]\s*", "", m_item.get("q", "")).strip(),
+                        "options": opts,
+                        "correct": m_item.get("correct", ""),
+                        "explanation": m_item.get("explanation", "")
+                    })
+    except Exception as e:
+        logger.warning(f"Could not load extra questions for quiz_cmd: {e}")
 
     if not questions:
         await context.bot.send_message(chat_id=chat_id, text="⚠️ सध्या क्विझ प्रश्न लोड होत आहेत. कृपया थोड्या वेळाने प्रयत्न करा.")
         return
 
     import random
-    q_data = random.choice(questions)
+    # Avoid recently asked questions in user_data session
+    recent_qs = context.user_data.get("recent_quizzes", [])
+    candidate_pool = [q for q in questions if q.get("question") not in recent_qs]
+    if not candidate_pool:
+        candidate_pool = questions
+        context.user_data["recent_quizzes"] = []
+
+    q_data = random.choice(candidate_pool)
+    context.user_data.setdefault("recent_quizzes", []).append(q_data.get("question"))
+    if len(context.user_data["recent_quizzes"]) > 30:
+        context.user_data["recent_quizzes"].pop(0)
+
     sub = q_data.get("subject", "General")
     q_text = f"[{sub}] {q_data['question']}"
     raw_opts = q_data.get("options", [])
 
-    # Clean option prefixes like A), B), C), D) for poll display
-    clean_opts = [re.sub(r"^[A-Da-d1-4][\.\):\-]\s*", "", o).strip()[:95] for o in raw_opts[:4]]
+    # Clean option prefixes like A), B), C), D) and checkmarks for poll display
+    clean_opts = []
+    for o in raw_opts[:4]:
+        co = re.sub(r"\[Correct Option\]|rightAns|[✓✔☑]", "", str(o), flags=re.I)
+        co = re.sub(r"^[A-Da-d1-4][\.\):\-]\s*", "", co).strip()
+        clean_opts.append(co[:95])
 
-    # Determine correct option index
-    ans_text = q_data.get("answer", "")
-    c_idx = 0
-    for idx, opt in enumerate(raw_opts[:4]):
-        if ans_text and (ans_text.startswith(opt[:3]) or opt.strip().lower() in ans_text.strip().lower()):
-            c_idx = idx
-            break
+    # Determine 100% verified correct option index
+    c_idx = resolve_quiz_correct_index(q_data, clean_opts)
 
     try:
         await context.bot.send_poll(

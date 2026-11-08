@@ -127,7 +127,7 @@ class AILeadDirector(BaseSeniorAgent):
         Inspects live system agents, API key configurations, and telemetry.
         """
         api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
-        model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001")
+        model = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
         return {
             "status": "operational",
             "active_mesh_protocol": "NEXUS-v2.6",

@@ -14,18 +14,17 @@ from typing import Optional, Dict, Any, List
 logger = logging.getLogger(__name__)
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash")
+DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
 FALLBACK_MODELS = [
-    "google/gemini-2.5-flash",
+    "google/gemini-2.0-flash-exp:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
+    "meta-llama/llama-3.1-8b-instruct:free",
+    "mistralai/mistral-7b-instruct:free",
+    "deepseek/deepseek-r1:free",
+    "qwen/qwen-2.5-coder-32b-instruct:free",
+    "google/gemma-2-9b-it:free",
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-    "recursive/flint-v1.0:free",
-    "cohere/north-mini-code:free",
-    "dots-studio/dots-3-note-preview:free",
-    "nvidia/nemotron-3.5-lightning:free",
-    "google/gemma-4-26b-a4b-it:free",
-    "google/gemma-4-31b-it:free",
-    "google/gemini-3.7-flash",
-    "google/gemini-2.5-pro"
+    "nvidia/nemotron-3.5-lightning:free"
 ]
 
 # Circuit breaker for invalid OpenRouter credentials (avoids stalling commands when API key is 401/403)

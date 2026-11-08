@@ -17,9 +17,9 @@ Open `exam_rank_predictor_bot/.env`:
 TELEGRAM_BOT_TOKEN=your_bot_token_here
 ADMIN_TELEGRAM_IDS=your_numeric_telegram_id
 
-# 2. OpenRouter Paid API Key (for AI Quiz Generation)
+# 2. OpenRouter API Key (100% Free AI Models Tier)
 OPENROUTER_API_KEY=your_openrouter_key_here
-OPENROUTER_MODEL=google/gemini-2.0-flash-001
+OPENROUTER_MODEL=google/gemini-2.0-flash-exp:free
 
 # 3. Paid Telegram Channel (₹99 Access)
 PAID_CHANNEL_ID=@your_paid_quiz_channel
