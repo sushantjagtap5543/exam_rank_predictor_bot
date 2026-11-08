@@ -455,7 +455,7 @@ async def send_quizzes_to_channel(
     sent_count = 0
     if header_text:
         try:
-            await bot.send_message(chat_id=target_chat, text=header_text, parse_mode="HTML")
+            await bot.send_message(chat_id=target_chat, text=header_text, parse_mode="HTML", protect_content=True)
             await asyncio.sleep(0.5)
         except Exception as e:
             logger.warning(f"Could not send header to channel {target_chat}: {e}")
@@ -477,7 +477,7 @@ async def send_quizzes_to_channel(
                     f"<blockquote>{passage[:3000]}</blockquote>\n\n"
                     "👇 <b>खालील प्रश्न वरील उताऱ्यावर आधारित आहे:</b>"
                 )
-                await bot.send_message(chat_id=target_chat, text=passage_msg, parse_mode="HTML")
+                await bot.send_message(chat_id=target_chat, text=passage_msg, parse_mode="HTML", protect_content=True)
                 await asyncio.sleep(1.0)
             except Exception as e:
                 logger.warning(f"Error sending comprehension passage to {target_chat}: {e}")
@@ -490,7 +490,8 @@ async def send_quizzes_to_channel(
                 type="quiz",
                 correct_option_id=q["correct_option_index"],
                 explanation=q.get("explanation", "")[:195],
-                is_anonymous=True
+                is_anonymous=True,
+                protect_content=True
             )
             # Mark as posted
             mark_quiz_as_posted(
@@ -522,7 +523,8 @@ async def send_quizzes_to_channel(
                         type="quiz",
                         correct_option_id=q["correct_option_index"],
                         explanation=q.get("explanation", "")[:195],
-                        is_anonymous=True
+                        is_anonymous=True,
+                        protect_content=True
                     )
                     mark_quiz_as_posted(
                         question_hash=q_hash,

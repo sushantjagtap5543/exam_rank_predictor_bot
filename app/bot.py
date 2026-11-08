@@ -3614,7 +3614,8 @@ async def post_mindmap_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         photo=photo_f,
                         caption=safe_cap,
                         parse_mode="HTML",
-                        reply_markup=InlineKeyboardMarkup(kb)
+                        reply_markup=InlineKeyboardMarkup(kb),
+                        protect_content=True
                     )
             else:
                 await context.bot.send_message(
@@ -3622,7 +3623,8 @@ async def post_mindmap_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text=safe_cap,
                     parse_mode="HTML",
                     reply_markup=InlineKeyboardMarkup(kb),
-                    disable_web_page_preview=True
+                    disable_web_page_preview=True,
+                    protect_content=True
                 )
         except Exception as pe:
             logger.warning(f"send_photo failed ({pe}); falling back to send_message with safe caption")
@@ -3631,7 +3633,8 @@ async def post_mindmap_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text=safe_cap,
                 parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup(kb),
-                disable_web_page_preview=True
+                disable_web_page_preview=True,
+                protect_content=True
             )
 
         record_mindmap_posted(topic["id"], topic["title"], DB_PATH)
@@ -3699,7 +3702,8 @@ async def post_promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         photo=photo_f,
                         caption=promo_caption,
                         parse_mode="HTML",
-                        reply_markup=InlineKeyboardMarkup(kb)
+                        reply_markup=InlineKeyboardMarkup(kb),
+                        protect_content=True
                     )
             else:
                 await context.bot.send_message(
@@ -3707,7 +3711,8 @@ async def post_promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text=promo_caption,
                     parse_mode="HTML",
                     reply_markup=InlineKeyboardMarkup(kb),
-                    disable_web_page_preview=True
+                    disable_web_page_preview=True,
+                    protect_content=True
                 )
         except Exception as pe:
             logger.warning(f"Promo send_photo failed ({pe}); falling back to send_message")
@@ -3716,7 +3721,8 @@ async def post_promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text=promo_caption,
                 parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup(kb),
-                disable_web_page_preview=True
+                disable_web_page_preview=True,
+                protect_content=True
             )
         msg_text = f"✅ <b>प्रमोशनल ॲड चॅनेलवर (<code>{target_chat}</code>) यशस्वीरित्या पोस्ट केली!</b>"
         if update.callback_query:
@@ -4490,11 +4496,14 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         path = parsed.path.rstrip("/")
 
         content_len = int(self.headers.get("Content-Length", 0))
-        if content_len > 1_048_576:
+        max_allowed_len = 52_428_800 if path == "/api/admin/upload_pdf" else 1_048_576
+        if content_len > max_allowed_len:
             self.send_response(413)
             self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            self.wfile.write(json.dumps({"error": "Payload Too Large: Maximum request size is 1 MB"}).encode("utf-8"))
+            err_limit_mb = max_allowed_len // (1024 * 1024)
+            self.wfile.write(json.dumps({"error": f"Payload Too Large: Maximum allowed size is {err_limit_mb} MB"}).encode("utf-8"))
             return
 
         raw_body_bytes = b""
@@ -4974,13 +4983,13 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
 
             # Check if this is a Cashfree dashboard test ping / probe
             event_type = str(data.get("type", "")).upper()
-            is_test_event = "TEST" in event_type or str(data.get("event", "")).lower() == "test"
+            is_test_event = event_type in ("TEST", "TEST_WEBHOOK", "TEST_NOTIFICATION") or str(data.get("event", "")).lower() == "test"
 
             cf_client = get_cashfree_client()
             valid_sig, sig_err = cf_client.verify_webhook_signature(raw_body_bytes, signature, timestamp)
             if not valid_sig:
-                # If Cashfree merchant dashboard test button sent dummy signature/timestamp
-                if is_test_event or "test" in str(signature).lower() or not signature:
+                # If Cashfree merchant dashboard test button sent test event
+                if is_test_event:
                     logger.info("Acknowledged Cashfree test webhook with 200 OK.")
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -5003,7 +5012,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             cf_payment_obj = webhook_data.get("payment", {})
             order_id = cf_order_obj.get("order_id") or data.get("order_id", "")
 
-            if not order_id or is_test_event or "TEST" in str(order_id).upper():
+            if not order_id or is_test_event:
                 # Acknowledge Cashfree test events with 200 OK
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -5576,7 +5585,8 @@ async def post_store_promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYP
         text=promo_text,
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(kb),
-        disable_web_page_preview=True
+        disable_web_page_preview=True,
+        protect_content=True
     )
     await update.message.reply_text(f"✅ Digital Product ॲड चॅनेलवर यशस्वीरित्या पोस्ट केली! (Product: {target_prod['title']})")
 
@@ -5732,7 +5742,8 @@ async def check_and_post_latest_youtube_videos(bot, channel_target: str, yt_url:
                 text=post_msg,
                 parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup(kb),
-                disable_web_page_preview=False
+                disable_web_page_preview=False,
+                protect_content=True
             )
             logger.info(f"📢 Broadcasted new YouTube video '{video_title}' to channel {channel_target}")
 

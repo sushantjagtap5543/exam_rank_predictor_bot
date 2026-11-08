@@ -631,7 +631,8 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 <div class="section-title">
                     📦 डिजिटल ई-बुक्स व्यवस्थापन (Digital Products Catalog — {len(products)} Titles)
                 </div>
-                <div style="display:flex; gap:8px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <input type="text" placeholder="🔍 शीर्षक किंवा ID शोधा..." oninput="filterProductsTable(this.value)" style="padding:6px 12px; background:#1e293b; border:1px solid #334155; border-radius:6px; color:#fff; font-size:12px; width:210px; outline:none;">
                     <button class="btn btn-sm btn-gold" onclick="openAddModal()">➕ Add Product</button>
                     <button class="btn btn-sm btn-outline" onclick="location.reload()">🔄 रिफ्रेश</button>
                 </div>
@@ -690,7 +691,8 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                     🛒 थेट ऑर्डर्स व पेमेंट पडताळणी (Customer Orders & UTR Approvals)
                     <span class="badge badge-yellow" style="margin-left:8px;">{pending_count} प्रलंबित</span>
                 </div>
-                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                    <input type="text" placeholder="🔍 Email किंवा Token शोधा..." oninput="filterOrdersTable(this.value)" style="padding:6px 12px; background:#1e293b; border:1px solid #334155; border-radius:6px; color:#fff; font-size:12px; width:200px; outline:none;">
                     <button class="filter-tab active" onclick="filterOrders('all', this)">सर्व ({len(recent_orders)})</button>
                     <button class="filter-tab" onclick="filterOrders('pending', this)">⏳ प्रलंबित ({pending_count})</button>
                     <button class="filter-tab" onclick="filterOrders('approved', this)">✅ मंजूर ({approved_count})</button>
@@ -710,7 +712,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                             <th style="text-align:center; min-width:180px;">ॲक्शन (Actions)</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="ordersTbody">
                         {"".join(order_rows_html) if order_rows_html else '<tr><td colspan="7" style="text-align:center; padding:20px; color:#64748b;">अद्याप कोणतीही ऑर्डर नोंदवलेली नाही.</td></tr>'}
                     </tbody>
                 </table>
@@ -900,6 +902,27 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             }}
         }}
 
+        function showToast(message, type = 'info') {{
+            let container = document.getElementById('toastContainer');
+            if (!container) {{
+                container = document.createElement('div');
+                container.id = 'toastContainer';
+                container.style.cssText = 'position:fixed; top:24px; right:24px; z-index:999999; display:flex; flex-direction:column; gap:12px; pointer-events:none;';
+                document.body.appendChild(container);
+            }}
+            const toast = document.createElement('div');
+            const bg = type === 'success' ? '#059669' : type === 'error' ? '#dc2626' : '#0284c7';
+            toast.style.cssText = `background:${{bg}}; color:#ffffff; padding:14px 22px; border-radius:12px; font-weight:600; font-size:14px; box-shadow:0 12px 30px rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.15); opacity:0; transform:translateY(-12px); transition:all 0.3s cubic-bezier(0.16, 1, 0.3, 1); pointer-events:auto; max-width:420px; line-height:1.45; word-break:break-word;`;
+            toast.innerHTML = message;
+            container.appendChild(toast);
+            setTimeout(() => {{ toast.style.opacity = '1'; toast.style.transform = 'translateY(0)'; }}, 10);
+            setTimeout(() => {{
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(-12px)';
+                setTimeout(() => toast.remove(), 350);
+            }}, 4500);
+        }}
+
         async function adminFetch(url, options = {{}}) {{
             const adminKey = getAdminKey();
             const headers = options.headers || {{}};
@@ -907,17 +930,46 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 headers['X-Admin-Key'] = adminKey;
             }}
             options.headers = headers;
-            let res = await fetch(url, options);
+            let res;
+            try {{
+                res = await fetch(url, options);
+            }} catch (netErr) {{
+                showToast('❌ सर्व्हरशी संपर्क होऊ शकला नाही. इंटरनेट किंवा सर्व्हर चालू आहे का ते तपासा.', 'error');
+                throw netErr;
+            }}
             if (res.status === 403) {{
                 const promptKey = prompt('🔑 कृपया अधिकृत ॲडमिन API Key प्रविष्ट करा (Enter Admin Key):');
                 if (promptKey) {{
                     sessionStorage.setItem('admin_key', promptKey.trim());
                     headers['X-Admin-Key'] = promptKey.trim();
                     options.headers = headers;
-                    res = await fetch(url, options);
+                    try {{
+                        res = await fetch(url, options);
+                    }} catch (retryErr) {{
+                        showToast('❌ सर्व्हरशी संपर्क होऊ शकला नाही: ' + retryErr.message, 'error');
+                        throw retryErr;
+                    }}
                 }}
             }}
             return res;
+        }}
+
+        function filterProductsTable(query) {{
+            const q = (query || '').toLowerCase().trim();
+            const rows = document.querySelectorAll('tbody tr[id^="row_"]');
+            rows.forEach(row => {{
+                const text = row.innerText.toLowerCase();
+                row.style.display = (!q || text.includes(q)) ? '' : 'none';
+            }});
+        }}
+
+        function filterOrdersTable(query) {{
+            const q = (query || '').toLowerCase().trim();
+            const rows = document.querySelectorAll('#ordersTbody tr');
+            rows.forEach(row => {{
+                const text = row.innerText.toLowerCase();
+                row.style.display = (!q || text.includes(q)) ? '' : 'none';
+            }});
         }}
 
         function openAddModal() {{
@@ -943,10 +995,24 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             document.getElementById(modalId).style.display = 'none';
         }}
 
-        // Direct PDF file upload
+        // Direct PDF file upload with size validation & progress toast
         async function uploadDirectPdf(input) {{
             if (!input.files || input.files.length === 0) return;
             const file = input.files[0];
+            if (!file.name.toLowerCase().endsWith('.pdf')) {{
+                showToast('⚠️ कृपया फक्त वैध .pdf फाईल निवडा.', 'error');
+                input.value = '';
+                return;
+            }}
+            if (file.size > 52428800) {{
+                showToast('⚠️ फाईल खूप मोठी आहे (' + (file.size / (1024*1024)).toFixed(1) + ' MB). कमाल मर्यादा ५० MB आहे.', 'error');
+                input.value = '';
+                return;
+            }}
+
+            const fileSizeMb = (file.size / (1024 * 1024)).toFixed(2);
+            showToast(`⏳ PDF अपलोड सुरू आहे (${{file.name}}, ${{fileSizeMb}} MB)... कृपया थांबा.`, 'info');
+
             const reader = new FileReader();
             reader.onload = async function(e) {{
                 const base64Data = e.target.result.split(',')[1];
@@ -956,18 +1022,31 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                         headers: {{ 'Content-Type': 'application/json' }},
                         body: JSON.stringify({{ filename: file.name, base64_data: base64Data }})
                     }});
+                    if (!res.ok) {{
+                        const errTxt = await res.text();
+                        let msg = 'सर्व्हर त्रुटी (' + res.status + ')';
+                        try {{ const parsed = JSON.parse(errTxt); if (parsed.error || parsed.message) msg = parsed.error || parsed.message; }} catch(pe) {{}}
+                        showToast('❌ अपलोड त्रुटी: ' + msg, 'error');
+                        return;
+                    }}
                     const data = await res.json();
                     if (data.success) {{
-                        alert('✅ PDF फाईल यशस्वीरित्या अपलोड केली: ' + data.filename);
+                        showToast('✅ PDF फाईल यशस्वीरित्या अपलोड झाली: ' + data.filename, 'success');
                         document.getElementById('add_file').value = data.filename;
-                        document.getElementById('add_title').value = file.name.replace('.pdf', '').replace(/_/g, ' ');
+                        document.getElementById('add_title').value = file.name.replace(/\\.pdf$/i, '').replace(/_/g, ' ');
                         openAddModal();
                     }} else {{
-                        alert('❌ अपलोड त्रुटी: ' + data.message);
+                        showToast('❌ अपलोड त्रुटी: ' + (data.message || 'Unknown error'), 'error');
                     }}
                 }} catch(err) {{
-                    alert('❌ सर्व्हरशी संपर्क होऊ शकला नाही: ' + err.message);
+                    showToast('❌ सर्व्हरशी संपर्क होऊ शकला नाही: ' + (err.message || 'Network error'), 'error');
+                }} finally {{
+                    input.value = '';
                 }}
+            }};
+            reader.onerror = function() {{
+                showToast('❌ फाईल वाचताना स्थानिक त्रुटी आली.', 'error');
+                input.value = '';
             }};
             reader.readAsDataURL(file);
         }}

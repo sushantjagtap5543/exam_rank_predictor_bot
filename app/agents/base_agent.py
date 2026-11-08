@@ -15,12 +15,14 @@ from app.ai_client import get_ai_client, OPENROUTER_FREE_MODELS
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-exp:free")
+DEFAULT_MODEL = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-lightning:free")
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 FALLBACK_MODELS = OPENROUTER_FREE_MODELS
 
 # Circuit breaker for invalid OpenRouter credentials (avoids stalling commands when API key is 401/403)
 _AUTH_FAILED_UNTIL: float = 0.0
+# Cache retired/deprecated models (404) to avoid calling them repeatedly
+_RETIRED_MODELS = set()
 
 class BaseSeniorAgent:
     """
@@ -82,11 +84,11 @@ class BaseSeniorAgent:
             {"role": "user", "content": task_prompt}
         ]
 
-        models_to_try = [DEFAULT_MODEL] + [m for m in FALLBACK_MODELS if m != DEFAULT_MODEL]
+        models_to_try = [m for m in ([DEFAULT_MODEL] + [m for m in FALLBACK_MODELS if m != DEFAULT_MODEL]) if m not in _RETIRED_MODELS]
 
         try:
-            async with httpx.AsyncClient(timeout=3.5) as client:
-                for model in models_to_try[:2]:  # Try at most 2 models with 3.5s timeout for fast response
+            async with httpx.AsyncClient(timeout=4.0) as client:
+                for model in models_to_try[:3]:  # Try up to 3 verified free models with fast timeout
                     try:
                         payload = {
                             "model": model,
@@ -120,6 +122,13 @@ class BaseSeniorAgent:
                             _AUTH_FAILED_UNTIL = time.time() + 600.0
                             logger.warning(f"OpenRouter returned {response.status_code}. Circuit breaker tripped; using instant domain fallback.")
                             break
+                        elif response.status_code == 404:
+                            _RETIRED_MODELS.add(model)
+                            logger.warning(f"OpenRouter model '{model}' returned HTTP 404. Blacklisting and trying next free model.")
+                            continue
+                        elif response.status_code == 429:
+                            logger.warning(f"Model {model} hit rate limit (429); switching to next free model.")
+                            continue
                         else:
                             logger.warning(f"Model {model} returned HTTP {response.status_code}")
                     except httpx.TimeoutException:

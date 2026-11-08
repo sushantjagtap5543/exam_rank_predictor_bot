@@ -32,15 +32,16 @@ DEFAULT_CACHE_DB = os.getenv("DATABASE_PATH", "bot.db")
 
 # Strict list of verified free OpenRouter models
 OPENROUTER_FREE_MODELS = [
-    "google/gemini-2.0-flash-exp:free",
-    "meta-llama/llama-3.3-70b-instruct:free",
+    "nvidia/nemotron-3.5-lightning:free",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "liquid/lfm-2.5-2.6b:free",
+    "google/gemma-4-31b-it:free",
+    "google/gemma-4-26b-a4b-it:free",
+    "cohere/north-mini-code:free",
     "meta-llama/llama-3.1-8b-instruct:free",
     "mistralai/mistral-7b-instruct:free",
     "deepseek/deepseek-r1:free",
     "qwen/qwen-2.5-coder-32b-instruct:free",
-    "google/gemma-2-9b-it:free",
-    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-    "nvidia/nemotron-3.5-lightning:free"
 ]
 
 def init_ai_cache_db(db_path: str = DEFAULT_CACHE_DB):
