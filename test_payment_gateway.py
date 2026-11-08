@@ -139,6 +139,15 @@ class TestPaymentGatewaySecurity(unittest.TestCase):
         self.assertIn("QuizChannel_123456", details["upi_uri"])
         self.assertIn("amount", details)
 
+    def test_05_cashfree_client_test_mode(self):
+        """Verifies that Cashfree client initializes properly and handles test verification."""
+        from app.cashfree_client import get_cashfree_client
+        cf = get_cashfree_client()
+        self.assertIsNotNone(cf)
+        # Empty signature rejected properly for non-test calls
+        valid, err = cf.verify_webhook_signature(b'{}', '')
+        self.assertFalse(valid)
+
 if __name__ == "__main__":
     unittest.main()
 

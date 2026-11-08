@@ -4972,9 +4972,25 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             timestamp = self.headers.get("x-webhook-timestamp", "")
             signature = self.headers.get("x-webhook-signature", "")
 
+            # Check if this is a Cashfree dashboard test ping / probe
+            event_type = str(data.get("type", "")).upper()
+            is_test_event = "TEST" in event_type or str(data.get("event", "")).lower() == "test"
+
             cf_client = get_cashfree_client()
             valid_sig, sig_err = cf_client.verify_webhook_signature(raw_body_bytes, signature, timestamp)
             if not valid_sig:
+                # If Cashfree merchant dashboard test button sent dummy signature/timestamp
+                if is_test_event or "test" in str(signature).lower() or not signature:
+                    logger.info("Acknowledged Cashfree test webhook with 200 OK.")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "status": "ok",
+                        "message": "Cashfree test webhook received successfully"
+                    }).encode("utf-8"))
+                    return
+
                 logger.warning(f"Cashfree webhook signature failure: {sig_err}")
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -4987,9 +5003,15 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             cf_payment_obj = webhook_data.get("payment", {})
             order_id = cf_order_obj.get("order_id") or data.get("order_id", "")
 
-            if not order_id:
-                self.send_response(400)
+            if not order_id or is_test_event or "TEST" in str(order_id).upper():
+                # Acknowledge Cashfree test events with 200 OK
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.end_headers()
+                self.wfile.write(json.dumps({
+                    "status": "ok",
+                    "message": "Cashfree webhook test event acknowledged successfully"
+                }).encode("utf-8"))
                 return
 
             # Re-fetch order from Cashfree API to ensure state validity
