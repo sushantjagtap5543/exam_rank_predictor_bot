@@ -122,8 +122,14 @@ class FulfillmentEmailAgent(BaseSeniorAgent):
         Email delivery is disabled by architectural policy.
         Digital products are delivered strictly via secure 1-click download on the store.
         """
-        logger.info(f"Email dispatch bypassed for {to_email} (Product delivered via instant download link).")
-        return True, "ई-बुक थेट डाऊनलोडसाठी उपलब्ध आहे."
+        # Check if email dispatch is globally enabled in config
+        dispatch_enabled = os.getenv("ENABLE_FULFILLMENT_EMAIL", "false").strip().lower() in ("true", "1", "yes")
+        if not dispatch_enabled:
+            logger.info(f"Email dispatch bypassed for {to_email} (Product delivered via instant download link).")
+            return True, "ई-बुक थेट डाऊनलोडसाठी उपलब्ध आहे."
+
+        smtp_host = os.getenv("SMTP_HOST", "").strip()
+        smtp_port = int(os.getenv("SMTP_PORT", 587))
         smtp_user = os.getenv("SMTP_USER", "").strip()
         smtp_pass = os.getenv("SMTP_PASSWORD", "").strip() or os.getenv("SMTP_PASS", "").strip()
         sender_email = os.getenv("SENDER_EMAIL", "").strip() or os.getenv("SMTP_FROM", "").strip() or smtp_user or "support@examrankers.com"
