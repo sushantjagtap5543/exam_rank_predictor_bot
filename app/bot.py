@@ -6018,15 +6018,20 @@ def main():
     packaging_agent.init_products_db(DB_PATH)
     logger.info("Products database initialized (Manual Admin Control mode).")
     logger.info("Initializing Telegram application...")
-    app = (
+    bot_builder = (
         Application.builder()
         .token(TOKEN)
-        .read_timeout(30)
-        .write_timeout(30)
-        .connect_timeout(30)
+        .read_timeout(180)
+        .write_timeout(180)
+        .connect_timeout(60)
         .post_init(set_bot_commands)
-        .build()
     )
+    # Support custom/local Telegram Bot API Server for unlimited 2000 MB (2 GB) uploads/downloads
+    custom_bot_api = os.getenv("TELEGRAM_BOT_API_URL", "").strip()
+    if custom_bot_api:
+        logger.info(f"Custom local Telegram Bot API server configured: {custom_bot_api} (Enables unlimited 2GB downloads)")
+        bot_builder = bot_builder.base_url(custom_bot_api.rstrip("/") + "/bot").base_file_url(custom_bot_api.rstrip("/") + "/file/bot")
+    app = bot_builder.build()
     app.add_error_handler(error_handler)
 
     # Core user commands (100% Free rank prediction & subject analysis)
