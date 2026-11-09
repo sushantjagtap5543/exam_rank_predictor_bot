@@ -22,7 +22,7 @@ RUN groupadd --gid ${APP_UID} ${APP_USER} && \
     useradd --uid ${APP_UID} --gid ${APP_USER} --shell /bin/bash --create-home ${APP_USER}
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
 
 COPY . .
 

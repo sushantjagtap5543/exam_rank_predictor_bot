@@ -4658,14 +4658,23 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         path = parsed.path.rstrip("/")
 
         content_len = int(self.headers.get("Content-Length", 0))
-        max_allowed_len = 52_428_800 if path == "/api/admin/upload_pdf" else 1_048_576
+        # Support unlimited admin PDF upload size (up to 500 MB) when configured via MAX_UPLOAD_MB
+        configured_max_mb = os.getenv("MAX_UPLOAD_MB", "unlimited").strip().lower()
+        if configured_max_mb in ("unlimited", "0", "-1", "none", ""):
+            max_admin_upload = 524_288_000  # 500 MB headroom for bulk Master TCS/IBPS PDFs
+        else:
+            try:
+                max_admin_upload = int(configured_max_mb) * 1024 * 1024
+            except ValueError:
+                max_admin_upload = 524_288_000
+
+        max_allowed_len = max_admin_upload if path == "/api/admin/upload_pdf" else 2_097_152
         if content_len > max_allowed_len:
             self.send_response(413)
             self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             err_limit_mb = max_allowed_len // (1024 * 1024)
-            self.wfile.write(json.dumps({"error": f"Payload Too Large: Maximum allowed size is {err_limit_mb} MB"}).encode("utf-8"))
+            self.wfile.write(json.dumps({"error": f"Payload Too Large: Maximum allowed size is {err_limit_mb} MB"}).encode())
             return
 
         raw_body_bytes = b""

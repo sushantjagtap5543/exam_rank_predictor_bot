@@ -332,7 +332,12 @@ def extract_post_and_metadata(text: str) -> dict:
         ("प्रयोगशाळा वैज्ञानिक", "प्रयोगशाळा वैज्ञानिक अधिकारी (Lab Tech)"),
         ("कनिष्ठ लेखापाल", "कनिष्ठ लेखापाल (Junior Accountant)"),
         ("लिपिक टंकलेखक", "लिपिक-टंकलेखक (Clerk Typist)"),
-        ("पशुधन पर्यवेक्षक", "पशुधन पर्यवेक्षक (Livestock Supervisor)")
+        ("पशुधन पर्यवेक्षक", "पशुधन पर्यवेक्षक (Livestock Supervisor)"),
+        ("शिपाई", "शिपाई (Peon)"),
+        ("peon", "शिपाई (Peon)"),
+        ("कक्ष सेवक", "कक्ष सेवक (Ward Boy)"),
+        ("ward boy", "कक्ष सेवक (Ward Boy)"),
+        ("सफाईगार", "सफाईगार (Sweeper)")
     ]
     for term, formal_name in known_posts:
         if term in first_chunk:
