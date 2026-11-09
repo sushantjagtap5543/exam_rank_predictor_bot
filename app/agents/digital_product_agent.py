@@ -607,7 +607,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         final_desc = description or f"TCS, IBPS व MPSC परीक्षांसाठी उपयुक्त अधिकृत डिजिटल ई-बुक ({filename}). सविस्तर स्पष्टीकरणासह तात्काळ डाऊनलोड उपलब्ध."
 
         import hashlib
-        prod_id = f"prod_file_{hashlib.md5(filename.encode()).hexdigest()[:10]}"
+        prod_id = f"prod_file_{hashlib.md5(filename.encode(), usedforsecurity=False).hexdigest()[:10]}"
 
         # Ensure the PDF is placed in admin_storage/products/ for instant downloads
         target_dir = Path(__file__).resolve().parent.parent.parent / "admin_storage" / "products"

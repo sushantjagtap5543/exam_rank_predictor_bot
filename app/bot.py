@@ -5054,7 +5054,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 order_amount=float(price_inr),
                 customer_email=email,
                 customer_phone=phone,
-                customer_id=f"cust_{hashlib.md5(email.encode()).hexdigest()[:12]}",
+                customer_id=f"cust_{hashlib.md5(email.encode(), usedforsecurity=False).hexdigest()[:12]}",
                 return_url=return_url
             )
 
@@ -5764,7 +5764,11 @@ async def check_and_post_latest_youtube_videos(bot, channel_target: str, yt_url:
         return
 
     try:
-        root = ET.fromstring(xml_text)
+        try:
+            import defusedxml.ElementTree as DefusedET
+            root = DefusedET.fromstring(xml_text)
+        except ImportError:
+            root = ET.fromstring(xml_text)  # nosec B314
     except Exception as e:
         logger.warning(f"Error parsing YouTube RSS XML: {e}")
         return
