@@ -1881,13 +1881,29 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
                     logger.warning(f"MTProto fallback attempt failed: {e}")
 
         if not downloaded or not Path(path).is_file() or Path(path).stat().st_size == 0:
-            await status_msg.edit_text(
-                "❌ <b>Download Error:</b> फाईल डाऊनलोड होऊ शकली नाही.\n\n"
-                "💡 <b>सर्वात सोपा व १००% अचूक पर्याय:</b>\n"
-                "तुमच्या DigiALM / परीक्षा पोर्टलची <b>थेट वेब लिंक</b> येथे चॅटमध्ये पेस्ट करा (उदा. <code>https://cdn.digialm.com/...</code>)\n"
-                "<i>(कोणतीही फाईल अपलोड न करता १ सेकंदात निकाल व रँक मिळते!)</i>",
-                parse_mode="HTML"
-            )
+            is_large_file = file_size >= 20_000_000
+            has_mtproto = bool(os.getenv("TELEGRAM_API_ID") and os.getenv("TELEGRAM_API_HASH"))
+            
+            if is_large_file and not has_mtproto:
+                size_mb = round(file_size / (1024 * 1024), 1)
+                admin_panel_link = f"{get_store_web_url()}/admin"
+                await status_msg.edit_text(
+                    f"⚠️ <b>मोठी फाईल मर्यादा ({size_mb} MB):</b>\n"
+                    "Telegram Bot API च्या सुरक्षेच्या नियमांनुसार २० MB पेक्षा मोठ्या फाईल्स थेट बॉट API द्वारे डाऊनलोड होऊ शकत नाहीत.\n\n"
+                    "💡 <b>या फाईलसाठी पुढील २ सोपे पर्याय वापरा:</b>\n\n"
+                    "1️⃣ <b>थेट DigiALM लिंक:</b> तुमच्या रिस्पॉन्स शीटची थेट वेब लिंक येथे चॅटमध्ये पेस्ट करा (उदा. <code>https://cdn.digialm.com/...</code>).\n\n"
+                    f"2️⃣ <b>ॲडमिन वेब पोर्टल:</b> जर तुम्ही ॲडमिन असाल, तर <b>{admin_panel_link}</b> वरून ही फाईल एका क्लिकमध्ये थेट अपलोड करा.\n\n"
+                    "3️⃣ <b>MTProto डायरेक्ट इंजिन:</b> .env मध्ये <code>TELEGRAM_API_ID</code> व <code>TELEGRAM_API_HASH</code> (my.telegram.org वरून) जोडल्यास बॉट स्वतः २०० MB+ फाईल्स थेट टेलिग्राम चॅटमधून डाऊनलोड करेल.",
+                    parse_mode="HTML"
+                )
+            else:
+                await status_msg.edit_text(
+                    "❌ <b>Download Error:</b> फाईल डाऊनलोड होऊ शकली नाही.\n\n"
+                    "💡 <b>सर्वात सोपा व १००% अचूक पर्याय:</b>\n"
+                    "तुमच्या DigiALM / परीक्षा पोर्टलची <b>थेट वेब लिंक</b> येथे चॅटमध्ये पेस्ट करा (उदा. <code>https://cdn.digialm.com/...</code>)\n"
+                    "<i>(कोणतीही फाईल अपलोड न करता १ सेकंदात निकाल व रँक मिळते!)</i>",
+                    parse_mode="HTML"
+                )
             return
 
         # Step 1: Check if this PDF was printed from DigiALM / TCS and recover original live web URL

@@ -1002,8 +1002,8 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 input.value = '';
                 return;
             }}
-            if (file.size > 52428800) {{
-                showToast('⚠️ फाईल खूप मोठी आहे (' + (file.size / (1024*1024)).toFixed(1) + ' MB). कमाल मर्यादा ५० MB आहे.', 'error');
+            if (file.size > 524288000) {{
+                showToast('⚠️ फाईल खूप मोठी आहे (' + (file.size / (1024*1024)).toFixed(1) + ' MB). कमाल मर्यादा ५०० MB आहे.', 'error');
                 input.value = '';
                 return;
             }}
