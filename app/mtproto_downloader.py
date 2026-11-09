@@ -57,14 +57,15 @@ async def download_file_mtproto(chat_id: int, message_id: int, destination_path:
         if not client:
             return False
 
-        async with asyncio.timeout(timeout_seconds):
+        async def _download_job():
             msg = await client.get_messages(chat_id, ids=message_id)
             if not msg or not msg.media:
                 logger.warning(f"Message {message_id} in {chat_id} has no downloadable media.")
                 return False
-
             out_path = await client.download_media(msg, file=destination_path)
             return bool(out_path and Path(out_path).exists() and Path(out_path).stat().st_size > 0)
+
+        return await asyncio.wait_for(_download_job(), timeout=timeout_seconds)
     except Exception as e:
         logger.warning(f"MTProto download failed for message {message_id}: {e}")
         return False

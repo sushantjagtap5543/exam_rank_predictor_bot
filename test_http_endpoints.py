@@ -130,6 +130,21 @@ class TestHTTPEndpoints(unittest.TestCase):
         self.assertTrue(data.get("success"))
         self.assertEqual(data.get("filename"), "test_admin_upload.pdf")
 
+    def test_upload_fake_pdf_rejected(self):
+        fake_pdf_bytes = b"This is just a text file renamed to .pdf"
+        b64_str = base64.b64encode(fake_pdf_bytes).decode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/admin/upload_pdf",
+            data=json.dumps({"filename": "fake_doc.pdf", "base64_data": b64_str}).encode("utf-8"),
+            headers={"Content-Type": "application/json", "X-Admin-Key": self.admin_key}
+        )
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(req)
+        self.assertEqual(ctx.exception.code, 400)
+        err_json = json.loads(ctx.exception.read().decode("utf-8"))
+        self.assertFalse(err_json.get("success"))
+        self.assertIn("अवैध PDF", err_json.get("message", ""))
+
     def test_order_action_api(self):
         with sqlite3.connect(DB_PATH) as db:
             db.execute("""

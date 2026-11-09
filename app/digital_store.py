@@ -974,16 +974,14 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None) -> str:
                             ⚡ स्मरण ट्रिक्स, शॉर्टकट सूत्रे व माइंड-हॅक्स समाविष्ट
                         </div>
                         <div class="card-meta">
-                            <span>⭐ ${{p.rating}} (${{p.reviews_count}})</span>
-                            <span>📄 ${{p.pages}} पृष्ठे</span>
-                            <span>⚡ ${{p.tier || 'Micro-Book'}}</span>
+                            <span>⚡ इन्स्टंट डिजिटल डाऊनलोड</span>
+                            <span>📄 ${{p.pages || '40+'}} पृष्ठे</span>
                         </div>
                     </div>
                     <div>
                         <div class="price-row">
                             <span class="current-price">₹${{p.price_inr}}</span>
-                            <span class="original-price">₹${{p.original_price_inr}}</span>
-                            <span class="discount-tag">${{Math.round((1 - p.price_inr/p.original_price_inr)*100)}}% OFF</span>
+                            <span style="font-size:12px; color:var(--text-muted);">एकवेळ खरेदी</span>
                         </div>
                         <div class="btn-group">
                             <button class="btn-sample" onclick="openSampleModal('${{p.id}}')">👀 नमुना पहा</button>

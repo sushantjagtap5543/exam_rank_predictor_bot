@@ -4327,8 +4327,8 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                     try:
                         cf_client = get_cashfree_client()
                         if cf_client.is_configured:
-                            cf_data = cf_client.get_order(cf_target_id)
-                            if (cf_data.get("order_status") or "").upper() == "PAID":
+                            ok, cf_data = cf_client.get_order(cf_target_id)
+                            if ok and isinstance(cf_data, dict) and (cf_data.get("order_status") or "").upper() == "PAID":
                                 with sqlite3.connect(DB_PATH) as db:
                                     db.execute("UPDATE product_orders SET status = 'paid', delivery_status = 'ready_for_download', delivered_at = CURRENT_TIMESTAMP WHERE id = ?", (order_info["id"],))
                                     db.execute("UPDATE digital_products SET sales_count = sales_count + 1 WHERE id = ?", (order_info["product_id"],))
@@ -4998,6 +4998,14 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 dest_path = dest_dir / safe_fn
 
                 pdf_bytes = base64.b64decode(b64)
+                if not pdf_bytes.startswith(b"%PDF-"):
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"success": False, "message": "अवैध PDF फाईल: केवळ खरी PDF फाईल (%PDF- हेडर असलेली) अपलोड करता येईल."}, ensure_ascii=False).encode("utf-8"))
+                    return
+
                 with open(dest_path, "wb") as f:
                     f.write(pdf_bytes)
 
@@ -5026,7 +5034,8 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 return
 
             prod_id = str(data.get("product_id", "")).strip()
-            email = str(data.get("email", "")).strip().lower()
+            email = str(data.get("email") or data.get("customer_email") or "").strip().lower()
+            phone = str(data.get("phone") or data.get("customer_phone") or "9999999999").strip() or "9999999999"
 
             if not email or not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
                 self.send_response(400)
@@ -5059,7 +5068,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 order_id=order_token,
                 order_amount=float(price_inr),
                 customer_email=email,
-                customer_phone=str(data.get("phone", "9999999999")).strip() or "9999999999",
+                customer_phone=phone,
                 customer_id=f"cust_{hashlib.md5(email.encode()).hexdigest()[:12]}",
                 return_url=return_url
             )
@@ -5135,8 +5144,8 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 return
 
             # Re-fetch order from Cashfree API to ensure state validity
-            cf_verified = cf_client.get_order(order_id)
-            if cf_verified.get("order_status") == "PAID":
+            ok, cf_verified = cf_client.get_order(order_id)
+            if ok and isinstance(cf_verified, dict) and cf_verified.get("order_status") == "PAID":
                 with sqlite3.connect(DB_PATH) as db:
                     db.row_factory = sqlite3.Row
                     local_order = db.execute("SELECT * FROM product_orders WHERE order_token = ? OR cf_order_id = ?", (order_id, order_id)).fetchone()
@@ -6010,7 +6019,7 @@ def main():
 
     # Callbacks and Message Handlers
     app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.Document.PDF, handle_document))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler((filters.TEXT & ~filters.COMMAND) | filters.PHOTO | filters.FORWARDED, handle_text_or_photo))
 
     logger.info("ExamRankers Telegram Bot started successfully!")

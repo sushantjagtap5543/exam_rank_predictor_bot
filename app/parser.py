@@ -432,11 +432,12 @@ def parse_answers(text: str):
 
     # Split questions ONLY at line starts to prevent mid-text mentions (e.g. "Refer to Q. 2") creating phantom questions
     # Supports English ("Q. 1", "Question 1") and Marathi ("प्रश्न १", "प्रश्न क्र. १", "प्र. क्र. 1")
-    split_pattern = r"(?m)(?=^\s*(?:Q\s*\.\s*\d+|Question\s*(?:No\.?|Number)?\s*\d+|प्रश्न\s*(?:क्र\.?|क्रमांक)?\s*[\d१-९]+|प्र\s*\.\s*क्र\s*\.\s*[\d१-९]+|Question\s*ID\s*[:\-]))"
-    if re.search(split_pattern, text, re.I):
-        parts = re.split(split_pattern, text, flags=re.I)
-    elif re.search(r"(?m)^\s*Question\s*ID\s*[:\-]", text, re.I):
-        parts = re.split(r"(?m)(?=^\s*Question\s*ID\s*[:\-])", text, flags=re.I)
+    qnum_pattern = r"(?m)(?=^\s*(?:Q\s*\.\s*\d+|Question\s*(?:No\.?|Number)?\s*\d+|प्रश्न\s*(?:क्र\.?|क्रमांक)?\s*[\d१-९]+|प्र\s*\.\s*क्र\s*\.\s*[\d१-९]+))"
+    qid_pattern = r"(?m)(?=^\s*Question\s*ID\s*[:\-])"
+    if re.search(qnum_pattern, text, re.I):
+        parts = re.split(qnum_pattern, text, flags=re.I)
+    elif re.search(qid_pattern, text, re.I):
+        parts = re.split(qid_pattern, text, flags=re.I)
     else:
         parts = re.split(r"(?m)(?=^\s*(?:Q\.\s*\d+|Question\s*\d+))", text, flags=re.I)
 
