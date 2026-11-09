@@ -1917,7 +1917,6 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
                 parse_mode="HTML"
             )
             try:
-                import httpx
                 clean_url = re.sub(r"(?<!:)//+", "/", recovered_url.strip())
                 headers = {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
