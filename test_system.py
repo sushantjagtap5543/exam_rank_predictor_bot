@@ -50,34 +50,38 @@ def test_monetization():
     assert "https://t.me/+EjtGp-pH4hMxZDM1" in link
     print("✅ Paid Channel link passed!")
 
-async def test_objection_analysis():
-    wrong_records = [
-        {
-            "question_id": "100234",
-            "section": "Reasoning",
-            "chosen_option_number": "2",
-            "correct_option_id": "4",
-            "raw_excerpt": "Select the missing number in series: 2, 5, 10, 17, ?"
-        }
-    ]
-    res, total_count, has_next, has_prev = await explain_wrong_answers_and_objections(wrong_records, "SSC CGL", max_questions=1)
-    assert len(res) == 1
-    assert "explanation" in res[0]
-    assert "objection_recommended" in res[0]
-    assert total_count == 1
-    print("✅ AI Wrong Answer Explanation & Objection Advisory passed!")
+def test_objection_analysis():
+    async def _impl():
+        wrong_records = [
+            {
+                "question_id": "100234",
+                "section": "Reasoning",
+                "chosen_option_number": "2",
+                "correct_option_id": "4",
+                "raw_excerpt": "Select the missing number in series: 2, 5, 10, 17, ?"
+            }
+        ]
+        res, total_count, has_next, has_prev = await explain_wrong_answers_and_objections(wrong_records, "SSC CGL", max_questions=1)
+        assert len(res) == 1
+        assert "explanation" in res[0]
+        assert "objection_recommended" in res[0]
+        assert total_count == 1
+        print("✅ AI Wrong Answer Explanation & Objection Advisory passed!")
+    asyncio.run(_impl())
 
-async def test_daily_topic_and_questions():
-    from app.ai_analysis import generate_topic_weightage_analysis, get_daily_latest_exam_questions
-    analysis = await generate_topic_weightage_analysis("मराठी व्याकरण प्रयोग समास सामान्य ज्ञान भूगोल", "तलाठी भरती २०२४")
-    assert "मराठी व्याकरण" in analysis
-    assert "दैनिक शिफ्ट" in analysis
-    print("✅ Paid Channel Daily Topic Weightage Analysis passed!")
+def test_daily_topic_and_questions():
+    async def _impl():
+        from app.ai_analysis import generate_topic_weightage_analysis, get_daily_latest_exam_questions
+        analysis = await generate_topic_weightage_analysis("मराठी व्याकरण प्रयोग समास सामान्य ज्ञान भूगोल", "तलाठी भरती २०२४")
+        assert "मराठी व्याकरण" in analysis
+        assert "दैनिक शिफ्ट" in analysis
+        print("✅ Paid Channel Daily Topic Weightage Analysis passed!")
 
-    daily_q = get_daily_latest_exam_questions()
-    assert len(daily_q["questions"]) >= 5
-    assert "मराठी व्याकरण" in daily_q["questions"][0]["subject"]
-    print("✅ Daily Latest Exam Questions engine passed!")
+        daily_q = get_daily_latest_exam_questions()
+        assert len(daily_q["questions"]) >= 5
+        assert "मराठी व्याकरण" in daily_q["questions"][0]["subject"]
+        print("✅ Daily Latest Exam Questions engine passed!")
+    asyncio.run(_impl())
 
 def test_post_and_multi_tier_ranks():
     from app.parser import extract_post_and_metadata
