@@ -27,3 +27,4 @@ def setup_test_environment():
     """Initializes the database and ensures offline isolation for all tests."""
     init_db()
     yield
+
