@@ -2575,6 +2575,55 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     await update.message.reply_text(msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb), disable_web_page_preview=True)
 
+async def delete_my_data_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    DPDP / Privacy Compliance: Allows a user to delete all their stored response sheets,
+    scores, roll numbers, and physical files from the server.
+    """
+    user = update.effective_user
+    if not user:
+        return
+
+    tg_id = user.id
+    deleted_files = 0
+    deleted_rows = 0
+
+    try:
+        with sqlite3.connect(DB_PATH) as db:
+            cur = db.execute("SELECT storage_path FROM uploads WHERE telegram_user_id = ?", (tg_id,))
+            file_paths = [r[0] for r in cur.fetchall() if r[0]]
+
+            # Delete physical files
+            for fp in file_paths:
+                try:
+                    p = Path(fp)
+                    if p.exists() and p.is_file():
+                        p.unlink()
+                        deleted_files += 1
+                except Exception as e:
+                    logger.warning(f"Failed to delete user file {fp}: {e}")
+
+            # Delete DB records
+            cur = db.execute("DELETE FROM uploads WHERE telegram_user_id = ?", (tg_id,))
+            deleted_rows = cur.rowcount
+
+            # Delete from users table
+            db.execute("DELETE FROM users WHERE telegram_id = ?", (tg_id,))
+            db.commit()
+
+        msg = (
+            "🗑️ <b>तुमचा डेटा यशस्वीरित्या हटवण्यात आला आहे (Data Erased).</b>\n\n"
+            f"• हटवलेल्या रिस्पॉन्स शीट्स: <b>{deleted_rows}</b>\n"
+            f"• सर्व्हरवरून नष्ट केलेल्या फाईल्स: <b>{deleted_files}</b>\n"
+            "• तुमची प्रोफाइल माहिती पूर्णपणे हटवण्यात आली आहे.\n\n"
+            "<i>DPDP ऍक्टनुसार तुमच्या गोपनीयतेचे (Privacy) पूर्ण संरक्षण केले जाते. धन्यवाद!</i>"
+        )
+    except Exception as e:
+        logger.error(f"Error executing delete_my_data for user {tg_id}: {e}", exc_info=True)
+        msg = f"❌ डेटा हटवताना तांत्रिक त्रुटी आली: {e}"
+
+    await update.message.reply_text(msg, parse_mode="HTML")
+
 async def channel_id_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Helper to detect channel ID: forward a message from your channel or use in channel."""
     chat = update.effective_chat
@@ -5990,6 +6039,7 @@ def main():
     app.add_handler(CommandHandler(["qbank", "question_bank", "oneliner"], question_bank_cmd))
     app.add_handler(CommandHandler(["post_mindmap", "mindmap"], post_mindmap_cmd))
     app.add_handler(CommandHandler(["post_promo", "advertise", "promo"], post_promo_cmd))
+    app.add_handler(CommandHandler(["delete_my_data", "erasedata", "deletedata"], delete_my_data_cmd))
     app.add_handler(CommandHandler("channel_id", channel_id_cmd))
     app.add_handler(CommandHandler(["channel_status", "test_channel"], channel_status_cmd))
     app.add_handler(CommandHandler("connect_channel", connect_channel_cmd))
