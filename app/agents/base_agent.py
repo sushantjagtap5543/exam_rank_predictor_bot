@@ -76,8 +76,12 @@ class BaseSeniorAgent:
         api_key = self.api_key or os.getenv("OPENROUTER_API_KEY", "").strip()
         system_prompt = self._build_system_prompt()
 
-        # If previously detected 401/403 in the last 10 minutes, use instant fallback without waiting
-        if time.time() < _AUTH_FAILED_UNTIL or not api_key:
+        # If previously detected 401/403 in the last 10 minutes, offline mode configured, or no key, use instant fallback
+        if (
+            os.getenv("AI_PROVIDER_CHAIN", "").strip().lower() == "offline"
+            or time.time() < _AUTH_FAILED_UNTIL
+            or not api_key
+        ):
             return self.get_offline_fallback(task_prompt, expect_json)
 
         messages = [

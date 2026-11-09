@@ -120,30 +120,69 @@ def _extract_text_with_green_ticks(doc) -> str:
         logger.warning(f"Tick extraction fallback: {e}")
         return "\n".join([p.get_text("text") for p in doc])
 
-def extract_pdf_text(path: str, max_ocr_pages: int = None) -> str:
+def is_allowed_response_url(url: str) -> bool:
+    """Validates that a recovered URL is an HTTPS URL from an authorized exam portal domain."""
+    try:
+        import urllib.parse
+        p = urllib.parse.urlparse(url.strip())
+        if p.scheme.lower() != "https":
+            return False
+        hostname = (p.hostname or "").lower()
+        if not hostname:
+            return False
+        allowed = (
+            "digialm.com", ".digialm.com",
+            "ibpsonline.ibps.in", ".ibpsonline.ibps.in",
+            "tcsion.com", ".tcsion.com"
+        )
+        return any(hostname == d or hostname.endswith("." + d.lstrip(".")) for d in allowed)
+    except Exception:
+        return False
+
+def extract_pdf_text_with_status(path: str, max_ocr_pages: int = None) -> tuple:
     """
-    Extracts text from all pages of a PDF document safely.
-    If the document has no digital text layer (scanned or printed as images),
-    automatically falls back to RapidOCR.
+    Extracts text from all pages of a PDF document safely while classifying extraction errors:
+    Returns (text, error_code):
+      - ("", "empty_file") if 0-byte or 0 pages
+      - ("", "password_protected") if doc.needs_pass or doc.is_encrypted
+      - ("", "corrupt_pdf") if fitz.FileDataError or file is not a valid PDF
+      - ("", "empty_ocr") if PDF contains no readable text layer and OCR yielded no text
+      - (text, "") on success
     """
-    text = ""
+    import os
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        return "", "empty_file"
+
     try:
         doc = fitz.open(path)
-        sample_chars = sum(len(doc[i].get_text("text").strip()) for i in range(min(3, len(doc))))
+    except (fitz.FileDataError, RuntimeError, Exception) as e:
+        logger.warning(f"Failed to open PDF {path}: {e}")
+        return "", "corrupt_pdf"
+
+    try:
+        if getattr(doc, "needs_pass", False) or getattr(doc, "is_encrypted", False):
+            doc.close()
+            return "", "password_protected"
+
+        total_pages = len(doc)
+        if total_pages == 0:
+            doc.close()
+            return "", "empty_file"
+
+        sample_chars = sum(len(doc[i].get_text("text").strip()) for i in range(min(3, total_pages)))
         if sample_chars >= 60:
             text = _extract_text_with_green_ticks(doc)
             doc.close()
-            return text
+            return (text, "") if text.strip() else ("", "empty_ocr")
 
         # Document is image-based / scanned -> run RapidOCR
         logger.info(f"PDF {path} has no embedded text layer. Running RapidOCR fallback...")
         ocr = get_ocr_engine()
         if not ocr:
             doc.close()
-            return text
+            return "", "empty_ocr"
 
         ocr_pages = []
-        total_pages = len(doc)
         limit = min(max_ocr_pages, total_pages) if max_ocr_pages else min(total_pages, 25)
         for i in range(limit):
             page = doc[i]
@@ -153,35 +192,54 @@ def extract_pdf_text(path: str, max_ocr_pages: int = None) -> str:
             if result:
                 ocr_pages.append("\n".join([line[1] for line in result]))
         doc.close()
-        return "\n".join(ocr_pages)
+        full_ocr = "\n".join(ocr_pages)
+        return (full_ocr, "") if full_ocr.strip() else ("", "empty_ocr")
     except Exception as e:
         logger.error(f"Error extracting PDF text from {path}: {e}")
-        return ""
+        try:
+            doc.close()
+        except Exception:
+            pass
+        return "", "corrupt_pdf"
+
+def extract_pdf_text(path: str, max_ocr_pages: int = None) -> str:
+    """
+    Extracts text from all pages of a PDF document safely.
+    If the document has no digital text layer (scanned or printed as images),
+    automatically falls back to RapidOCR.
+    """
+    text, _ = extract_pdf_text_with_status(path, max_ocr_pages)
+    return text
 
 def recover_digialm_url_from_pdf(path: str) -> str:
     """
     Inspects PDF metadata, link annotations, and runs a quick OCR on page 0
     to recover the original DigiALM / TCS web URL if printed as a raster PDF.
-    Returns the live full URL string if successfully reconstructed, else empty string.
+    Returns the live full URL string if successfully reconstructed and validated, else empty string.
     """
     try:
         doc = fitz.open(path)
+        if getattr(doc, "needs_pass", False) or getattr(doc, "is_encrypted", False):
+            doc.close()
+            return ""
         total_pages = len(doc)
         # 1. Embedded annotations / URI links
         for page in doc[:min(5, total_pages)]:
             for link in page.get_links():
                 uri = link.get("uri", "")
-                if any(k in uri.lower() for k in ["digialm.com", "touchstone", "ibpsonline", "tcsion"]):
+                if is_allowed_response_url(uri):
                     doc.close()
                     return uri
 
         # 2. Digital text layer
         for page in doc[:min(3, total_pages)]:
             txt = page.get_text("text")
-            m = re.search(r'(https?://[^\s"\'<>]+(?:digialm|touchstone|ibpsonline)[^\s"\'<>]*)', txt)
+            m = re.search(r'(https://[^\s"\'<>]+(?:digialm|touchstone|ibpsonline)[^\s"\'<>]*)', txt)
             if m:
-                doc.close()
-                return m.group(1)
+                cand = m.group(1)
+                if is_allowed_response_url(cand):
+                    doc.close()
+                    return cand
 
         # 3. Document Title metadata + Page 0 OCR footer (Microsoft Print to PDF)
         meta_title = doc.metadata.get("title", "")
@@ -196,8 +254,10 @@ def recover_digialm_url_from_pdf(path: str) -> str:
                 for line in res:
                     text_line = line[1]
                     if "http" in text_line and "digialm.com" in text_line and ".html" in text_line:
-                        doc.close()
-                        return text_line.strip()
+                        cand_url = text_line.strip()
+                        if is_allowed_response_url(cand_url):
+                            doc.close()
+                            return cand_url
                     if "digialm.com" in text_line and "touchstone" in text_line:
                         m_dir = re.search(r'([A-Za-z0-9_./]+)/(\d+)\.\.\.', text_line)
                         if m_dir and meta_raw_fn:
@@ -210,8 +270,9 @@ def recover_digialm_url_from_pdf(path: str) -> str:
                                 full_folder = prefix_digits + suffix_digits
                                 url = f"https://{base_path}/{full_folder}/{clean_fn}"
                                 clean_url = re.sub(r"(?<!:)//+", "/", url)
-                                doc.close()
-                                return clean_url
+                                if is_allowed_response_url(clean_url):
+                                    doc.close()
+                                    return clean_url
         doc.close()
     except Exception as e:
         logger.warning(f"Error checking PDF for DigiALM URL: {e}")

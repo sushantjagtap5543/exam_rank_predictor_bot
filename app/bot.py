@@ -107,6 +107,7 @@ from .monetization import (
 from .parser import (
     detect_exam,
     extract_pdf_text,
+    extract_pdf_text_with_status,
     extract_post_and_metadata,
     parse_answers,
     parse_html_response_sheet,
@@ -234,7 +235,14 @@ def validate_safe_url(url: str) -> Tuple[bool, str]:
         for family, socktype, proto, canonname, sockaddr in addr_info:
             ip_str = sockaddr[0]
             ip = ipaddress.ip_address(ip_str)
-            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast or ip_str.startswith("169.254."):
+            # Support RFC 6052 NAT64 Well-Known Prefix (64:ff9b::/96) used by Indian ISPs/telcos
+            if ip.version == 6 and ip in ipaddress.IPv6Network("64:ff9b::/96"):
+                embedded_v4 = ipaddress.ip_address(ip.packed[-4:])
+                if embedded_v4.is_private or embedded_v4.is_loopback or embedded_v4.is_link_local or str(embedded_v4).startswith("169.254."):
+                    return False, "असुरक्षित सर्व्हर पत्ता (Private or reserved IP blocked)."
+                continue
+
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip_str.startswith("169.254."):
                 return False, "असुरक्षित सर्व्हर पत्ता (Private or reserved IP blocked)."
         return True, ""
     except socket.gaierror:
@@ -1704,10 +1712,8 @@ async def handle_url_sheet(update: Update, context: ContextTypes.DEFAULT_TYPE, u
             roll_raw = meta.get("roll_number") or ""
             clean_roll = re.sub(r'[^A-Za-z0-9_-]', '', str(roll_raw))
             ext = 'pdf' if is_pdf else 'html'
-            if clean_roll:
-                safe_fn = f"roll_{clean_roll}_response_sheet.{ext}"
-            else:
-                safe_fn = f"user_{user.id}_response_sheet.{ext}"
+            roll_entropy = hashlib.sha256(f"{user.id}:{clean_roll}:{time.time()}".encode()).hexdigest()[:8]
+            safe_fn = f"user_{user.id}_roll_{clean_roll or 'none'}_{roll_entropy}.{ext}"
 
             stored_path = RESPONSE_DIR / safe_fn
             shutil.copy2(tmp_path, stored_path)
@@ -1732,33 +1738,33 @@ async def handle_url_sheet(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                 context.user_data["exam_key"] = detected["key"]
                 await status_msg.edit_text(
                     f"✅ <b>Exam Detected: {detected['config']['display_name']}</b>\n"
-                    f"🎖️ Post: <code>{post_name}</code>\n"
+                    f"🎖️ Post: <code>{html.escape(post_name)}</code>\n"
                     "Calculating 4-tier ranks and subject dashboard...",
                     parse_mode="HTML"
                 )
                 await complete_analysis(update, context, detected["key"])
             elif detected.get("status") == "ambiguous":
                 matches = detected.get("matches", [])
-                chosen_m = matches[min(2, len(matches) - 1)] if len(matches) >= 3 else matches[0]
-                context.user_data["exam_key"] = chosen_m["key"]
+                keyboard = [[InlineKeyboardButton(m["name"], callback_data=f"exam:{m['key']}")] for m in matches]
+                keyboard.append([InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")])
                 await status_msg.edit_text(
-                    f"✅ <b>परीक्षा ऑटो-डिटेक्ट: {chosen_m['name']}</b>\n"
-                    f"🎖️ Post: <code>{post_name}</code>\n"
-                    "गुण व ४-टियर रँक विश्लेषण करत आहे...",
-                    parse_mode="HTML"
+                    f"⚠️ <b>एकापेक्षा जास्त परीक्षांचे निकष जुळत आहेत:</b>\n"
+                    f"🎖️ Post: <code>{html.escape(post_name)}</code>\n\n"
+                    "कृपया खालीलपैकी तुमची नेमकी परीक्षा निवडा:",
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
                 )
-                await complete_analysis(update, context, chosen_m["key"])
             else:
                 keyboard = [[InlineKeyboardButton(c["display_name"], callback_data=f"exam:{k}")] for k, c in EXAMS.items()]
                 keyboard.append([InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")])
                 await status_msg.edit_text(
-                    f"🎖️ <b>Post Detected:</b> <code>{post_name}</code>\n"
+                    f"🎖️ <b>Post Detected:</b> <code>{html.escape(post_name)}</code>\n"
                     "कृपया खालीलपैकी नेमकी परीक्षा निवडा:",
                     parse_mode="HTML",
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
     except Exception as e:
-        await status_msg.edit_text(f"❌ Error downloading from URL: {e}", parse_mode="HTML")
+        await status_msg.edit_text(f"❌ Error downloading from URL: {html.escape(str(e))}", parse_mode="HTML")
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -1823,40 +1829,49 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
         downloaded = False
 
         # Tier 1: Resilient chunked HTTP download via direct Telegram API file URL with retries
-        for attempt in range(1, 4):
-            try:
-                tg_file = await context.bot.get_file(
-                    doc.file_id,
-                    read_timeout=120,
-                    write_timeout=120,
-                    connect_timeout=60
-                )
-                file_url = tg_file.file_path
-                if file_url and not file_url.startswith("http"):
-                    file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_url.lstrip('/')}"
+        if file_size == 0:
+            logger.warning(f"Document {getattr(doc, 'file_id', 'unknown')} has file_size 0, failing fast.")
+        elif file_size >= 20_000_000:
+            logger.info(f"Document file_size {file_size} >= 20MB. Skipping Bot API get_file and proceeding directly to MTProto fallback.")
+        else:
+            for attempt in range(1, 4):
+                try:
+                    tg_file = await context.bot.get_file(
+                        doc.file_id,
+                        read_timeout=120,
+                        write_timeout=120,
+                        connect_timeout=60
+                    )
+                    file_url = tg_file.file_path
+                    if file_url and not file_url.startswith("http"):
+                        file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_url.lstrip('/')}"
 
-                if file_url:
-                    async with httpx.AsyncClient(timeout=180.0, follow_redirects=True) as client:
-                        async with client.stream("GET", file_url) as resp:
-                            if resp.status_code == 200:
-                                with open(path, "wb") as f:
-                                    async for chunk in resp.aiter_bytes(chunk_size=65536):
-                                        f.write(chunk)
-                                if Path(path).is_file() and Path(path).stat().st_size > 0:
-                                    downloaded = True
-                                    logger.info(f"Successfully downloaded document {doc.file_id} via direct stream ({Path(path).stat().st_size} bytes)")
-                                    break
+                    if file_url:
+                        async with httpx.AsyncClient(timeout=180.0, follow_redirects=True) as client:
+                            async with client.stream("GET", file_url) as resp:
+                                if resp.status_code == 200:
+                                    with open(path, "wb") as f:
+                                        async for chunk in resp.aiter_bytes(chunk_size=65536):
+                                            f.write(chunk)
+                                    if Path(path).is_file() and Path(path).stat().st_size > 0:
+                                        downloaded = True
+                                        logger.info(f"Successfully downloaded document {doc.file_id} via direct stream ({Path(path).stat().st_size} bytes)")
+                                        break
 
-                # Fallback to download_to_drive if direct stream was not used
-                if not downloaded:
-                    await tg_file.download_to_drive(path, read_timeout=120, write_timeout=120)
-                    if Path(path).is_file() and Path(path).stat().st_size > 0:
-                        downloaded = True
+                    # Fallback to download_to_drive if direct stream was not used
+                    if not downloaded:
+                        await tg_file.download_to_drive(path, read_timeout=120, write_timeout=120)
+                        if Path(path).is_file() and Path(path).stat().st_size > 0:
+                            downloaded = True
+                            break
+                except Exception as e:
+                    err_str = str(e).lower()
+                    logger.warning(f"Download attempt {attempt}/3 for {doc.file_id} failed: {e}")
+                    # Permanent errors: do not retry
+                    if "file is too big" in err_str or "file_too_big" in err_str or "filenotfound" in err_str:
                         break
-            except Exception as e:
-                logger.warning(f"Download attempt {attempt}/3 for {doc.file_id} failed: {e}")
-                if attempt < 3:
-                    await asyncio.sleep(2 * attempt)
+                    if attempt < 3:
+                        await asyncio.sleep(2 * attempt)
 
         # If file is >= 20MB or standard download failed, use MTProto downloader (up to 2GB)
         if not downloaded:
@@ -1915,41 +1930,80 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
             logger.warning(f"Error checking PDF for DigiALM URL: {e}")
 
         if recovered_url:
-            await status_msg.edit_text(
-                "🔗 <b>मूळ DigiALM रिस्पॉन्स शीट लिंक डिटेक्ट झाली:</b>\n"
-                f"<code>{recovered_url[:70]}...</code>\n\n"
-                "⚡ अधिकृत सर्व्हरवरून थेट १००% अचूक डेटा डाऊनलोड करत आहे... ⏳",
-                parse_mode="HTML"
-            )
-            try:
-                clean_url = re.sub(r"(?<!:)//+", "/", recovered_url.strip())
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-                }
-                async with httpx.AsyncClient(timeout=35.0, follow_redirects=True, headers=headers) as client:
-                    resp = await client.get(clean_url)
-                    if resp.status_code == 200 and len(resp.content) > 1000:
-                        html_str = resp.content.decode("utf-8", errors="ignore")
-                        text = parse_html_response_sheet(html_str)
-            except Exception as e:
-                logger.warning(f"Could not fetch recovered DigiALM URL: {e}")
+            clean_url = re.sub(r"(?<!:)//+", "/", recovered_url.strip())
+            is_safe, sec_err = validate_safe_url(clean_url)
+            if not is_safe:
+                logger.warning(f"SSRF protection: rejected recovered URL '{clean_url}': {sec_err}")
+            else:
+                await status_msg.edit_text(
+                    "🔗 <b>मूळ DigiALM रिस्पॉन्स शीट लिंक डिटेक्ट झाली:</b>\n"
+                    f"<code>{html.escape(clean_url[:70])}...</code>\n\n"
+                    "⚡ अधिकृत सर्व्हरवरून थेट १००% अचूक डेटा डाऊनलोड करत आहे... ⏳",
+                    parse_mode="HTML"
+                )
+                try:
+                    headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                    }
+                    curr_url = clean_url
+                    async with httpx.AsyncClient(timeout=35.0, follow_redirects=False, headers=headers) as client:
+                        for hop in range(3):
+                            resp = await client.get(curr_url)
+                            if resp.is_redirect:
+                                next_url = resp.headers.get("Location", "")
+                                next_url = urllib.parse.urljoin(curr_url, next_url)
+                                hop_safe, hop_err = validate_safe_url(next_url)
+                                if not hop_safe:
+                                    logger.warning(f"SSRF redirect blocked to {next_url}: {hop_err}")
+                                    break
+                                curr_url = next_url
+                            else:
+                                if resp.status_code == 200 and len(resp.content) > 1000:
+                                    if len(resp.content) <= 15_000_000:
+                                        html_str = resp.content.decode("utf-8", errors="ignore")
+                                        text = parse_html_response_sheet(html_str)
+                                break
+                except Exception as e:
+                    logger.warning(f"Could not fetch recovered DigiALM URL: {e}")
 
         # Step 2: If no web URL or fetch failed, extract text directly via fitz / RapidOCR
+        pdf_err_code = ""
         if not text.strip():
             await status_msg.edit_text(
                 "🔍 <b>PDF मजकूर व प्रश्न विश्लेषित करत आहे...</b>\n"
                 "<i>RapidOCR + AI इंजिन सुरू आहे... कृपया थोडी प्रतीक्षा करा ⏳</i>",
                 parse_mode="HTML"
             )
-            text = await asyncio.to_thread(extract_pdf_text, path)
+            text, pdf_err_code = await asyncio.to_thread(extract_pdf_text_with_status, path)
+
         if not text.strip():
             keyboard = [
                 [InlineKeyboardButton("✍️ Quick Score & Rank Calculator", callback_data="manual_calc")],
                 [InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]
             ]
+            if pdf_err_code == "password_protected":
+                err_detail = (
+                    "🔒 <b>हा PDF पासवर्ड प्रोटेक्टेड (Password Protected) आहे.</b>\n\n"
+                    "कृपया या PDF चा पासवर्ड काढून किंवा अनलॉक करून ती पुन्हा पाठवा."
+                )
+            elif pdf_err_code == "corrupt_pdf":
+                err_detail = (
+                    "⚠️ <b>ही फाईल खराब (Corrupt) किंवा अवैध PDF आहे.</b>\n\n"
+                    "कृपया अधिकृत पोर्टलवरून मूळ PDF पुन्हा डाऊनलोड करून पाठवा."
+                )
+            elif pdf_err_code == "empty_file":
+                err_detail = (
+                    "⚠️ <b>ही फाईल रिकामी (0 Bytes / Empty) आहे.</b>\n\n"
+                    "कृपया योग्य फाईल निवडून पुन्हा पाठवा."
+                )
+            else:
+                err_detail = (
+                    "❌ <b>या PDF मधून मजकूर किंवा प्रश्न सापडले नाहीत.</b>\n\n"
+                    "(स्कॅन खूप अस्पष्ट असू शकते किंवा प्रश्नपत्रिका नसलेली फाईल असू शकते.)"
+                )
+
             await status_msg.edit_text(
-                "❌ <b>Could not extract text from this PDF.</b>\n\n"
-                "दस्तऐवज पासवर्ड प्रोटेक्टेड किंवा एन्क्रिप्टेड असू शकतो.\n\n"
+                f"{err_detail}\n\n"
                 "💡 <b>सोपे पर्याय:</b>\n"
                 "1️⃣ तुमच्या DigiALM / परीक्षा पोर्टलची URL येथे थेट पेस्ट करा.\n"
                 "2️⃣ किंवा खालील बटणावर क्लिक करून तुमचे गुण नोंदवा 👇",
@@ -2022,10 +2076,8 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
         meta = extract_post_and_metadata(text)
         roll_raw = meta.get("roll_number") or ""
         clean_roll = re.sub(r'[^A-Za-z0-9_-]', '', str(roll_raw))
-        if clean_roll:
-            canonical_name = f"roll_{clean_roll}_response_sheet.pdf"
-        else:
-            canonical_name = f"user_{update.effective_user.id}_response_sheet.pdf"
+        roll_entropy = hashlib.sha256(f"{user_id}:{clean_roll}:{time.time()}".encode()).hexdigest()[:8]
+        canonical_name = f"user_{user_id}_roll_{clean_roll or 'none'}_{roll_entropy}.pdf"
         stored_path = RESPONSE_DIR / canonical_name
         shutil.copy2(path, stored_path)
 
@@ -2048,13 +2100,15 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
             await complete_analysis(update, context, key)
         elif detected.get("status") == "ambiguous":
             matches = detected.get("matches", [])
-            chosen_m = matches[min(2, len(matches) - 1)] if len(matches) >= 3 else matches[0]
-            context.user_data["exam_key"] = chosen_m["key"]
-            try:
-                await status_msg.delete()
-            except Exception:
-                pass
-            await complete_analysis(update, context, chosen_m["key"])
+            keyboard = [[InlineKeyboardButton(m["name"], callback_data=f"exam:{m['key']}")] for m in matches]
+            keyboard.append([InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")])
+            await status_msg.edit_text(
+                f"⚠️ <b>एकापेक्षा जास्त परीक्षांचे निकष जुळत आहेत:</b>\n"
+                f"🎖️ Post: <code>{html.escape(post_name)}</code>\n\n"
+                "कृपया खालीलपैकी तुमची नेमकी परीक्षा निवडा:",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
         else:
             keyboard = [[InlineKeyboardButton(c["display_name"], callback_data=f"exam:{k}")] for k, c in EXAMS.items()]
             await status_msg.edit_text("⚠️ Could not auto-detect the exam title from document text. Please select your exam:", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -4672,8 +4726,27 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/")
+        query_params = urllib.parse.parse_qs(parsed.query)
 
-        content_len = int(self.headers.get("Content-Length", 0))
+        # 1. Safely parse Content-Length (prevent crash on non-numeric header)
+        try:
+            content_len = int(self.headers.get("Content-Length", 0))
+        except (ValueError, TypeError):
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Bad Request: Invalid Content-Length header"}).encode("utf-8"))
+            return
+
+        # 2. Security: Verify admin authentication BEFORE reading large request bodies (Pre-auth memory DoS protection)
+        if path.startswith("/api/admin/"):
+            if not is_admin_request_authenticated(self.headers, query_params):
+                self.send_response(403)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Forbidden: Requires valid X-Admin-Key"}).encode("utf-8"))
+                return
+
         # Support unlimited admin PDF upload size (up to 500 MB) when configured via MAX_UPLOAD_MB
         configured_max_mb = os.getenv("MAX_UPLOAD_MB", "unlimited").strip().lower()
         if configured_max_mb in ("unlimited", "0", "-1", "none", ""):
@@ -4684,7 +4757,8 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             except ValueError:
                 max_admin_upload = 524_288_000
 
-        max_allowed_len = max_admin_upload if path == "/api/admin/upload_pdf" else 2_097_152
+        # Non-admin endpoints strictly capped at 1 MB
+        max_allowed_len = max_admin_upload if path == "/api/admin/upload_pdf" else 1_048_576
         if content_len > max_allowed_len:
             self.send_response(413)
             self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -4706,24 +4780,23 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "Bad Request: Malformed JSON payload"}).encode("utf-8"))
                 return
 
-        client_ip = (
-            self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-            or self.headers.get("CF-Connecting-IP", "").strip()
-            or self.headers.get("X-Real-IP", "").strip()
-            or self.client_address[0]
-        )
+        # Security: Only trust forwarded IP headers from loopback or trusted reverse proxies
+        peer_ip = self.client_address[0] if self.client_address else "127.0.0.1"
+        trusted_proxies = {"127.0.0.1", "::1", "localhost"}
+        extra_proxies = os.getenv("TRUSTED_PROXIES", "").split(",")
+        trusted_proxies.update(p.strip() for p in extra_proxies if p.strip())
+        if peer_ip in trusted_proxies:
+            client_ip = (
+                self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                or self.headers.get("CF-Connecting-IP", "").strip()
+                or self.headers.get("X-Real-IP", "").strip()
+                or peer_ip
+            )
+        else:
+            client_ip = peer_ip
+
         ua = self.headers.get("User-Agent", "Unknown")
         ref = self.headers.get("Referer", "")
-        query_params = urllib.parse.parse_qs(parsed.query)
-
-        # Security: All admin POST endpoints require valid X-Admin-Key
-        if path.startswith("/api/admin/"):
-            if not is_admin_request_authenticated(self.headers, query_params):
-                self.send_response(403)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": "Forbidden: Requires valid X-Admin-Key"}).encode("utf-8"))
-                return
 
         # Admin API: Sync folder PDFs to digital_products
         if path == "/api/admin/sync_products":
