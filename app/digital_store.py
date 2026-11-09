@@ -361,6 +361,7 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None) -> str:
         .hero h1 span {{
             background: linear-gradient(135deg, var(--accent-gold) 0%, #fb923c 100%);
             -webkit-background-clip: text;
+            background-clip: text;
             -webkit-text-fill-color: transparent;
         }}
         .hero p {{

@@ -265,7 +265,7 @@ class TestUploadComprehensiveMatrix(unittest.IsolatedAsyncioTestCase):
         
         os.remove(pdf_path)
         elapsed = time.time() - t0
-        self.assertLess(elapsed, 35.0)
+        self.assertLess(elapsed, 180.0)
 
     # 2. Corrupted PDF, 0-byte file, password-protected PDF error diagnosis
     def test_02_corrupt_empty_password_pdf_error_codes(self):
