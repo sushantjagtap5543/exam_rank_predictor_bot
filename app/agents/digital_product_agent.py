@@ -387,14 +387,14 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
 
     def update_product(self, product_id: str, updates: Dict[str, Any], db_path: str = "bot.db") -> bool:
         """Manually updates an existing product with specified fields."""
-        allowed_fields = [
+        ALLOWED_FIELDS = {
             "title", "subtitle", "subject", "tier", "price_inr", "original_price_inr",
             "badge", "pages", "description", "download_file", "icon", "is_active"
-        ]
+        }
         set_clauses = []
         vals = []
         for k, v in updates.items():
-            if k in allowed_fields:
+            if k in ALLOWED_FIELDS:
                 set_clauses.append(f"{k} = ?")
                 vals.append(v)
         if not set_clauses:
@@ -402,7 +402,8 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
 
         vals.append(product_id)
         with sqlite3.connect(db_path) as db:
-            db.execute(f"UPDATE digital_products SET {', '.join(set_clauses)} WHERE id = ?", vals)
+            query = f"UPDATE digital_products SET {', '.join(set_clauses)} WHERE id = ?"  # nosec B608
+            db.execute(query, vals)
             db.commit()
         logger.info(f"✅ Updated product {product_id} with {updates}")
         return True
