@@ -4119,6 +4119,14 @@ async def set_bot_commands(application: Application):
 
 class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
     def do_OPTIONS(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path.rstrip("/")
+        if path.startswith("/api/admin") or path == "/admin":
+            self.send_response(403)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "CORS preflight not permitted on admin endpoints"}).encode("utf-8"))
+            return
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -4667,7 +4675,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 }
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps(res).encode("utf-8"))
                 return
@@ -4675,7 +4682,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 logger.error(f"Error syncing folder PDFs: {e}")
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
                 return
@@ -4688,7 +4694,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 if not prod_id or new_price < 5 or new_price > 500:
                     self.send_response(400)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
                     self.wfile.write(json.dumps({"success": False, "message": "Invalid product or price."}).encode("utf-8"))
                     return
@@ -4703,7 +4708,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
 
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": True, "product_id": prod_id, "new_price": new_price}).encode("utf-8"))
                 return
@@ -4711,7 +4715,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 logger.error(f"Error updating product price: {e}")
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
                 return
@@ -4734,7 +4737,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 )
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": True, "file": os.path.basename(gen_path), "path": str(gen_path)}).encode("utf-8"))
                 return
@@ -4742,7 +4744,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 logger.error(f"Error generating Q-Bank: {e}")
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
                 return
@@ -4768,7 +4769,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 )
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": True, "file": os.path.basename(gen_path), "path": str(gen_path)}).encode("utf-8"))
                 return
@@ -4776,7 +4776,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 logger.error(f"Error generating Chalu Ghadamodi: {e}")
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
                 return
@@ -4787,7 +4786,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 created = packaging_agent.create_product(data, DB_PATH)
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": True, "product": created}).encode("utf-8"))
                 return
@@ -4795,7 +4793,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 logger.error(f"Error creating product: {e}")
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
                 return
@@ -4807,7 +4804,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 if not prod_id:
                     self.send_response(400)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
                     self.wfile.write(json.dumps({"success": False, "message": "product_id missing"}).encode("utf-8"))
                     return
@@ -4815,7 +4811,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 ok = packaging_agent.update_product(prod_id, data, DB_PATH)
                 self.send_response(200 if ok else 400)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": ok, "product_id": prod_id}).encode("utf-8"))
                 return
@@ -4823,7 +4818,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 logger.error(f"Error updating product: {e}")
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
                 return
@@ -4835,7 +4829,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 ok = packaging_agent.delete_product(prod_id, DB_PATH)
                 self.send_response(200 if ok else 400)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": ok, "product_id": prod_id}).encode("utf-8"))
                 return
@@ -4843,7 +4836,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 logger.error(f"Error deleting product: {e}")
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
                 return
@@ -4855,7 +4847,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 ok = packaging_agent.toggle_product_status(prod_id, DB_PATH)
                 self.send_response(200 if ok else 400)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": ok, "product_id": prod_id}).encode("utf-8"))
                 return
@@ -4863,7 +4854,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 logger.error(f"Error toggling product status: {e}")
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
                 return
@@ -4874,7 +4864,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 purged_cnt = packaging_agent.purge_all_products(DB_PATH)
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": True, "purged": purged_cnt}).encode("utf-8"))
                 return
@@ -4882,7 +4871,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 logger.error(f"Error purging products: {e}")
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
                 return
@@ -4900,7 +4888,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 if not order:
                     self.send_response(404)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
                     self.wfile.write(json.dumps({"success": False, "message": "Order not found."}).encode("utf-8"))
                     return
@@ -4913,7 +4900,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                     success, msg, prod = fulfillment_agent.confirm_and_fulfill_order(order_token, utr, db_path=DB_PATH)
                     self.send_response(200 if success else 500)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
                     self.wfile.write(json.dumps({
                         "success": success,
@@ -4945,7 +4931,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                         db.commit()
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
                     self.wfile.write(json.dumps({
                         "success": True,
@@ -4963,7 +4948,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                         db.commit()
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
                     self.wfile.write(json.dumps({
                         "success": True,
@@ -4976,7 +4960,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 logger.error(f"Error updating order: {e}")
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
                 return
@@ -4990,7 +4973,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 if not b64 or not fn:
                     self.send_response(400)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
                     self.wfile.write(json.dumps({"success": False, "message": "Missing file data"}).encode("utf-8"))
                     return
@@ -5007,7 +4989,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 if not pdf_bytes.startswith(b"%PDF-"):
                     self.send_response(400)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
                     self.wfile.write(json.dumps({"success": False, "message": "अवैध PDF फाईल: केवळ खरी PDF फाईल (%PDF- हेडर असलेली) अपलोड करता येईल."}, ensure_ascii=False).encode("utf-8"))
                     return
@@ -5017,7 +4998,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
 
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": True, "filename": safe_fn, "size": len(pdf_bytes)}).encode("utf-8"))
                 return
@@ -5025,7 +5005,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 logger.error(f"Error uploading PDF: {e}")
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
                 return
