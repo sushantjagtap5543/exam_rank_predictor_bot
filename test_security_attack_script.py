@@ -319,6 +319,15 @@ class TestSecurityAttackSuite(unittest.TestCase):
             urllib.request.urlopen(req)
         self.assertEqual(ctx.exception.code, 403)
 
+    # VECTOR 10: Known default secret key cannot be used to forge download URLs
+    def test_vector_10_known_default_secret_cannot_forge_download(self):
+        default_secret = b"examrankers_secure_download_secret_key_32b"
+        exp_future = int(time.time()) + 3600
+        forged_sig = hmac.new(default_secret, f"ORD_ATTACK_TOKEN:{exp_future}".encode(), hashlib.sha256).hexdigest()
+        valid, err = verify_signed_download_url("ORD_ATTACK_TOKEN", str(exp_future), forged_sig)
+        self.assertFalse(valid)
+        self.assertIn("अवैध", err)
+
 
 if __name__ == "__main__":
     unittest.main()

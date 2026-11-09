@@ -13,6 +13,7 @@ import hmac
 import hashlib
 import socket
 import ipaddress
+import secrets
 import traceback
 import asyncio
 import zipfile
@@ -162,7 +163,12 @@ REPORT_DIR = STORAGE_DIR / "reports"
 ADMIN_IDS = {int(x.strip()) for x in (os.getenv("ADMIN_TELEGRAM_IDS") or os.getenv("ADMIN_USER_IDS") or "").split(",") if x.strip().isdigit()}
 PAID_CHANNEL_ID = os.getenv("PAID_CHANNEL_ID", "").strip()
 PAID_CHANNEL_LINK = get_paid_channel_link()
-DOWNLOAD_SECRET_KEY = os.getenv("DOWNLOAD_SECRET_KEY", "examrankers_secure_download_secret_key_32b")
+_configured_dl_key = os.getenv("DOWNLOAD_SECRET_KEY", "").strip()
+if not _configured_dl_key or len(_configured_dl_key) < 16 or _configured_dl_key == "examrankers_secure_download_secret_key_32b":
+    DOWNLOAD_SECRET_KEY = secrets.token_hex(32)
+    logger.warning("SECURITY NOTICE: DOWNLOAD_SECRET_KEY is unset or using known default. An ephemeral 32-byte cryptographic key has been generated in memory.")
+else:
+    DOWNLOAD_SECRET_KEY = _configured_dl_key
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "").strip()
 
 from .cashfree_client import get_cashfree_client, CashfreeClient
