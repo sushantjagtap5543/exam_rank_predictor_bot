@@ -4,12 +4,12 @@ Continuously analyzes incoming candidate response sheets to identify trending TC
 and dynamically updates the Telegram Channel's Title, Description, and pinned branding.
 """
 
-import os
 import json
-import sqlite3
 import logging
+import sqlite3
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple
+from typing import Any, Dict, Tuple
+
 from .base_agent import BaseSeniorAgent
 
 logger = logging.getLogger(__name__)

@@ -4,16 +4,17 @@ Handles customer checkout, payment verification, and automated dispatch
 of digital PDF products to the customer's email address via SMTP with backup download tokens.
 """
 
+import logging
 import os
-import uuid
 import smtplib
 import sqlite3
-import logging
+import uuid
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.mime.application import MIMEApplication
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
+
 from .base_agent import BaseSeniorAgent
 
 logger = logging.getLogger(__name__)
@@ -129,7 +130,7 @@ class FulfillmentEmailAgent(BaseSeniorAgent):
             return True, "ई-बुक थेट डाऊनलोडसाठी उपलब्ध आहे."
 
         smtp_host = os.getenv("SMTP_HOST", "").strip()
-        smtp_port = int(os.getenv("SMTP_PORT", 587))
+        smtp_port = int(os.getenv("SMTP_PORT", "587"))
         smtp_user = os.getenv("SMTP_USER", "").strip()
         smtp_pass = os.getenv("SMTP_PASSWORD", "").strip() or os.getenv("SMTP_PASS", "").strip()
         sender_email = os.getenv("SENDER_EMAIL", "").strip() or os.getenv("SMTP_FROM", "").strip() or smtp_user or "support@examrankers.com"

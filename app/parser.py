@@ -1,5 +1,5 @@
-import re
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +25,9 @@ def get_ocr_engine():
 
 def _is_green_tick_image(img_bytes: bytes) -> bool:
     try:
-        from PIL import Image
         import io
+
+        from PIL import Image
         im = Image.open(io.BytesIO(img_bytes))
         if 8 <= im.width <= 32 and 8 <= im.height <= 32:
             rgb = im.convert("RGB")
@@ -227,7 +228,7 @@ def parse_html_response_sheet(html_content: str) -> str:
         soup = BeautifulSoup(html_content, "html.parser")
 
         # Mark correct answer rows or cells
-        for el in soup.find_all(class_=re.compile(r"rightAns|correct", re.I)):
+        for el in soup.find_all(class_=re.compile(r"rightAns|correct", re.IGNORECASE)):
             if "[Correct Option]" not in el.text:
                 el.append(" [Correct Option] ")
 
@@ -266,7 +267,7 @@ def detect_exam(text: str, exams: dict):
             # For short alphanumeric acronyms (<= 4 chars like STI, PSI, ASO, ZP, DMA), use strict word boundary
             if len(clean_a) <= 4 and clean_a.isalnum():
                 pattern = r"(?<![A-Za-z0-9])" + re.escape(clean_a) + r"(?![A-Za-z0-9])"
-                if re.search(pattern, text, re.I):
+                if re.search(pattern, text, re.IGNORECASE):
                     hits.append(clean_a)
             else:
                 if clean_a.upper() in upper_text:
@@ -303,7 +304,7 @@ def extract_post_and_metadata(text: str) -> dict:
     post_match = re.search(
         r"(?:Post\s*(?:Name)?|Applied\s*Post|Subject|पदाचे\s*नाव|संवर्ग)\s*[:\-]?\s*\n?\s*([A-Za-z0-9\s&,/\-\u0900-\u097F]+?)(?=\n|Test|Roll|Date|$)",
         text[:3500],
-        re.I
+        re.IGNORECASE
     )
     if post_match:
         raw_post = post_match.group(1).strip()
@@ -339,22 +340,22 @@ def extract_post_and_metadata(text: str) -> dict:
             break
 
     # Candidate Name
-    name_match = re.search(r"(?:Participant\s*Name|Candidate\s*Name|उमेदवाराचे\s*नाव)\s*[:\-]?\s*\n?\s*([A-Za-z\s\u0900-\u097F]+?)(?=\n|Test|Subject|Roll|Date|$)", text[:2500], re.I)
+    name_match = re.search(r"(?:Participant\s*Name|Candidate\s*Name|उमेदवाराचे\s*नाव)\s*[:\-]?\s*\n?\s*([A-Za-z\s\u0900-\u097F]+?)(?=\n|Test|Subject|Roll|Date|$)", text[:2500], re.IGNORECASE)
     if name_match:
         metadata["candidate_name"] = name_match.group(1).strip()[:50]
 
     # Roll / Registration Number
-    roll_match = re.search(r"(?:Participant\s*ID|Roll\s*(?:Number|No)|Registration\s*(?:Number|No))\s*[:\-]?\s*\n?\s*([A-Za-z0-9]+)", text[:2500], re.I)
+    roll_match = re.search(r"(?:Participant\s*ID|Roll\s*(?:Number|No)|Registration\s*(?:Number|No))\s*[:\-]?\s*\n?\s*([A-Za-z0-9]+)", text[:2500], re.IGNORECASE)
     if roll_match:
         metadata["roll_number"] = roll_match.group(1).strip()
 
     # Test Date
-    date_match = re.search(r"(?:Test\s*Date|Exam\s*Date|दिनांक)\s*[:\-]?\s*\n?\s*([0-9/\-]+)", text[:2500], re.I)
+    date_match = re.search(r"(?:Test\s*Date|Exam\s*Date|दिनांक)\s*[:\-]?\s*\n?\s*([0-9/\-]+)", text[:2500], re.IGNORECASE)
     if date_match:
         metadata["test_date"] = date_match.group(1).strip()
 
     # Test Time
-    time_match = re.search(r"(?:Test\s*Time|Exam\s*Time|वेळ|सत्र)\s*[:\-]?\s*\n?\s*([0-9:APMapm\s\-]+)", text[:2500], re.I)
+    time_match = re.search(r"(?:Test\s*Time|Exam\s*Time|वेळ|सत्र)\s*[:\-]?\s*\n?\s*([0-9:APMapm\s\-]+)", text[:2500], re.IGNORECASE)
     if time_match:
         metadata["test_time"] = time_match.group(1).strip()[:30]
 
@@ -364,7 +365,7 @@ def extract_post_and_metadata(text: str) -> dict:
     center_match = re.search(
         r"(?:Test\s*Center\s*(?:Name)?|Center\s*(?:Name)?|Venue|परीक्षा\s*केंद्र)\s*[:\-]?\s*\n?\s*([A-Za-z0-9\s&,/\-\u0900-\u097F]+?)(?=\n|Subject|Roll|Date|$)",
         text[:3500],
-        re.I
+        re.IGNORECASE
     )
     if center_match:
         raw_center = center_match.group(1).strip()
@@ -427,19 +428,19 @@ def parse_answers(text: str):
     # Detect section/subject headers (Supports English and Marathi Devanagari script)
     section_pattern = re.compile(
         r"(?:Section\s*(?:Name)?|Subject|Part|विभाग|घटक)\s*[:\-]+\s*([A-Za-z0-9\s&,/\-\u0900-\u097F]+?)(?=\n|\r|$)",
-        re.I
+        re.IGNORECASE
     )
 
     # Split questions ONLY at line starts to prevent mid-text mentions (e.g. "Refer to Q. 2") creating phantom questions
     # Supports English ("Q. 1", "Question 1") and Marathi ("प्रश्न १", "प्रश्न क्र. १", "प्र. क्र. 1")
     qnum_pattern = r"(?m)(?=^\s*(?:Q\s*\.\s*\d+|Question\s*(?:No\.?|Number)?\s*\d+|प्रश्न\s*(?:क्र\.?|क्रमांक)?\s*[\d१-९]+|प्र\s*\.\s*क्र\s*\.\s*[\d१-९]+))"
     qid_pattern = r"(?m)(?=^\s*Question\s*ID\s*[:\-])"
-    if re.search(qnum_pattern, text, re.I):
-        parts = re.split(qnum_pattern, text, flags=re.I)
-    elif re.search(qid_pattern, text, re.I):
-        parts = re.split(qid_pattern, text, flags=re.I)
+    if re.search(qnum_pattern, text, re.IGNORECASE):
+        parts = re.split(qnum_pattern, text, flags=re.IGNORECASE)
+    elif re.search(qid_pattern, text, re.IGNORECASE):
+        parts = re.split(qid_pattern, text, flags=re.IGNORECASE)
     else:
-        parts = re.split(r"(?m)(?=^\s*(?:Q\.\s*\d+|Question\s*\d+))", text, flags=re.I)
+        parts = re.split(r"(?m)(?=^\s*(?:Q\.\s*\d+|Question\s*\d+))", text, flags=re.IGNORECASE)
 
     current_section = "General Paper"
     dev_digits = {"०": "0", "१": "1", "२": "2", "३": "3", "४": "4", "५": "5", "६": "6", "७": "7", "८": "8", "९": "9"}
@@ -455,8 +456,8 @@ def parse_answers(text: str):
             if len(candidate_sec) > 3 and not candidate_sec.isdigit():
                 current_section = candidate_sec[:40]
 
-        qid_match = re.search(r"(?:Question|प्रश्न)\s*(?:ID|आयडी)?\s*[:\-]+\s*(\w+)", block, re.I)
-        qnum_match = re.search(r"(?:Q\.\s*|Question\s*(?:No\.?|Number)?\s*|प्रश्न\s*(?:क्र\.?|क्रमांक)?\s*|प्र\s*\.\s*क्र\s*\.\s*)([\d१-९]+)", block, re.I)
+        qid_match = re.search(r"(?:Question|प्रश्न)\s*(?:ID|आयडी)?\s*[:\-]+\s*(\w+)", block, re.IGNORECASE)
+        qnum_match = re.search(r"(?:Q\.\s*|Question\s*(?:No\.?|Number)?\s*|प्रश्न\s*(?:क्र\.?|क्रमांक)?\s*|प्र\s*\.\s*क्र\s*\.\s*)([\d१-९]+)", block, re.IGNORECASE)
 
         if not qid_match and not qnum_match:
             continue
@@ -466,32 +467,32 @@ def parse_answers(text: str):
         qid = qid_match.group(1) if qid_match else norm_qnum_str
 
         # 1. Direct Option ID match
-        selected_opt = re.search(r"(?:Answer\s*Given\s*by\s*Candidate|उमेदवाराने\s*दिलेले\s*उत्तर)\s*[:\-].*?Option\s*ID\s*[:\-]*\s*(\w+)", block, re.I | re.S)
-        correct_opt = re.search(r"(?:Correct\s*Answer|अधिकृत\s*अचूक\s*उत्तर)\s*[:\-].*?Option\s*ID\s*[:\-]*\s*(\w+)", block, re.I | re.S)
+        selected_opt = re.search(r"(?:Answer\s*Given\s*by\s*Candidate|उमेदवाराने\s*दिलेले\s*उत्तर)\s*[:\-].*?Option\s*ID\s*[:\-]*\s*(\w+)", block, re.IGNORECASE | re.DOTALL)
+        correct_opt = re.search(r"(?:Correct\s*Answer|अधिकृत\s*अचूक\s*उत्तर)\s*[:\-].*?Option\s*ID\s*[:\-]*\s*(\w+)", block, re.IGNORECASE | re.DOTALL)
 
         # 2. Chosen Option Number (1, 2, 3, 4, Marathi १-४, or --)
-        chosen_match = re.search(r"(?:Chosen|Selected|Given|Candidate|निवडलेला|दिलेला|दिलेले)\s*(?:Option|Answer|पर्याय|उत्तर)\s*[:\-]+\s*([1-4१-४]|-+)", block, re.I)
+        chosen_match = re.search(r"(?:Chosen|Selected|Given|Candidate|निवडलेला|दिलेला|दिलेले)\s*(?:Option|Answer|पर्याय|उत्तर)\s*[:\-]+\s*([1-4१-४]|-+)", block, re.IGNORECASE)
         # 3. Correct Option Number directly in text (e.g. Correct Option : 2 or checkmarks)
-        correct_num_match = re.search(r"(?:Correct|Right|अचूक|बरोबर|योग्य)\s*(?:Option|Answer|पर्याय|उत्तर)\s*[:\-]+\s*([1-4१-४])\b", block, re.I)
+        correct_num_match = re.search(r"(?:Correct|Right|अचूक|बरोबर|योग्य)\s*(?:Option|Answer|पर्याय|उत्तर)\s*[:\-]+\s*([1-4१-४])\b", block, re.IGNORECASE)
 
         if not correct_num_match and not correct_opt:
             # Check for [Correct Option] from HTML or checkmark symbol (✓ / ✔ / ☑ / rightAns)
             tick_match = re.search(
                 r"\b([1-4१-४])\s*[\.\):\-](?:(?!\b[1-4१-४]\s*[\.\):\-]).)*?(?:\[Correct Option\]|[✓✔☑]|\brightAns\b)",
                 block,
-                re.I | re.S
+                re.IGNORECASE | re.DOTALL
             )
             if not tick_match:
                 tick_match = re.search(
                     r"(?:\[Correct Option\]|[✓✔☑]|\brightAns\b)(?:(?!\b[1-4१-४]\s*[\.\):\-]).)*?\b([1-4१-४])\s*[\.\):\-]",
                     block,
-                    re.I | re.S
+                    re.IGNORECASE | re.DOTALL
                 )
             if tick_match:
                 correct_num_match = tick_match
 
-        status_match = re.search(r"(?:Status|स्थिती)\s*[:\-]+\s*([A-Za-z\s\u0900-\u097F]+)", block, re.I)
-        opt_ids = dict(re.findall(r"Option\s*([1-4])\s*ID\s*[:\-]+\s*(\w+)", block, re.I))
+        status_match = re.search(r"(?:Status|स्थिती)\s*[:\-]+\s*([A-Za-z\s\u0900-\u097F]+)", block, re.IGNORECASE)
+        opt_ids = dict(re.findall(r"Option\s*([1-4])\s*ID\s*[:\-]+\s*(\w+)", block, re.IGNORECASE))
 
         given_opt_num = None
         if chosen_match:
@@ -532,13 +533,13 @@ def parse_answers(text: str):
 
         status = status_match.group(1).strip() if status_match else None
 
-        clean_excerpt = re.sub(r"(?:Question|Option\s*\d|Status|Chosen|Answer\s*Given|Correct\s*Answer).*?(?:\n|$)", "", block, flags=re.I)
+        clean_excerpt = re.sub(r"(?:Question|Option\s*\d|Status|Chosen|Answer\s*Given|Correct\s*Answer).*?(?:\n|$)", "", block, flags=re.IGNORECASE)
         clean_excerpt = re.sub(r"\s+", " ", clean_excerpt).strip()[:400]
         if not clean_excerpt:
             clean_excerpt = block[:300]
 
         # Extract full question text
-        qtext_m = re.search(r"(?:Q\.\s*\d+|Question\s*(?:No\.?|Number)?\s*\d+)\s*\n+(.*?)(?=\n+\s*(?:Ans\b|[1-4]\s*[\.\):\-]|Question\s*Type|Question\s*ID))", block, re.S | re.I)
+        qtext_m = re.search(r"(?:Q\.\s*\d+|Question\s*(?:No\.?|Number)?\s*\d+)\s*\n+(.*?)(?=\n+\s*(?:Ans\b|[1-4]\s*[\.\):\-]|Question\s*Type|Question\s*ID))", block, re.DOTALL | re.IGNORECASE)
         if qtext_m:
             full_q_text = qtext_m.group(1).strip()
             full_q_text = re.sub(r"\s+", " ", full_q_text)
@@ -557,12 +558,12 @@ def parse_answers(text: str):
         for raw_num, opt_val in opt_matches:
             normalized_num = devanagari_map.get(raw_num, letter_map.get(raw_num, raw_num))
             # If option text explicitly contains checkmark or [Correct Option], mark as correct
-            if not correct_opt_num and re.search(r"\[Correct Option\]|rightAns|[✓✔☑]", opt_val, re.I):
+            if not correct_opt_num and re.search(r"\[Correct Option\]|rightAns|[✓✔☑]", opt_val, re.IGNORECASE):
                 correct_opt_num = str(normalized_num)
                 if opt_ids.get(correct_opt_num):
                     correct_id = opt_ids[correct_opt_num]
 
-            cleaned_opt = re.sub(r"\[Correct Option\]|rightAns|[✓✔☑]", "", opt_val, flags=re.I).strip()
+            cleaned_opt = re.sub(r"\[Correct Option\]|rightAns|[✓✔☑]", "", opt_val, flags=re.IGNORECASE).strip()
             cleaned_opt = re.sub(r"\s+", " ", cleaned_opt)
             options[str(normalized_num)] = cleaned_opt
 
@@ -577,7 +578,7 @@ def parse_answers(text: str):
         correct_text = options.get(str(correct_opt_num), "") if correct_opt_num else ""
 
         # Extract comprehension / passage if present
-        comp_m = re.search(r"(?:Comprehension|उतारा)\s*[:\-]+\s*(.*?)(?=\bSubQuestion\b|\bQ\.\s*\d+\b|\bQuestion\s*ID|$)", block, re.S | re.I)
+        comp_m = re.search(r"(?:Comprehension|उतारा)\s*[:\-]+\s*(.*?)(?=\bSubQuestion\b|\bQ\.\s*\d+\b|\bQuestion\s*ID|$)", block, re.DOTALL | re.IGNORECASE)
         comp_text = comp_m.group(1).strip() if comp_m else ""
         if comp_text:
             comp_text = re.sub(r"\s+", " ", comp_text)

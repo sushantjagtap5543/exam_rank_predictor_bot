@@ -14,15 +14,14 @@ Features:
 - Telemetry & /ai_status diagnostics
 """
 
-import os
-import json
-import re
-import time
 import hashlib
-import sqlite3
+import json
 import logging
-from typing import Optional, Dict, Any, List, Tuple
-from pathlib import Path
+import os
+import sqlite3
+import time
+from typing import Any, Dict, Optional, Tuple
+
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -180,7 +179,7 @@ class FreeAIClient:
         Never crashes or exposes paid keys.
         """
         # 1. Check SQLite Persistent Cache
-        prompt_hash = hashlib.sha256(f"{system_instruction}::{prompt}".encode("utf-8")).hexdigest()
+        prompt_hash = hashlib.sha256(f"{system_instruction}::{prompt}".encode()).hexdigest()
         if use_cache:
             cached = self._get_from_cache(prompt_hash)
             if cached:

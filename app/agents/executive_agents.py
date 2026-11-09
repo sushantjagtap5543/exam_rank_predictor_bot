@@ -10,12 +10,13 @@ Includes:
 - CommerceOperationsManager (Department Manager: Digital Products & Fulfillment)
 """
 
-import os
 import json
-import sqlite3
 import logging
-from typing import Dict, Any, List, Optional
+import os
+import sqlite3
 from datetime import datetime
+from typing import Any, Dict, List
+
 from .base_agent import BaseSeniorAgent
 
 logger = logging.getLogger(__name__)

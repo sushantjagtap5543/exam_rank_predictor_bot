@@ -7,11 +7,11 @@ Includes:
 - CurriculumResearchSynthesist (TCS/IBPS exam patterns, current affairs & GK intelligence)
 """
 
-import os
 import json
-import sqlite3
 import logging
-from typing import Dict, Any, List, Optional
+import sqlite3
+from typing import Any, Dict
+
 from .base_agent import BaseSeniorAgent
 
 logger = logging.getLogger(__name__)

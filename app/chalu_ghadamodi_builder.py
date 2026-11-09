@@ -10,15 +10,12 @@ Produces the polished Maharashtra competitive exam monthly digest:
 - Headless Chrome/Edge rendering for 100% accurate Devanagari conjuncts (क्ष, ज्ञ, ऑ, अॅ)
 """
 
-import os
-import sys
-import json
-import re
-import tempfile
-import subprocess
 import logging
-from pathlib import Path
-from typing import Dict, Any, List, Optional
+import os
+import re
+import subprocess
+import tempfile
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -591,7 +588,7 @@ def build_chalu_ghadamodi_pdf(data: Dict[str, Any], output_pdf_path: str) -> str
                 temp_html
             ]
             logger.info(f"Running headless browser to render PDF: {browser_bin}")
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=25)
+            res = subprocess.run(cmd, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=25)
             if os.path.exists(abs_out) and os.path.getsize(abs_out) > 1000:
                 rendered = True
                 logger.info(f"Successfully generated Chalu Ghadamodi PDF at {abs_out} ({os.path.getsize(abs_out)} bytes)")
@@ -601,7 +598,6 @@ def build_chalu_ghadamodi_pdf(data: Dict[str, Any], output_pdf_path: str) -> str
     # Fallback to reportlab if browser is unavailable
     if not rendered:
         try:
-            from .ai_analysis import generate_oneliner_question_bank_pdf
             # Copy intermediate HTML next to target for user inspection
             html_save_path = output_pdf_path.replace(".pdf", ".html")
             with open(html_save_path, "w", encoding="utf-8") as f:

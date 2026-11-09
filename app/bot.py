@@ -1,31 +1,31 @@
-import html
-import os
-import sys
-import json
-import sqlite3
-import tempfile
-import logging
-import shutil
-import re
-import io
-import time
-import hmac
-import hashlib
-import socket
-import ipaddress
-import secrets
-import traceback
 import asyncio
-import zipfile
+import hashlib
+import hmac
+import html
 import http.server
-import urllib.parse
+import io
+import ipaddress
+import json
+import logging
+import os
+import re
+import secrets
+import shutil
+import socket
+import sqlite3
+import sys
+import tempfile
 import threading
+import time
+import traceback
+import urllib.parse
+import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Tuple
-from contextlib import closing
-from dotenv import load_dotenv
+from typing import Dict, List, Optional, Tuple
+
 import httpx
+from dotenv import load_dotenv
 from telegram.error import RetryAfter
 
 if __package__ is None or __package__ == "":
@@ -33,104 +33,93 @@ if __package__ is None or __package__ == "":
     __package__ = "app"
 
 from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    ReplyKeyboardMarkup,
-    KeyboardButton,
     BotCommand,
-    BotCommandScopeDefault,
     BotCommandScopeAllPrivateChats,
     BotCommandScopeChat,
+    BotCommandScopeDefault,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
     MenuButtonCommands,
+    ReplyKeyboardMarkup,
+    Update,
 )
 from telegram.ext import (
     Application,
-    CommandHandler,
     CallbackQueryHandler,
-    MessageHandler,
     ChatMemberHandler,
+    CommandHandler,
     ContextTypes,
+    MessageHandler,
     filters,
 )
 
-from .parser import (
-    extract_pdf_text,
-    detect_exam,
-    parse_answers,
-    score_answers,
-    extract_post_and_metadata,
-    parse_html_response_sheet,
-    recover_digialm_url_from_pdf,
-)
-from .rank import estimate_cohort_rank
-from .quiz_generator import (
-    extract_quizzes_with_ai,
-    send_quizzes_to_channel,
-    extract_quizzes_from_records,
-    extract_quizzes_locally,
-    init_quiz_db,
-    get_top_priority_topics_text,
+from .admin_panel import render_admin_dashboard_html, render_admin_login_html
+from .agents import (
+    AcademicDeanManager,
+    AILeadDirector,
+    BrandVisualsDesigner,
+    ChannelBrandingAgent,
+    ChiefExecutiveOfficer,
+    CommerceOperationsManager,
+    CurrentAffairsSeniorEditor,
+    CurriculumResearchSynthesist,
+    EnglishSeniorFaculty,
+    ExamIntelligenceResearcher,
+    GrowthMarketingManager,
+    MarathiSeniorFaculty,
+    MarketingSalesAgent,
+    UIUXDesignArchitect,
 )
 from .ai_analysis import (
-    explain_wrong_answers_and_objections,
-    generate_topic_weightage_analysis,
-    get_daily_latest_exam_questions,
+    format_swot_telegram_message,
     generate_html_full_report,
     generate_incorrect_answers_report,
-    generate_smart_explanation,
     generate_master_analytics_report_html,
-    generate_swot_analysis,
-    format_swot_telegram_message,
     generate_oneliner_question_bank_pdf,
+    generate_smart_explanation,
+    generate_swot_analysis,
+    generate_topic_weightage_analysis,
+    get_daily_latest_exam_questions,
+)
+from .digital_store import (
+    DEFAULT_PRODUCTS,
+    SAMPLE_PREVIEWS,
+    fulfillment_agent,
+    packaging_agent,
+    render_digital_store_html,
 )
 from .mindmap_engine import (
     get_next_dynamic_mindmap,
     record_mindmap_posted,
 )
 from .monetization import (
-    init_monetization_db,
-    get_active_ad,
-    build_ad_markup,
-    get_deals_keyboard,
-    get_upi_payment_details,
-    record_payment_request,
     approve_and_generate_invite,
-    reject_payment,
-    get_paid_channel_link,
     generate_qr_bytes,
-    generate_qr_base64,
-    validate_utr_format,
+    get_deals_keyboard,
+    get_paid_channel_link,
+    init_monetization_db,
     is_utr_already_used,
+    record_payment_request,
+    reject_payment,
+    validate_utr_format,
 )
-from .admin_panel import render_admin_dashboard_html, render_admin_login_html
-from .digital_store import (
-    render_digital_store_html,
-    render_nano_banana_store_html,
-    packaging_agent,
-    fulfillment_agent,
-    SAMPLE_PREVIEWS,
-    DEFAULT_PRODUCTS
+from .parser import (
+    detect_exam,
+    extract_pdf_text,
+    extract_post_and_metadata,
+    parse_answers,
+    parse_html_response_sheet,
+    recover_digialm_url_from_pdf,
+    score_answers,
 )
-from .agents import (
-    ChannelBrandingAgent,
-    MarathiSeniorFaculty,
-    EnglishSeniorFaculty,
-    MathsReasoningSeniorFaculty,
-    CurrentAffairsSeniorEditor,
-    DigitalProductPackagingAgent,
-    MarketingSalesAgent,
-    FulfillmentEmailAgent,
-    ChiefExecutiveOfficer,
-    AILeadDirector,
-    AcademicDeanManager,
-    GrowthMarketingManager,
-    CommerceOperationsManager,
-    ExamIntelligenceResearcher,
-    CurriculumResearchSynthesist,
-    UIUXDesignArchitect,
-    BrandVisualsDesigner,
+from .quiz_generator import (
+    extract_quizzes_from_records,
+    extract_quizzes_locally,
+    init_quiz_db,
+    send_quizzes_to_channel,
 )
+from .rank import estimate_cohort_rank
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -171,7 +160,7 @@ else:
     DOWNLOAD_SECRET_KEY = _configured_dl_key
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "").strip()
 
-from .cashfree_client import get_cashfree_client, CashfreeClient
+from .cashfree_client import get_cashfree_client
 
 SENTRY_DSN = os.getenv("SENTRY_DSN", "").strip()
 if SENTRY_DSN:
@@ -266,7 +255,7 @@ def verify_signed_download_url(order_token: str, exp_str: str, sig_str: str) -> 
         exp = int(exp_str)
         if time.time() > exp:
             return False, "ही डाऊनलोड लिंक कालबाह्य (Expired) झाली आहे. कृपया नवीन लिंकसाठी सपोर्टशी संपर्क साधा."
-        expected_sig = hmac.new(DOWNLOAD_SECRET_KEY.encode("utf-8"), f"{order_token}:{exp}".encode("utf-8"), hashlib.sha256).hexdigest()
+        expected_sig = hmac.new(DOWNLOAD_SECRET_KEY.encode("utf-8"), f"{order_token}:{exp}".encode(), hashlib.sha256).hexdigest()
         if not hmac.compare_digest(expected_sig, sig_str):
             return False, "अवैध डाऊनलोड स्वाक्षरी (Invalid download signature)."
         return True, ""
@@ -1171,7 +1160,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         for i, q_item in enumerate(daily_data["questions"], 1):
             lines.extend([
-                f"━━━━━━━━━━━━━━━━━━━━━━",
+                "━━━━━━━━━━━━━━━━━━━━━━",
                 f"<b>Q{i}. [{q_item['subject']}]</b>",
                 f"{q_item['question']}",
                 "",
@@ -1447,8 +1436,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         fpath = Path(row[1])
         kb = [
-            [InlineKeyboardButton(f"📊 Generate Full HTML Report", callback_data=f"admin_report:{fid}")],
-            [InlineKeyboardButton(f"❌ View Wrong Questions", callback_data=f"admin_wrong:{fid}")]
+            [InlineKeyboardButton("📊 Generate Full HTML Report", callback_data=f"admin_report:{fid}")],
+            [InlineKeyboardButton("❌ View Wrong Questions", callback_data=f"admin_wrong:{fid}")]
         ]
         with open(fpath, "rb") as doc_f:
             await context.bot.send_document(
@@ -2824,8 +2813,8 @@ async def quiz_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Also load from qbank_master.json for high diversity
     try:
-        from pathlib import Path
         import json
+        from pathlib import Path
         qb_file = Path("admin_storage/qbank_master.json")
         if not qb_file.exists():
             qb_file = Path(__file__).resolve().parent.parent / "admin_storage" / "qbank_master.json"
@@ -2868,7 +2857,7 @@ async def quiz_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Clean option prefixes like A), B), C), D) and checkmarks for poll display
     clean_opts = []
     for o in raw_opts[:4]:
-        co = re.sub(r"\[Correct Option\]|rightAns|[✓✔☑]", "", str(o), flags=re.I)
+        co = re.sub(r"\[Correct Option\]|rightAns|[✓✔☑]", "", str(o), flags=re.IGNORECASE)
         co = re.sub(r"^[A-Da-d1-4][\.\):\-]\s*", "", co).strip()
         clean_opts.append(co[:95])
 
@@ -3173,8 +3162,8 @@ async def get_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     fpath = Path(row[1])
     kb = [
-        [InlineKeyboardButton(f"📊 Full HTML Report", callback_data=f"admin_report:{file_id}")],
-        [InlineKeyboardButton(f"❌ Wrong Questions Review", callback_data=f"admin_wrong:{file_id}")]
+        [InlineKeyboardButton("📊 Full HTML Report", callback_data=f"admin_report:{file_id}")],
+        [InlineKeyboardButton("❌ Wrong Questions Review", callback_data=f"admin_wrong:{file_id}")]
     ]
     with open(fpath, "rb") as doc_f:
         await context.bot.send_document(
@@ -3419,7 +3408,7 @@ async def daily_questions_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE
     ]
     for i, q_item in enumerate(daily_data["questions"], 1):
         lines.extend([
-            f"━━━━━━━━━━━━━━━━━━━━━━",
+            "━━━━━━━━━━━━━━━━━━━━━━",
             f"<b>Q{i}. [{q_item['subject']}]</b>",
             f"{q_item['question']}",
             "",
@@ -4074,7 +4063,7 @@ async def nightly_backup_scheduler_loop(application: Application):
         try:
             backup_file = await asyncio.to_thread(backup_sqlite_database, DB_PATH)
             if backup_file and backup_file.exists() and ADMIN_IDS:
-                primary_admin = sorted(list(ADMIN_IDS))[0]
+                primary_admin = sorted(ADMIN_IDS)[0]
                 with open(backup_file, "rb") as f:
                     await application.bot.send_document(
                         chat_id=primary_admin,
@@ -4317,7 +4306,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.send_response(403)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(f"<h3>⛔ डाऊनलोड लिंक अवैध किंवा कालबाह्य आहे (Access Denied)</h3><p>{html.escape(sig_err)}</p><p>कृपया अधिकृत स्टोअरवरून योग्य डाऊनलोड लिंक वापरा.</p>".encode("utf-8"))
+                self.wfile.write(f"<h3>⛔ डाऊनलोड लिंक अवैध किंवा कालबाह्य आहे (Access Denied)</h3><p>{html.escape(sig_err)}</p><p>कृपया अधिकृत स्टोअरवरून योग्य डाऊनलोड लिंक वापरा.</p>".encode())
                 return
 
             order_data = None
@@ -4334,7 +4323,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.send_response(404)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
-                self.wfile.write("<h3>❌ ऑर्डर सापडली नाही (Order Not Found)</h3>".encode("utf-8"))
+                self.wfile.write("<h3>❌ ऑर्डर सापडली नाही (Order Not Found)</h3>".encode())
                 return
 
             # STRICT SECURITY GATE: Enforce approved payment before serving digital product!
@@ -4343,7 +4332,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.send_response(403)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.end_headers()
-                self.wfile.write("<h3>⛔ डाऊनलोड लॉक आहे — पेमेंट पूर्ण झालेले नाही (Download Disabled)</h3><p>या ऑर्डरचे पेमेंट अजून पूर्ण झालेले नाही. केवळ पेमेंट यशस्वीरित्या पूर्ण झाल्यावरच अधिकृत PDF डाऊनलोड उपलब्ध होते.</p>".encode("utf-8"))
+                self.wfile.write("<h3>⛔ डाऊनलोड लॉक आहे — पेमेंट पूर्ण झालेले नाही (Download Disabled)</h3><p>या ऑर्डरचे पेमेंट अजून पूर्ण झालेले नाही. केवळ पेमेंट यशस्वीरित्या पूर्ण झाल्यावरच अधिकृत PDF डाऊनलोड उपलब्ध होते.</p>".encode())
                 return
 
             prod_id = order_data.get("product_id")
@@ -4530,7 +4519,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.send_response(500)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(f"Admin Dashboard Error: {e}".encode("utf-8"))
+                self.wfile.write(f"Admin Dashboard Error: {e}".encode())
                 return
 
         # Admin PDF Preview/Download: /admin/download_pdf?file=...
@@ -4657,7 +4646,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(html_bytes)
         except Exception as e:
             logger.error(f"Error rendering digital store HTML: {e}", exc_info=True)
-            err_msg = f"Store Error: {e}".encode("utf-8")
+            err_msg = f"Store Error: {e}".encode()
             self.send_response(500)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.send_header("Content-Length", str(len(err_msg)))
@@ -4800,7 +4789,10 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         if path == "/api/admin/generate_chalu_ghadamodi":
             try:
                 from .agents.product_catalog_content import get_subject_specific_content
-                from .chalu_ghadamodi_builder import build_chalu_ghadamodi_pdf, structure_raw_data_to_chalu_ghadamodi
+                from .chalu_ghadamodi_builder import (
+                    build_chalu_ghadamodi_pdf,
+                    structure_raw_data_to_chalu_ghadamodi,
+                )
                 out_dir = STORAGE_DIR / "products"
                 out_dir.mkdir(parents=True, exist_ok=True)
                 out_pdf = out_dir / "chalu_ghadamodi_monthly.pdf"
@@ -5958,6 +5950,7 @@ def start_keep_alive_pinger():
         logger.info(f"ℹ️ Keep-alive pinger: Using local health endpoint fallback: {url}")
 
     import time
+
     import httpx
 
     target_url = url.strip().rstrip("/") + "/"

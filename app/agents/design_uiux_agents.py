@@ -7,10 +7,9 @@ Includes:
 - BrandVisualsDesigner (E-book cover art direction, badges, color palettes, and social visuals)
 """
 
-import os
-import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, Optional
+
 from .base_agent import BaseSeniorAgent
 
 logger = logging.getLogger(__name__)

@@ -74,3 +74,4 @@ Configure the following variables in the host dashboard (e.g. Render Environment
 2. **Instant Rollback:**
    - If deployment fails, click "Rollback to Previous Commit" in Render dashboard.
    - Previous stable Git commit hash: `5441263`.
+

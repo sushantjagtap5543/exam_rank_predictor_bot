@@ -7,10 +7,9 @@ Specialized Senior Academic Chairs for Maharashtra Government Exam Content.
 - CurrentAffairsSeniorEditor (Chief Editor for Monthly 200 MCQs, Half-Yearly & Yearly Compendiums)
 """
 
-import os
-import json
 import logging
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
 from .base_agent import BaseSeniorAgent
 
 logger = logging.getLogger(__name__)

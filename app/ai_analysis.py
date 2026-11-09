@@ -7,13 +7,14 @@ Uses cost-effective / free OpenRouter models to:
 Supports clean pagination across multiple questions.
 """
 
-import os
 import json
 import logging
+import os
 import re
-import httpx
 from datetime import datetime
 from pathlib import Path
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -364,10 +365,10 @@ def generate_smart_explanation(r: dict) -> str:
             )
         elif eval_status == "unanswered":
             lines.append(
-                f"<b>⚪ अनुत्तरित प्रश्न:</b>\n"
-                f"हा प्रश्न तुम्ही सोडवला नाही. वरील ३ पायऱ्या वापरून अशा प्रकारची उदाहरणे सहज सोडवता येतात."
+                "<b>⚪ अनुत्तरित प्रश्न:</b>\n"
+                "हा प्रश्न तुम्ही सोडवला नाही. वरील ३ पायऱ्या वापरून अशा प्रकारची उदाहरणे सहज सोडवता येतात."
             )
-        lines.append(f"<b>⚡ शॉर्टकट ट्रिक:</b> <i>प्रश्नातील पर्यायांची उलटी तपासणी (Option Elimination) किंवा एकक स्थानावरून (Unit Digit Method) उत्तर जलद शोधता येते.</i>")
+        lines.append("<b>⚡ शॉर्टकट ट्रिक:</b> <i>प्रश्नातील पर्यायांची उलटी तपासणी (Option Elimination) किंवा एकक स्थानावरून (Unit Digit Method) उत्तर जलद शोधता येते.</i>")
         return "\n\n".join(lines)
 
     elif any(k in sec.lower() for k in ["मराठी", "marathi", "english", "इंग्रजी", "भाषा"]):
@@ -385,8 +386,8 @@ def generate_smart_explanation(r: dict) -> str:
             )
         elif eval_status == "unanswered":
             lines.append(
-                f"<b>⚪ अनुत्तरित प्रश्न:</b>\n"
-                f"हा प्रश्न तुम्ही सोडवला नाही. पुढील वेळी वरील व्याकरण नियम लक्षात ठेवून उत्तर नक्की नोंदवा."
+                "<b>⚪ अनुत्तरित प्रश्न:</b>\n"
+                "हा प्रश्न तुम्ही सोडवला नाही. पुढील वेळी वरील व्याकरण नियम लक्षात ठेवून उत्तर नक्की नोंदवा."
             )
         lines.append(f"<b>💡 परीक्षेसाठी महत्त्वाची टीप:</b> <i>{topic_info.get('concept', 'प्रमाण नियमांचे पालन')} लक्षात ठेवावे.</i>")
         return "\n\n".join(lines)
@@ -406,8 +407,8 @@ def generate_smart_explanation(r: dict) -> str:
             )
         elif eval_status == "unanswered":
             lines.append(
-                f"<b>⚪ अनुत्तरित प्रश्न:</b>\n"
-                f"हा प्रश्न तुम्ही सोडवला नाही. अशा वस्तुनिष्ठ प्रश्नांसाठी सामान्य अध्ययनाचा सराव महत्त्वाचा ठरतो."
+                "<b>⚪ अनुत्तरित प्रश्न:</b>\n"
+                "हा प्रश्न तुम्ही सोडवला नाही. अशा वस्तुनिष्ठ प्रश्नांसाठी सामान्य अध्ययनाचा सराव महत्त्वाचा ठरतो."
             )
         lines.append(f"<b>📌 महत्त्वाचा संदर्भ:</b> <i>{topic_info.get('concept', 'अधिकृत संदर्भ')}</i>")
         return "\n\n".join(lines)
@@ -1579,15 +1580,23 @@ def generate_oneliner_question_bank_pdf(db_path: str, output_path: str, exam_nam
     Extracts authentic questions from ALL uploaded response sheets and authentic TCS/IBPS master archives.
     Strictly anonymous: zero candidate personal data.
     """
-    import sqlite3
     import json
     import random
-    from reportlab.lib.pagesizes import A4
+    import sqlite3
+
     from reportlab.lib import colors
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import ParagraphStyle
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.platypus import (
+        HRFlowable,
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
 
     def clean_text_for_pdf(txt: str) -> str:
         """Sanitizes text and removes raw HTML artifacts, tags, and formatting glitches."""
@@ -1595,7 +1604,7 @@ def generate_oneliner_question_bank_pdf(db_path: str, output_path: str, exam_nam
             return ""
         t = str(txt)
         t = re.sub(r"<[^>]+>", " ", t)
-        t = re.sub(r"\[Correct\s*Option\]|rightAns|[✓✔☑]", "", t, flags=re.I)
+        t = re.sub(r"\[Correct\s*Option\]|rightAns|[✓✔☑]", "", t, flags=re.IGNORECASE)
         t = re.sub(r"&(?:nbsp|quot|#39|lt|gt);", " ", t)
         t = re.sub(r"\s+", " ", t).strip()
         # Escape special XML/ReportLab chars without double escaping
@@ -2059,8 +2068,9 @@ def generate_oneliner_question_bank_pdf(db_path: str, output_path: str, exam_nam
 
     # Automatically add this generated Q-Bank PDF to Website Store
     try:
-        from .agents.digital_product_agent import DigitalProductPackagingAgent
         import random
+
+        from .agents.digital_product_agent import DigitalProductPackagingAgent
         pa = DigitalProductPackagingAgent()
         rand_price = random.randint(19, 49)
         title_str = f"TCS-IBPS महाप्रश्नसंच २०२६ — {len(final_questions)} सविस्तर प्रश्न व उत्तरे"

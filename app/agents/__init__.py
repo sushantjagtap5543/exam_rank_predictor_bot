@@ -12,40 +12,40 @@ Encompasses:
 
 from .base_agent import BaseSeniorAgent
 
-# Executive Leadership & AI Department Managers
-from .executive_agents import (
-    ChiefExecutiveOfficer,
-    AILeadDirector,
-    AcademicDeanManager,
-    GrowthMarketingManager,
-    CommerceOperationsManager,
-)
+# Operations, Branding & Commerce
+from .channel_branding_agent import ChannelBrandingAgent
 
-# Research & Intelligence Division
-from .research_agents import (
-    ExamIntelligenceResearcher,
-    CurriculumResearchSynthesist,
+# Academic Faculty Division
+from .content_faculty_agents import (
+    CurrentAffairsSeniorEditor,
+    EnglishSeniorFaculty,
+    MarathiSeniorFaculty,
+    MathsReasoningSeniorFaculty,
 )
 
 # Design & UI/UX Division
 from .design_uiux_agents import (
-    UIUXDesignArchitect,
     BrandVisualsDesigner,
+    UIUXDesignArchitect,
 )
+from .digital_product_agent import DEFAULT_PRODUCTS, DigitalProductPackagingAgent
 
-# Academic Faculty Division
-from .content_faculty_agents import (
-    MarathiSeniorFaculty,
-    EnglishSeniorFaculty,
-    MathsReasoningSeniorFaculty,
-    CurrentAffairsSeniorEditor,
+# Executive Leadership & AI Department Managers
+from .executive_agents import (
+    AcademicDeanManager,
+    AILeadDirector,
+    ChiefExecutiveOfficer,
+    CommerceOperationsManager,
+    GrowthMarketingManager,
 )
-
-# Operations, Branding & Commerce
-from .channel_branding_agent import ChannelBrandingAgent
-from .digital_product_agent import DigitalProductPackagingAgent, DEFAULT_PRODUCTS
-from .marketing_sales_agent import MarketingSalesAgent
 from .fulfillment_email_agent import FulfillmentEmailAgent
+from .marketing_sales_agent import MarketingSalesAgent
+
+# Research & Intelligence Division
+from .research_agents import (
+    CurriculumResearchSynthesist,
+    ExamIntelligenceResearcher,
+)
 
 __all__ = [
     "BaseSeniorAgent",

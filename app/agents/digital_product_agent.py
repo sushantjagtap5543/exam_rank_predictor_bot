@@ -1,18 +1,20 @@
 from .product_catalog_content import get_subject_specific_content
+
 """
 DigitalProductPackagingAgent: Senior Product Architect & Packaging Lead.
 Converts educational raw materials, response sheets, and faculty content
 into professional digital PDF products priced between ₹10 and ₹100 for the ExamRankers Official Store.
 """
 
-import os
 import json
-import sqlite3
 import logging
+import os
 import random
 import re
+import sqlite3
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Union
+from typing import Any, Dict, List, Optional, Union
+
 from .base_agent import BaseSeniorAgent
 
 logger = logging.getLogger(__name__)
@@ -223,6 +225,7 @@ DEFAULT_PRODUCTS = [
 
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
+
 
 class NumberedCanvas(canvas.Canvas):
     """Two-pass canvas for dynamic Page X of Y and official header/footer rules."""
@@ -724,7 +727,10 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         # If product is Current Affairs, use Chalu Ghadamodi specification layout
         if prod.get("subject") == "Current Affairs" or "ca" in product_id:
             try:
-                from ..chalu_ghadamodi_builder import build_chalu_ghadamodi_pdf, structure_raw_data_to_chalu_ghadamodi
+                from ..chalu_ghadamodi_builder import (
+                    build_chalu_ghadamodi_pdf,
+                    structure_raw_data_to_chalu_ghadamodi,
+                )
                 raw_content = get_subject_specific_content(product_id)
                 month_label = prod.get("title", "चालू घडामोडी").split(" ")[0]
                 data = structure_raw_data_to_chalu_ghadamodi(raw_content, month_name=month_label)
@@ -735,14 +741,24 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
                 logger.warning(f"Chalu Ghadamodi builder fallback to reportlab: {e}")
 
         # Generate publication-grade PDF using ReportLab
-        from reportlab.lib.pagesizes import A4
+        from PIL import Image as PILImage
+        from PIL import ImageDraw as PILDraw
+        from PIL import ImageFont as PILFont
         from reportlab.lib import colors
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, Image
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from PIL import Image as PILImage, ImageDraw as PILDraw, ImageFont as PILFont
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
         from reportlab.pdfbase.pdfmetrics import registerFontFamily
+        from reportlab.pdfbase.ttfonts import TTFont
+        from reportlab.platypus import (
+            HRFlowable,
+            Image,
+            Paragraph,
+            SimpleDocTemplate,
+            Spacer,
+            Table,
+            TableStyle,
+        )
 
         # Unicode font fallback
         font_regular = "Helvetica"
@@ -793,7 +809,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         elements = []
 
         # Cover Banner
-        elements.append(Paragraph(f"<b>🎓 EXAMRANKERS™ INDIA — DIGITAL STUDY SERIES</b>", badge_style))
+        elements.append(Paragraph("<b>🎓 EXAMRANKERS™ INDIA — DIGITAL STUDY SERIES</b>", badge_style))
         elements.append(Spacer(1, 6))
         elements.append(Paragraph(prod.get("title", "Digital Study Material"), title_style))
         elements.append(Spacer(1, 4))

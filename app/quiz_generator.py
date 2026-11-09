@@ -10,12 +10,13 @@ Features:
 - 100% anonymous (zero candidate data in channel)
 """
 
-import os
+import hashlib
 import json
 import logging
+import os
 import re
-import hashlib
 import sqlite3
+
 import httpx
 from telegram import Bot
 
@@ -28,7 +29,7 @@ DEFAULT_DB_PATH = os.getenv("DB_PATH", os.path.join(os.path.dirname(os.path.dirn
 def normalize_question_text(q_text: str) -> str:
     """Strips variable prefixes like Q.1, [उताऱ्यावरील प्रश्न], [General], etc. and normalizes punctuation and spacing."""
     t = re.sub(r"^\[.*?\]\s*", "", q_text.strip())
-    t = re.sub(r"^(?:Q\s*\.?\s*\d+|Question\s*(?:No\.?|Number)?\s*\d+|\d+[\.\):-])\s*[:\-]?\s*", "", t, flags=re.I)
+    t = re.sub(r"^(?:Q\s*\.?\s*\d+|Question\s*(?:No\.?|Number)?\s*\d+|\d+[\.\):-])\s*[:\-]?\s*", "", t, flags=re.IGNORECASE)
     t = re.sub(r"[^\w\s]", "", t, flags=re.UNICODE)
     return re.sub(r"\s+", " ", t).strip().lower()
 
@@ -55,7 +56,7 @@ def resolve_quiz_correct_index(q_data: dict, raw_opts: list) -> int:
     ans_text = str(q_data.get("answer") or q_data.get("correct") or "").strip()
 
     # 1. Check for explicit English or numeric option markers (anchored to avoid matching letters inside words)
-    m = re.search(r"^(?:(?:पर्याय|option|opt)\s*)?([1-4]|[A-Da-d])(?:\b|[\)\:\.\s]|$)", ans_text, re.I)
+    m = re.search(r"^(?:(?:पर्याय|option|opt)\s*)?([1-4]|[A-Da-d])(?:\b|[\)\:\.\s]|$)", ans_text, re.IGNORECASE)
     if m:
         marker = m.group(1).upper()
         mapping = {"1": 0, "2": 1, "3": 2, "4": 3, "A": 0, "B": 1, "C": 2, "D": 3}
@@ -80,7 +81,7 @@ def resolve_quiz_correct_index(q_data: dict, raw_opts: list) -> int:
 
     # 3. Check explanation field for any explicit option citation
     exp_text = str(q_data.get("explanation") or "").strip()
-    m_exp = re.search(r"(?:पर्याय|option|opt)\s*([1-4]|[A-Da-d]|१|२|३|४)", exp_text, re.I)
+    m_exp = re.search(r"(?:पर्याय|option|opt)\s*([1-4]|[A-Da-d]|१|२|३|४)", exp_text, re.IGNORECASE)
     if m_exp:
         mark = m_exp.group(1).upper()
         mapping = {"1": 0, "2": 1, "3": 2, "4": 3, "A": 0, "B": 1, "C": 2, "D": 3, "१": 0, "२": 1, "३": 2, "४": 3}
@@ -319,7 +320,7 @@ def extract_quizzes_from_records(
         # Fallback 2: Check options_dict for [Correct Option] or checkmarks
         if not c_num:
             for ok, ov in options_dict.items():
-                if re.search(r"\[Correct Option\]|rightAns|[✓✔☑]", ov, re.I):
+                if re.search(r"\[Correct Option\]|rightAns|[✓✔☑]", ov, re.IGNORECASE):
                     c_num = str(ok)
                     break
 
@@ -328,7 +329,7 @@ def extract_quizzes_from_records(
             opts = []
             for k in ["1", "2", "3", "4"]:
                 raw_o = str(options_dict.get(str(k), ""))
-                clean_o = re.sub(r"\[Correct Option\]|rightAns|[✓✔☑]", "", raw_o, flags=re.I)
+                clean_o = re.sub(r"\[Correct Option\]|rightAns|[✓✔☑]", "", raw_o, flags=re.IGNORECASE)
                 clean_o = re.sub(r"^[A-Da-d1-4][\.\):\-]\s*", "", clean_o).strip()
                 opts.append(clean_o[:95])
 
@@ -376,16 +377,16 @@ def extract_quizzes_locally(raw_text: str, max_questions: int = 10, db_path: str
         logger.warning(f"Structured parser quiz fallback failed: {e}")
 
     quizzes = []
-    blocks = re.split(r"(?=(?:Question\s*ID\s*[:\-]|Q\.\s*\d+))", raw_text, flags=re.I)
+    blocks = re.split(r"(?=(?:Question\s*ID\s*[:\-]|Q\.\s*\d+))", raw_text, flags=re.IGNORECASE)
 
     for b in blocks:
         if len(quizzes) >= max_questions:
             break
-        qid = re.search(r"Question\s*ID\s*[:\-]+\s*(\w+)", b, re.I)
+        qid = re.search(r"Question\s*ID\s*[:\-]+\s*(\w+)", b, re.IGNORECASE)
         if not qid:
             continue
-        opt_matches = re.findall(r"Option\s*([1-4])\s*ID\s*[:\-]+\s*(\w+)", b, re.I)
-        correct_opt = re.search(r"Correct\s*Answer\s*[:\-].*?Option\s*ID\s*[:\-]*\s*(\w+)", b, re.I | re.S)
+        opt_matches = re.findall(r"Option\s*([1-4])\s*ID\s*[:\-]+\s*(\w+)", b, re.IGNORECASE)
+        correct_opt = re.search(r"Correct\s*Answer\s*[:\-].*?Option\s*ID\s*[:\-]*\s*(\w+)", b, re.IGNORECASE | re.DOTALL)
 
         if len(opt_matches) >= 2:
             options = [f"Option {num}" for num, _ in opt_matches[:4]]

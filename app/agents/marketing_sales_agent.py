@@ -4,9 +4,9 @@ Crafts viral, high-converting Telegram promotional campaigns, teaser questions,
 flash sales, and scarcity triggers to sell digital products in the Telegram Channel.
 """
 
-import os
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, Optional
+
 from .base_agent import BaseSeniorAgent
 
 logger = logging.getLogger(__name__)

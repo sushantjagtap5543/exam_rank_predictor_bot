@@ -3,15 +3,16 @@ BaseSeniorAgent: Foundation class for Senior Specialist Force Agents.
 Provides OpenRouter AI calling, prompt templating, JSON extraction, and fallback mechanisms.
 """
 
-import os
 import json
+import logging
+import os
 import re
 import time
-import logging
-import httpx
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
-from app.ai_client import get_ai_client, OPENROUTER_FREE_MODELS
+import httpx
+
+from app.ai_client import OPENROUTER_FREE_MODELS
 
 logger = logging.getLogger(__name__)
 

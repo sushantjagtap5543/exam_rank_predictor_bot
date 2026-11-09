@@ -7,11 +7,12 @@ Features:
 - Database tracking of posted topics in SQLite (`posted_mindmaps`)
 """
 
+import logging
 import os
 import sqlite3
-import logging
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+
 from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)

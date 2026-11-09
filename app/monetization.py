@@ -6,15 +6,15 @@ Monetization & Ads Management Engine with ₹99 Paid Telegram Channel Integratio
 4. Automated Telegram Channel invite link delivery.
 """
 
-import os
-import io
 import base64
-import sqlite3
+import io
 import logging
+import os
+import sqlite3
 import urllib.parse
 from pathlib import Path
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, Bot
-from telegram.ext import ContextTypes
+
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 
 logger = logging.getLogger(__name__)
 

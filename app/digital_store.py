@@ -4,19 +4,18 @@ An independent, high-converting digital bookstore for Maharashtra TCS/IBPS exam 
 Includes real-time search, sample preview modals, dynamic UPI QR checkout, email capture, and automated file delivery.
 """
 
-import os
-import sys
-import re
 import json
-import urllib.parse
+import os
+import re
+import sys
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 
 if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     __package__ = "app"
 
-from .agents.digital_product_agent import DigitalProductPackagingAgent, DEFAULT_PRODUCTS
+from .agents.digital_product_agent import DEFAULT_PRODUCTS, DigitalProductPackagingAgent
 from .agents.fulfillment_email_agent import FulfillmentEmailAgent
 
 packaging_agent = DigitalProductPackagingAgent()

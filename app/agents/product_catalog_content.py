@@ -6,7 +6,8 @@ exam shortcut tricks, trap warnings, and rapid revision tables for ExamRankers d
 
 import json
 from pathlib import Path
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple
+
 
 def get_qbank_master_items(max_items: int = 75) -> List[Tuple]:
     """Loads authentic TCS/IBPS exam questions from master qbank JSON."""
@@ -662,7 +663,7 @@ def get_subject_specific_content(product_id: str, title: str = "", subject: str 
         ]
 
         if "yearly" in pid:
-            items = items  # all 15+
+            pass  # keep all 15+ items
         elif "half" in pid:
             items = items[:14]
         else:

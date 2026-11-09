@@ -12,12 +12,10 @@ Features:
 - Order Management with 1-Click UTR Approval & Rejection
 """
 
-import os
 import html
-import sqlite3
 import json
-from pathlib import Path
-from typing import Dict, Any, List
+import sqlite3
+
 
 def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
     """Renders the complete responsive Web Admin Dashboard HTML with full manual store control."""
