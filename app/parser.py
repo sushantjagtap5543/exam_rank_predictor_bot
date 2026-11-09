@@ -431,8 +431,9 @@ def parse_answers(text: str):
     records = []
 
     # Detect section/subject headers (Supports English and Marathi Devanagari script)
+    # Strictly require colon/dash delimiter and exclude words like 'Part-time'
     section_pattern = re.compile(
-        r"(?:Section\s*(?:Name)?|Subject|Part|विभाग|घटक)\s*[:\-]+\s*([A-Za-z0-9\s&,/\-\u0900-\u097F]+?)(?=\n|\r|$)",
+        r"(?m)^\s*(?:Section(?:\s*Name)?|Subject|विभाग|घटक|Part\s*[:\-])\s*[:\-]+\s*([A-Za-z0-9\s&,/\-\u0900-\u097F]+?)\s*$",
         re.IGNORECASE
     )
 
