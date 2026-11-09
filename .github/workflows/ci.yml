@@ -42,7 +42,7 @@ jobs:
         run: |
           python test_payment_gateway.py
 
-      - name: Run Live Security Attack Validation Suite (9 Vectors)
+      - name: Run Live Security Attack Validation Suite (10 Vectors)
         env:
           ADMIN_API_KEY: "test-admin-secret-ci-999"
           DOWNLOAD_SIGNING_KEY: "test-signing-secret-ci-888"
@@ -51,4 +51,19 @@ jobs:
           CASHFREE_ENV: "sandbox"
         run: |
           python test_security_attack_script.py
+
+      - name: Run HTTP Endpoints & Storefront API Suite
+        env:
+          ADMIN_API_KEY: "test-admin-secret-ci-999"
+          DOWNLOAD_SECRET_KEY: "test-download-secret-ci-32bytes-len"
+        run: |
+          python test_http_endpoints.py
+
+      - name: Run Admin Panel & Subject Sections Suite
+        run: |
+          python test_admin_and_sections.py
+
+      - name: Run System Integration Suite
+        run: |
+          python -m pytest test_system.py -q
 
