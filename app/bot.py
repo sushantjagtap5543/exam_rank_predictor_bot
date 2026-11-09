@@ -1827,14 +1827,41 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
         file_size = getattr(doc, "file_size", 0) or 0
         downloaded = False
 
-        # Attempt standard Telegram HTTP Bot API download first if under 20MB
-        if file_size < 20 * 1024 * 1024:
+        # Tier 1: Resilient chunked HTTP download via direct Telegram API file URL with retries
+        for attempt in range(1, 4):
             try:
-                tg_file = await context.bot.get_file(doc.file_id)
-                await tg_file.download_to_drive(path)
-                downloaded = True
+                tg_file = await context.bot.get_file(
+                    doc.file_id,
+                    read_timeout=120,
+                    write_timeout=120,
+                    connect_timeout=60
+                )
+                file_url = tg_file.file_path
+                if file_url and not file_url.startswith("http"):
+                    file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_url.lstrip('/')}"
+
+                if file_url:
+                    async with httpx.AsyncClient(timeout=180.0, follow_redirects=True) as client:
+                        async with client.stream("GET", file_url) as resp:
+                            if resp.status_code == 200:
+                                with open(path, "wb") as f:
+                                    async for chunk in resp.aiter_bytes(chunk_size=65536):
+                                        f.write(chunk)
+                                if Path(path).is_file() and Path(path).stat().st_size > 0:
+                                    downloaded = True
+                                    logger.info(f"Successfully downloaded document {doc.file_id} via direct stream ({Path(path).stat().st_size} bytes)")
+                                    break
+
+                # Fallback to download_to_drive if direct stream was not used
+                if not downloaded:
+                    await tg_file.download_to_drive(path, read_timeout=120, write_timeout=120)
+                    if Path(path).is_file() and Path(path).stat().st_size > 0:
+                        downloaded = True
+                        break
             except Exception as e:
-                logger.warning(f"Standard get_file failed, falling back to MTProto: {e}")
+                logger.warning(f"Download attempt {attempt}/3 for {doc.file_id} failed: {e}")
+                if attempt < 3:
+                    await asyncio.sleep(2 * attempt)
 
         # If file is >= 20MB or standard download failed, use MTProto downloader (up to 2GB)
         if not downloaded:
@@ -1851,13 +1878,19 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
             )
             chat_id = update.effective_chat.id
             if msg_id:
-                success = await download_file_mtproto(chat_id, msg_id, path)
-                if success and Path(path).is_file() and Path(path).stat().st_size > 0:
-                    downloaded = True
+                try:
+                    success = await download_file_mtproto(chat_id, msg_id, path)
+                    if success and Path(path).is_file() and Path(path).stat().st_size > 0:
+                        downloaded = True
+                except Exception as e:
+                    logger.warning(f"MTProto fallback attempt failed: {e}")
 
         if not downloaded or not Path(path).is_file() or Path(path).stat().st_size == 0:
             await status_msg.edit_text(
-                "❌ <b>Download Error:</b> फाईल डाऊनलोड होऊ शकली नाही. कृपया पुन्हा पाठवा किंवा तुमच्या रिस्पॉन्स शीटची थेट वेब लिंक (DigiALM URL) येथे पेस्ट करा.",
+                "❌ <b>Download Error:</b> फाईल डाऊनलोड होऊ शकली नाही.\n\n"
+                "💡 <b>सर्वात सोपा व १००% अचूक पर्याय:</b>\n"
+                "तुमच्या DigiALM / परीक्षा पोर्टलची <b>थेट वेब लिंक</b> येथे चॅटमध्ये पेस्ट करा (उदा. <code>https://cdn.digialm.com/...</code>)\n"
+                "<i>(कोणतीही फाईल अपलोड न करता १ सेकंदात निकाल व रँक मिळते!)</i>",
                 parse_mode="HTML"
             )
             return
@@ -3611,17 +3644,28 @@ async def question_bank_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     status_msg = await context.bot.send_message(
         chat_id=chat_id,
-        text="⏳ <b>वनलायनर प्रश्नसंच PDF तयार होत आहे... कृपया थोडा वेळ थांबा.</b>",
+        text="⏳ <b>८००+ TCS/IBPS अधिकृत प्रश्नसंच (४-स्तंभ PDF) तयार होत आहे... कृपया थोडा वेळ थांबा.</b>",
         parse_mode="HTML"
     )
     try:
-        report_file = REPORT_DIR / f"oneliner_question_bank_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        generate_oneliner_question_bank_pdf(DB_PATH, str(report_file))
+        report_file = REPORT_DIR / "ExamRankers_Master_Question_Bank_4Col.pdf"
+        await asyncio.to_thread(generate_oneliner_question_bank_pdf, DB_PATH, str(report_file))
 
+        # Clean up any legacy timestamped dummy question bank files
+        for old_f in REPORT_DIR.glob("oneliner_question_bank_*.pdf"):
+            try:
+                old_f.unlink()
+            except Exception:
+                pass
+
+        file_size_kb = round(report_file.stat().st_size / 1024, 1)
         caption = (
-            "📑 <b>महास्पर्धा परीक्षा — वनलायनर प्रश्नसंच (One-Liner Question Bank)</b>\n\n"
+            "📑 <b>महास्पर्धा परीक्षा — ८००+ प्रश्न अधिकृत प्रश्नसंच (Master Question Bank)</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📦 <b>फाईल आकार:</b> {file_size_kb} KB (A4 Printable 4-Columns Format)\n"
             "• TCS, IBPS व MPSC पॅटर्ननुसार अधिकृत उत्तरे\n"
-            "• महत्त्वाचे नियम, ट्रिक्स व सविस्तर स्पष्टीकरण\n"
+            "• मराठी, English, गणित/बुद्धिमत्ता व GS घटक\n"
+            "• महत्त्वाचे नियम, शॉर्टकट ट्रिक्स व सविस्तर स्पष्टीकरण\n"
             "• १००% निनावी (Zero personal student data)\n\n"
             "⚡ <i>१-क्लिक प्रिंट व वाचनासाठी तयार PDF फाईल खाली दिली आहे.</i>"
         )
@@ -3629,7 +3673,7 @@ async def question_bank_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_document(
                 chat_id=chat_id,
                 document=f,
-                filename="ExamRankers_OneLiner_Question_Bank.pdf",
+                filename="ExamRankers_Master_Question_Bank_4Col.pdf",
                 caption=caption,
                 parse_mode="HTML"
             )

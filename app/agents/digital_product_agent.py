@@ -529,7 +529,17 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             return None
 
         filename = file_path.name
-        if filename.startswith("test_") or filename.startswith("temp_") or filename.endswith(".tmp"):
+        fn_lower = filename.lower()
+        if (
+            fn_lower.startswith("test_") or
+            fn_lower.startswith("temp_") or
+            fn_lower.startswith("tmp") or
+            fn_lower.startswith("output_") or
+            "sample" in fn_lower or
+            "oneliner_question_bank_202" in fn_lower or
+            fn_lower.endswith(".tmp") or
+            file_path.stat().st_size < 50_000
+        ):
             return None
 
         self.init_products_db(db_path)
@@ -654,8 +664,6 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         scan_dirs = [
             root_dir / "products",
             root_dir / "admin_storage" / "products",
-            root_dir / "admin_storage" / "reports",
-            root_dir / "reports",
         ]
 
         added_count = 0

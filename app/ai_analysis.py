@@ -1666,13 +1666,13 @@ def generate_oneliner_question_bank_pdf(db_path: str, output_path: str, exam_nam
                     else:
                         subj_buckets["other"].append(item)
 
-                # Select high-yield sample across all buckets (approx 30 per main subject = ~120-140 questions)
+                # Include ALL questions across all subjects from master repository (800+ questions)
                 selected_master = (
-                    subj_buckets["marathi"][:35] +
-                    subj_buckets["english"][:35] +
-                    subj_buckets["gk"][:35] +
-                    subj_buckets["iq"][:35] +
-                    subj_buckets["other"][:10]
+                    subj_buckets["marathi"] +
+                    subj_buckets["english"] +
+                    subj_buckets["gk"] +
+                    subj_buckets["iq"] +
+                    subj_buckets["other"]
                 )
 
                 for item in selected_master:
