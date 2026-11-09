@@ -29,6 +29,10 @@ class TestAdminAndSections(unittest.TestCase):
         self.assertIn("updateProductPrice", html)
         self.assertIn("generateQBank", html)
         self.assertIn("generateChaluGhadamodi", html)
+        self.assertIn("openBulkUploadModal", html)
+        self.assertIn("startBulkUploadProcess", html)
+        self.assertIn("scrollVisitors", html)
+        self.assertIn("visitors-scroll-wrap", html)
 
     def test_section_defs_and_qbank_structure(self):
         self.assertTrue(len(SECTION_DEFS) >= 4)

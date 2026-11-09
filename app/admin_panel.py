@@ -402,6 +402,36 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         .table-wrap {{
             overflow-x: auto;
         }}
+        .visitors-scroll-wrap {{
+            max-height: 265px;
+            overflow-y: auto;
+            overflow-x: auto;
+            scroll-behavior: smooth;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+        }}
+        .visitors-scroll-wrap thead th {{
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            background: #0f172a;
+            box-shadow: 0 1px 0 var(--border);
+        }}
+        .visitors-scroll-wrap::-webkit-scrollbar {{
+            width: 8px;
+            height: 8px;
+        }}
+        .visitors-scroll-wrap::-webkit-scrollbar-track {{
+            background: #090d16;
+            border-radius: 4px;
+        }}
+        .visitors-scroll-wrap::-webkit-scrollbar-thumb {{
+            background: #334155;
+            border-radius: 4px;
+        }}
+        .visitors-scroll-wrap::-webkit-scrollbar-thumb:hover {{
+            background: var(--accent-gold);
+        }}
         table {{
             width: 100%;
             border-collapse: collapse;
@@ -562,6 +592,59 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         .form-row .form-group {{
             flex: 1;
         }}
+
+        /* Bulk Upload Dropzone & List Styles */
+        .dropzone-box {{
+            border: 2px dashed #334155;
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            background: rgba(15, 23, 42, 0.6);
+            cursor: pointer;
+            transition: all 0.25s ease;
+            margin-bottom: 14px;
+        }}
+        .dropzone-box:hover, .dropzone-box.drag-over {{
+            border-color: var(--accent-gold);
+            background: rgba(250, 204, 21, 0.05);
+        }}
+        .bulk-progress-bar {{
+            width: 100%;
+            height: 8px;
+            background: #1e293b;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 12px 0;
+            display: none;
+        }}
+        .bulk-progress-fill {{
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #2563eb, var(--accent-emerald));
+            transition: width 0.2s ease;
+        }}
+        .bulk-file-list {{
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px;
+            background: #090d16;
+            margin-bottom: 14px;
+            display: none;
+        }}
+        .bulk-file-item {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            font-size: 12px;
+            color: #cbd5e1;
+        }}
+        .bulk-file-item:last-child {{
+            border-bottom: none;
+        }}
     </style>
 </head>
 <body>
@@ -613,8 +696,10 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
                 <button class="btn btn-gold" onclick="openAddModal()">➕ नवीन ई-बुक जोडा</button>
-                <button class="btn btn-outline" onclick="document.getElementById('pdfFileInput').click()">📁 थेट PDF अपलोड करा</button>
+                <button class="btn btn-blue" onclick="openBulkUploadModal()" style="background:#2563eb; color:#fff;">📚 बल्क PDFs एकत्र अपलोड करा (Bulk Upload)</button>
+                <button class="btn btn-outline" onclick="document.getElementById('pdfFileInput').click()">📁 थेट Single PDF</button>
                 <input type="file" id="pdfFileInput" style="display:none;" accept=".pdf" onchange="uploadDirectPdf(this)">
+                <input type="file" id="bulkModalFileInput" style="display:none;" accept=".pdf" multiple onchange="handleBulkFilesSelected(this.files)">
                 <button class="btn btn-purple" onclick="generateQBank()">📑 ४-स्तंभ प्रश्नसंच बनवा</button>
                 <button class="btn btn-green" onclick="generateChaluGhadamodi()">📰 चालू घडामोडी PDF बनवा</button>
                 <button class="btn btn-outline" onclick="syncFolderPdfs()">🔄 फोल्डर PDF सिंक</button>
@@ -657,13 +742,18 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
 
         <!-- Live Store Visitors Table -->
         <div class="section-box">
-            <div class="section-header">
+            <div class="section-header" style="flex-wrap:wrap; gap:10px;">
                 <div class="section-title">
                     👥 थेट स्टोअर व्हिजिटर्स (Live Store Traffic — Recent 40 Visits)
                 </div>
-                <span style="font-size:12px; color:var(--text-muted);">स्वयंचलित रिअल-टाइम ट्रॅकिंग</span>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="badge badge-blue" id="visitorScrollBadge">दाखवत आहे: १ ते ५ / {len(recent_visitors)}</span>
+                    <button class="btn btn-sm btn-outline" onclick="scrollVisitors(-1)" title="मागील ५ व्हिजिटर्स पहा">⬆️ मागील ५</button>
+                    <button class="btn btn-sm btn-outline" onclick="scrollVisitors(1)" title="पुढील ५ व्हिजिटर्स पहा">⬇️ पुढील ५</button>
+                    <span style="font-size:12px; color:var(--text-muted); margin-left:6px;">रिअल-टाइम ट्रॅकिंग</span>
+                </div>
             </div>
-            <div class="table-wrap">
+            <div class="table-wrap visitors-scroll-wrap" id="visitorsScrollBox" onscroll="updateVisitorScrollIndicator()">
                 <table>
                     <thead>
                         <tr>
@@ -718,6 +808,41 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         </div>
 
     </main>
+
+    <!-- Modal: Add New Product -->
+    <div class="modal-overlay" id="bulkUploadModal">
+        <div class="modal" style="max-width:680px;">
+            <button class="modal-close" onclick="closeModal('bulkUploadModal')">&times;</button>
+            <h2 style="color:#ffffff; font-size:18px; margin-bottom:8px;">📚 बल्क PDFs एकत्र अपलोड करा (Bulk Upload)</h2>
+            <p style="font-size:12.5px; color:#94a3b8; margin-bottom:16px; line-height:1.5;">
+                एकाच वेळी अनेक PDF ई-बुक्स निवडा किंवा ड्रॅग-अँड-ड्रॉप करा. सर्व फाईल्स थेट सर्व्हरवर अपलोड होऊन डिजिटल स्टोअरमध्ये आपोआप कॅटलॉग केल्या जातील.
+            </p>
+
+            <div class="dropzone-box" id="bulkDropZone" onclick="document.getElementById('bulkModalFileInput').click()">
+                <div style="font-size:36px; margin-bottom:8px;">📥</div>
+                <div style="font-size:14px; font-weight:700; color:#fff; margin-bottom:4px;">
+                    येथे PDF फाईल्स ड्रॅग करा किंवा कॉम्प्युटरमधून निवडण्यासाठी क्लिक करा
+                </div>
+                <div style="font-size:12px; color:#64748b;">
+                    (एकाच वेळी २०+ फाईल्स निवडू शकता, कमाल मर्यादा ५०० MB प्रति फाईल)
+                </div>
+            </div>
+
+            <div class="bulk-progress-bar" id="bulkProgressBar">
+                <div class="bulk-progress-fill" id="bulkProgressFill"></div>
+            </div>
+            <div id="bulkStatusText" style="font-size:12px; color:var(--accent-gold); margin-bottom:10px; display:none; font-weight:600;"></div>
+
+            <div class="bulk-file-list" id="bulkFileList"></div>
+
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:14px;">
+                <button type="button" class="btn btn-outline" onclick="closeModal('bulkUploadModal')">रद्द करा (Cancel)</button>
+                <button type="button" class="btn btn-blue" id="btnStartBulkUpload" onclick="startBulkUploadProcess()" style="background:#2563eb; color:#fff;" disabled>
+                    🚀 सर्व फाईल्स अपलोड करा (Start Upload)
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- Modal: Add New Product -->
     <div class="modal-overlay" id="addModal">
@@ -991,6 +1116,195 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
 
         function closeModal(modalId) {{
             document.getElementById(modalId).style.display = 'none';
+        }}
+
+        // Smooth scroll for Live Store Visitors (5 rows at a time)
+        function scrollVisitors(direction) {{
+            const box = document.getElementById('visitorsScrollBox');
+            if (!box) return;
+            const rowHeight = 44; // approximate height per row in pixels
+            const scrollDistance = rowHeight * 5 * direction;
+            box.scrollBy({{ top: scrollDistance, behavior: 'smooth' }});
+            setTimeout(updateVisitorScrollIndicator, 300);
+        }}
+
+        function updateVisitorScrollIndicator() {{
+            const box = document.getElementById('visitorsScrollBox');
+            const badge = document.getElementById('visitorScrollBadge');
+            if (!box || !badge) return;
+            const rows = box.querySelectorAll('tbody tr');
+            const total = rows.length;
+            if (total === 0 || (total === 1 && rows[0].innerText.includes('अद्याप कोणत्याही'))) {{
+                badge.innerText = '० व्हिजिटर्स';
+                return;
+            }}
+            const rowHeight = 44;
+            const currentTop = box.scrollTop;
+            const startIdx = Math.min(total, Math.floor(currentTop / rowHeight) + 1);
+            const endIdx = Math.min(total, startIdx + 4);
+            badge.innerText = `दाखवत आहे: ${{startIdx}} ते ${{endIdx}} / ${{total}}`;
+        }}
+
+        // Bulk PDF Upload logic
+        let selectedBulkFiles = [];
+
+        function openBulkUploadModal() {{
+            selectedBulkFiles = [];
+            document.getElementById('bulkFileList').innerHTML = '';
+            document.getElementById('bulkFileList').style.display = 'none';
+            document.getElementById('bulkProgressBar').style.display = 'none';
+            document.getElementById('bulkProgressFill').style.width = '0%';
+            document.getElementById('bulkStatusText').style.display = 'none';
+            document.getElementById('btnStartBulkUpload').disabled = true;
+            document.getElementById('bulkUploadModal').style.display = 'flex';
+            setupBulkDropZone();
+        }}
+
+        function setupBulkDropZone() {{
+            const dropZone = document.getElementById('bulkDropZone');
+            if (!dropZone || dropZone.dataset.initialized) return;
+            dropZone.dataset.initialized = 'true';
+
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {{
+                dropZone.addEventListener(eventName, e => {{ e.preventDefault(); e.stopPropagation(); }}, false);
+            }});
+            ['dragenter', 'dragover'].forEach(eventName => {{
+                dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-over'), false);
+            }});
+            ['dragleave', 'drop'].forEach(eventName => {{
+                dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-over'), false);
+            }});
+            dropZone.addEventListener('drop', e => {{
+                const dt = e.dataTransfer;
+                if (dt && dt.files && dt.files.length > 0) {{
+                    handleBulkFilesSelected(dt.files);
+                }}
+            }});
+        }}
+
+        function handleBulkFilesSelected(files) {{
+            if (!files || files.length === 0) return;
+            for (let i = 0; i < files.length; i++) {{
+                const f = files[i];
+                if (f.name.toLowerCase().endsWith('.pdf')) {{
+                    if (!selectedBulkFiles.some(item => item.name === f.name && item.size === f.size)) {{
+                        selectedBulkFiles.push(f);
+                    }}
+                }}
+            }}
+            renderBulkFileList();
+        }}
+
+        function renderBulkFileList() {{
+            const listEl = document.getElementById('bulkFileList');
+            const btn = document.getElementById('btnStartBulkUpload');
+            if (selectedBulkFiles.length === 0) {{
+                listEl.style.display = 'none';
+                btn.disabled = true;
+                return;
+            }}
+            listEl.style.display = 'block';
+            btn.disabled = false;
+            let html = '';
+            selectedBulkFiles.forEach((f, idx) => {{
+                const mb = (f.size / (1024 * 1024)).toFixed(2);
+                html += `<div class="bulk-file-item" id="bulk-item-${{idx}}">
+                    <span style="font-weight:600; color:#e2e8f0;">📄 ${{f.name}}</span>
+                    <span style="display:flex; align-items:center; gap:8px;">
+                        <span style="color:#94a3b8; font-size:11px;">${{mb}} MB</span>
+                        <span id="bulk-status-${{idx}}" class="badge badge-gray">तयार</span>
+                        <button type="button" onclick="removeBulkFile(${{idx}})" style="background:none; border:none; color:#f87171; cursor:pointer; font-size:14px;">✕</button>
+                    </span>
+                </div>`;
+            }});
+            listEl.innerHTML = html;
+        }}
+
+        function removeBulkFile(index) {{
+            selectedBulkFiles.splice(index, 1);
+            renderBulkFileList();
+        }}
+
+        function readFileAsBase64(file) {{
+            return new Promise((resolve, reject) => {{
+                const reader = new FileReader();
+                reader.onload = () => {{
+                    const b64 = reader.result.split(',')[1];
+                    resolve(b64);
+                }};
+                reader.onerror = err => reject(err);
+                reader.readAsDataURL(file);
+            }});
+        }}
+
+        async function startBulkUploadProcess() {{
+            if (selectedBulkFiles.length === 0) return;
+            const btn = document.getElementById('btnStartBulkUpload');
+            const pBar = document.getElementById('bulkProgressBar');
+            const pFill = document.getElementById('bulkProgressFill');
+            const sText = document.getElementById('bulkStatusText');
+
+            btn.disabled = true;
+            pBar.style.display = 'block';
+            sText.style.display = 'block';
+
+            let successCount = 0;
+            let failCount = 0;
+            const total = selectedBulkFiles.length;
+
+            for (let i = 0; i < total; i++) {{
+                const f = selectedBulkFiles[i];
+                const statusBadge = document.getElementById(`bulk-status-${{i}}`);
+                if (statusBadge) {{
+                    statusBadge.className = 'badge badge-yellow';
+                    statusBadge.innerText = 'अपलोड होत आहे...';
+                }}
+                sText.innerText = `⏳ फाईल ${{i + 1}} / ${{total}} अपलोड होत आहे: ${{f.name}}...`;
+
+                try {{
+                    const base64Data = await readFileAsBase64(f);
+                    const res = await adminFetch('/api/admin/upload_pdf', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{ filename: f.name, base64_data: base64Data }})
+                    }});
+                    const data = await res.json();
+                    if (res.ok && data.success) {{
+                        successCount++;
+                        if (statusBadge) {{
+                            statusBadge.className = 'badge badge-green';
+                            statusBadge.innerText = '✅ यशस्वी';
+                        }}
+                    }} else {{
+                        failCount++;
+                        if (statusBadge) {{
+                            statusBadge.className = 'badge badge-red';
+                            statusBadge.style.color = '#f87171';
+                            statusBadge.innerText = '❌ त्रुटी';
+                        }}
+                    }}
+                }} catch (err) {{
+                    failCount++;
+                    if (statusBadge) {{
+                        statusBadge.className = 'badge badge-red';
+                        statusBadge.style.color = '#f87171';
+                        statusBadge.innerText = '❌ त्रुटी';
+                    }}
+                }}
+                const progressPct = Math.round(((i + 1) / total) * 100);
+                pFill.style.width = progressPct + '%';
+            }}
+
+            sText.innerText = `🔄 डिजिटल स्टोअर कॅटलॉग सिंक होत आहे...`;
+            try {{
+                await adminFetch('/api/admin/sync_products', {{ method: 'POST' }});
+            }} catch(e) {{}}
+
+            sText.innerText = `🎉 बल्क अपलोड पूर्ण! यशस्वी: ${{successCount}}, अयशस्वी: ${{failCount}}`;
+            showToast(`✅ बल्क अपलोड पूर्ण: ${{successCount}} फाईल्स स्टोअरमध्ये जोडल्या गेल्या!`, 'success');
+            setTimeout(() => {{
+                location.reload();
+            }}, 1500);
         }}
 
         // Direct PDF file upload with size validation & progress toast
