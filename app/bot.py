@@ -2037,14 +2037,12 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
         user_id = update.effective_user.id
         roll_entropy = hashlib.sha256(f"{user_id}:{clean_roll}:{time.time()}".encode()).hexdigest()[:8]
 
-        # Admin Bulk Response Sheet / Master MCQ PDF Processor & Store Synchronizer
-        is_bulk_request = (
-            (user_id in ADMIN_IDS)
-            or context.user_data.get("admin_bulk_mode") is True
-            or any(k in safe_name.lower() for k in ["bulk", "master", "qbank", "mcq", "gmc", "exam", "paper", "test", "question"])
-            or len(records) > 30
-            or not clean_roll
-        )
+        # Check if this is an Admin Bulk / Master MCQ PDF or an individual candidate response sheet
+        has_bulk_keyword = any(k in safe_name.lower() for k in ["bulk", "master", "qbank", "mcq_master", "gmc"])
+        is_large_master_bank = (len(records) > 120 and not clean_roll)
+        is_admin_bulk_mode = (user_id in ADMIN_IDS) and (context.user_data.get("admin_bulk_mode") is True)
+
+        is_bulk_request = has_bulk_keyword or is_large_master_bank or is_admin_bulk_mode
 
         RESPONSE_DIR.mkdir(parents=True, exist_ok=True)
         if is_bulk_request:

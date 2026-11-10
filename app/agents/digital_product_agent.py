@@ -602,7 +602,22 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         inferred_badge = f"🔥 नवीन संच (₹{price_inr})"
         inferred_title = fn_clean
 
-        if any(k in fn_lower for k in ["ca", "current", "ghadamodi", "chalu"]):
+        if "gmc" in fn_lower:
+            inferred_title = "GMC अधिकृत भरती परीक्षा मास्टर प्रश्नसंच (TCS MCQs)"
+            inferred_subject = "PYQ & Response Sheets"
+            inferred_icon = "📑"
+            inferred_badge = f"🔥 GMC मास्टर संच (₹{price_inr})"
+        elif "peon" in fn_lower:
+            inferred_title = "महाराष्ट्र आरोग्य विभाग - Peon भरती अधिकृत प्रश्नपत्रिका"
+            inferred_subject = "PYQ & Response Sheets"
+            inferred_icon = "📑"
+            inferred_badge = f"🔥 Peon प्रश्नपत्रिका (₹{price_inr})"
+        elif "talathi" in fn_lower:
+            inferred_title = "तलाठी भरती विशेष रिव्हिजन नोट्स (TCS पॅटर्न)"
+            inferred_subject = "General Knowledge"
+            inferred_icon = "📚"
+            inferred_badge = f"⚡ तलाठी विशेष (₹{price_inr})"
+        elif any(k in fn_lower for k in ["ca", "current", "ghadamodi", "chalu"]):
             inferred_subject = "Current Affairs"
             inferred_icon = "📰"
             inferred_badge = f"🔥 चालू घडामोडी (₹{price_inr})"
@@ -627,6 +642,9 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             inferred_icon = "📑"
             inferred_badge = f"🎯 प्रश्नसंच (₹{price_inr})"
             inferred_title = fn_clean
+
+        if len(inferred_title) <= 5:
+            inferred_title = f"{inferred_title.upper()} अधिकृत परीक्षा संच"
 
         final_title = title or inferred_title
         final_subtitle = subtitle or "TCS/IBPS परीक्षा विशेष अधिकृत ई-बुक"
@@ -759,8 +777,8 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         output_dir = Path(output_dir).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        prod = self.get_product_by_id(product_id, db_path)
-        filename = (prod.get("download_file") if prod else None) or f"{product_id}.pdf"
+        prod = self.get_product_by_id(product_id, db_path) or {}
+        filename = prod.get("download_file") or f"{product_id}.pdf"
         target_path = output_dir / filename
 
         if not force_rebuild and target_path.exists() and target_path.stat().st_size > 100:
