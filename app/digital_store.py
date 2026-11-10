@@ -338,13 +338,14 @@ def get_product_sample_preview_data(prod_id: str, db_path: str = None) -> dict:
         "page_text": page_text[:1200] if page_text else ""
     }
 
-def render_digital_store_html(products: List[Dict[str, Any]] = None) -> str:
+def render_digital_store_html(products: List[Dict[str, Any]] = None, db_path: Optional[str] = None) -> str:
     """
     Renders the complete, ultra-refined standalone ExamRankers Digital Bookstore page.
     Aesthetic: High-converting dark UI, live search, multi-tab sample preview, instant UPI checkout & download.
     """
     if products is None:
-        products = packaging_agent.get_all_products()
+        target_db = packaging_agent.resolve_db_path(db_path)
+        products = packaging_agent.get_all_products(db_path=target_db)
 
     products_json = json.dumps(products)
     samples_json = json.dumps(SAMPLE_PREVIEWS)
@@ -1535,8 +1536,23 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None) -> str:
             document.getElementById(id).classList.remove('active');
         }}
 
-        // Render products on page load
+        async function refreshProducts() {{
+            try {{
+                const res = await fetch('/api/products?_t=' + Date.now());
+                if (res.ok) {{
+                    const data = await res.json();
+                    if (Array.isArray(data) && data.length > 0) {{
+                        PRODUCTS = data;
+                        renderProducts(PRODUCTS);
+                    }}
+                }}
+            }} catch (e) {{}}
+        }}
+
+        // Render products on page load & keep synchronized
         renderProducts(PRODUCTS);
+        refreshProducts();
+        setInterval(refreshProducts, 45000);
     </script>
 </body>
 </html>

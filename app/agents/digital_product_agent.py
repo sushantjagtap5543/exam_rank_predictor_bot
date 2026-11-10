@@ -288,8 +288,28 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             system_instruction="Design digital educational products that look prestigious, authoritative, and irresistible to government exam aspirants."
         )
 
+    @staticmethod
+    def resolve_db_path(db_path: Optional[str] = None) -> str:
+        """Resolves the absolute, canonical database path to avoid relative working directory mismatches."""
+        if db_path and db_path != "bot.db" and os.path.exists(db_path):
+            return str(Path(db_path).resolve())
+        env_db = os.getenv("DATABASE_PATH")
+        if env_db and os.path.exists(env_db):
+            return str(Path(env_db).resolve())
+        project_root = Path(__file__).resolve().parent.parent.parent
+        cands = [
+            project_root / "bot.db",
+            project_root.parent / "bot.db",
+            Path("bot.db").resolve(),
+        ]
+        for c in cands:
+            if c.exists():
+                return str(c.resolve())
+        return str((project_root / "bot.db").resolve())
+
     def init_products_db(self, db_path: str = "bot.db"):
         """Initializes tables for digital products, orders, and sample previews."""
+        db_path = self.resolve_db_path(db_path)
         with sqlite3.connect(db_path) as db:
             db.execute("""
                 CREATE TABLE IF NOT EXISTS digital_products (
@@ -353,6 +373,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
     def create_product(self, data: Dict[str, Any], db_path: str = "bot.db") -> Dict[str, Any]:
         """Manually creates a new product in the digital_products table with full admin control."""
         import uuid
+        db_path = self.resolve_db_path(db_path)
         self.init_products_db(db_path)
         prod_id = data.get("id") or f"prod_{uuid.uuid4().hex[:8]}"
         title = data.get("title", "नवीन डिजिटल ई-बुक").strip()
@@ -390,6 +411,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
 
     def update_product(self, product_id: str, updates: Dict[str, Any], db_path: str = "bot.db") -> bool:
         """Manually updates an existing product with specified fields."""
+        db_path = self.resolve_db_path(db_path)
         ALLOWED_FIELDS = {
             "title", "subtitle", "subject", "tier", "price_inr", "original_price_inr",
             "badge", "pages", "description", "download_file", "icon", "is_active"
@@ -413,6 +435,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
 
     def delete_product(self, product_id: str, db_path: str = "bot.db") -> bool:
         """Permanently deletes a product from the database."""
+        db_path = self.resolve_db_path(db_path)
         with sqlite3.connect(db_path) as db:
             cur = db.execute("DELETE FROM digital_products WHERE id = ?", (product_id,))
             db.commit()
@@ -421,6 +444,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
 
     def toggle_product_status(self, product_id: str, db_path: str = "bot.db") -> bool:
         """Toggles product between active (1) and inactive/hidden (0)."""
+        db_path = self.resolve_db_path(db_path)
         with sqlite3.connect(db_path) as db:
             cur = db.execute("UPDATE digital_products SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END WHERE id = ?", (product_id,))
             db.commit()
@@ -429,10 +453,12 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
 
     def purge_all_products(self, db_path: str = "bot.db") -> int:
         """Removes all products from the store so admin has a 100% clean slate for manual control."""
+        db_path = self.resolve_db_path(db_path)
         with sqlite3.connect(db_path) as db:
             cur = db.execute("DELETE FROM digital_products")
             db.commit()
             logger.info(f"🧹 Purged all {cur.rowcount} products from digital_products table.")
+            return cur.rowcount
             return cur.rowcount
 
     def bulk_sync_questions_to_store_qbank(self, new_questions: List[Dict[str, Any]], db_path: str = "bot.db") -> Dict[str, Any]:
@@ -528,8 +554,9 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         Registers any physical PDF file placed in a product folder as an active digital product.
         Accepts custom title, price, subject, or defaults to automatic smart inference.
         """
+        db_path = self.resolve_db_path(db_path)
         file_path = Path(file_path).resolve()
-        if not file_path.exists() or file_path.stat().st_size < 1000:
+        if not file_path.exists() or file_path.stat().st_size < 100:
             return None
 
         filename = file_path.name
@@ -541,8 +568,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             fn_lower.startswith("output_") or
             "sample" in fn_lower or
             "oneliner_question_bank_202" in fn_lower or
-            fn_lower.endswith(".tmp") or
-            file_path.stat().st_size < 50_000
+            fn_lower.endswith(".tmp")
         ):
             return None
 
@@ -664,16 +690,27 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         Scans all designated product directories and automatically adds any new PDF
         files to the web store with a price randomly between 10-50 INR.
         """
+        db_path = self.resolve_db_path(db_path)
         root_dir = Path(__file__).resolve().parent.parent.parent
         scan_dirs = [
             root_dir / "products",
             root_dir / "admin_storage" / "products",
+            root_dir / "admin_storage" / "response_sheets",
+            root_dir.parent / "admin_storage" / "products",
+            root_dir.parent / "admin_storage" / "response_sheets",
+            root_dir,
+            root_dir.parent,
         ]
 
         added_count = 0
+        seen_filenames = set()
         for s_dir in scan_dirs:
             if s_dir.exists() and s_dir.is_dir():
                 for pdf_file in s_dir.glob("*.pdf"):
+                    fn = pdf_file.name
+                    if fn in seen_filenames:
+                        continue
+                    seen_filenames.add(fn)
                     try:
                         res = self.register_pdf_file_as_product(pdf_file, db_path=db_path)
                         if res:
@@ -685,6 +722,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
 
     def get_all_products(self, db_path: str = "bot.db", include_inactive: bool = False) -> List[Dict[str, Any]]:
         """Returns digital products from SQLite database under 100% manual admin control."""
+        db_path = self.resolve_db_path(db_path)
         self.init_products_db(db_path)
         with sqlite3.connect(db_path) as db:
             db.row_factory = sqlite3.Row
@@ -695,35 +733,58 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             return [dict(r) for r in rows]
 
     def get_product_by_id(self, product_id: str, db_path: str = "bot.db") -> Optional[Dict[str, Any]]:
+        db_path = self.resolve_db_path(db_path)
         self.init_products_db(db_path)
         with sqlite3.connect(db_path) as db:
             db.row_factory = sqlite3.Row
             row = db.execute("SELECT * FROM digital_products WHERE id = ?", (product_id,)).fetchone()
             return dict(row) if row else None
 
-    def ensure_product_pdf(self, product_id: str, output_dir: Optional[Path] = None, db_path: str = "bot.db", force_rebuild: bool = False) -> Path:
+    def ensure_product_pdf(self, product_id: str, output_dir: Optional[Path] = None, db_path: str = "bot.db", force_rebuild: bool = False) -> Optional[Path]:
         """
         Dynamically synthesizes or retrieves product PDF file.
         Returns the absolute Path to the ready-to-deliver PDF file.
         Respects ENABLE_AUTO_EBOOK_GENERATION: If disabled and PDF does not physically exist, does not auto-generate.
+        Searches all storage locations (products, response_sheets, root) to guarantee availability.
         """
+        db_path = self.resolve_db_path(db_path)
+        project_root = Path(__file__).resolve().parent.parent.parent
         if output_dir is None:
-            output_dir = Path(__file__).resolve().parent.parent.parent / "admin_storage" / "products"
+            output_dir = project_root / "admin_storage" / "products"
+        output_dir = Path(output_dir).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
 
         prod = self.get_product_by_id(product_id, db_path)
-        if not prod:
-            # Check if file exists matching product_id
-            cand = output_dir / f"{product_id}.pdf"
-            if cand.exists():
-                return cand
-            return None
-
-        filename = prod.get("download_file") or f"{product_id}.pdf"
+        filename = (prod.get("download_file") if prod else None) or f"{product_id}.pdf"
         target_path = output_dir / filename
 
-        if not force_rebuild and target_path.exists() and target_path.stat().st_size > 1024:
+        if not force_rebuild and target_path.exists() and target_path.stat().st_size > 100:
             return target_path
+
+        # Thorough search across all candidate storage locations on disk
+        search_dirs = [
+            output_dir,
+            output_dir.parent / "response_sheets",
+            project_root / "admin_storage" / "products",
+            project_root / "admin_storage" / "response_sheets",
+            project_root / "products",
+            project_root,
+            project_root.parent / "admin_storage" / "products",
+            project_root.parent / "admin_storage" / "response_sheets",
+            project_root.parent,
+        ]
+        for s_dir in search_dirs:
+            if s_dir.exists() and s_dir.is_dir():
+                for cand_fn in (filename, f"{product_id}.pdf", f"admin_upload_{filename}"):
+                    cand = s_dir / cand_fn
+                    if cand.is_file() and cand.stat().st_size > 100:
+                        try:
+                            if cand.resolve() != target_path.resolve():
+                                import shutil
+                                shutil.copy2(cand, target_path)
+                        except Exception:
+                            pass
+                        return cand if cand.exists() else target_path
 
         # Check if automatic eBook generation is disabled
         if not force_rebuild and os.getenv("ENABLE_AUTO_EBOOK_GENERATION", "").lower() not in ("true", "1", "yes"):

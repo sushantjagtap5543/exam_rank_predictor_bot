@@ -943,9 +943,10 @@
         function getFilteredProducts() {
             const query = (document.getElementById('searchInput').value || '').trim().toLowerCase();
             const activeBtn = document.querySelector('.filter-btn.active');
-            const cat = activeBtn ? activeBtn.getAttribute('data-cat') || 'All' : 'All';
+            const cat = activeBtn ? (activeBtn.getAttribute('data-cat') || 'All') : 'All';
             return PRODUCTS.filter(p => {
-                if (!p.is_active) return false;
+                // Safeguard: Active unless explicitly set to 0, '0', or false
+                if (p.is_active === 0 || p.is_active === false || p.is_active === '0') return false;
                 const matchCat = (cat === 'All') || (p.subject && p.subject.toLowerCase().includes(cat.toLowerCase()));
                 if (!matchCat) return false;
                 if (!query) return true;
@@ -955,6 +956,21 @@
                 const matchSubj = (p.subject || '').toLowerCase().includes(query);
                 return matchTitle || matchSub || matchDesc || matchSubj;
             });
+        }
+
+        async function refreshProducts() {
+            try {
+                const res = await fetch('/api/products?_t=' + Date.now());
+                if (res.ok) {
+                    const data = await res.json();
+                    if (Array.isArray(data) && data.length > 0) {
+                        PRODUCTS = data;
+                        renderProducts(getFilteredProducts());
+                    }
+                }
+            } catch (e) {
+                console.warn('Live products auto-refresh error:', e);
+            }
         }
 
         function renderProducts(items) {
@@ -1269,8 +1285,10 @@
             document.getElementById(id).classList.remove('active');
         }
 
-        // Render products on page load
+        // Render products on page load & keep synchronized via live refresh
         renderProducts(PRODUCTS);
+        refreshProducts();
+        setInterval(refreshProducts, 45000);
     </script>
 </body>
 </html>

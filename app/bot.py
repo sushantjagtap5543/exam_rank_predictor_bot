@@ -4422,6 +4422,9 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
             self.end_headers()
             prods = packaging_agent.get_all_products(DB_PATH)
             self.wfile.write(json.dumps(prods).encode("utf-8"))
@@ -4858,12 +4861,15 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         log_store_visitor(client_ip, ua, ref, tg_id=tg_uid, page_path=path or "/", action="view_store", product_id=prod_param)
 
         try:
-            store_page_html = render_digital_store_html()
+            store_page_html = render_digital_store_html(db_path=DB_PATH)
             html_bytes = store_page_html.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(html_bytes)))
             self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
             self.end_headers()
             self.wfile.write(html_bytes)
         except Exception as e:
