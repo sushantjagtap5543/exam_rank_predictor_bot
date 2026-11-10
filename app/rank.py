@@ -38,7 +38,16 @@ def estimate_cohort_rank(
     premature/misleading "Strong Selection Zone" claims on small sample sizes.
     Flags impossible scores.
     """
-    # 0. Impossible Score Detection
+    # 0. Impossible Score Detection & Safe Type Conversion
+    try:
+        student_score = float(student_score)
+    except (ValueError, TypeError):
+        student_score = 0.0
+    try:
+        max_marks = float(max_marks)
+    except (ValueError, TypeError):
+        max_marks = MAX_POSSIBLE_SCORE
+
     is_impossible = student_score < MIN_POSSIBLE_SCORE or student_score > max_marks
 
     # 1. Exam Cohort Rank (primary all_scores)

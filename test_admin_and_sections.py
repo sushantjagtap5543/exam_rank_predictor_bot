@@ -18,9 +18,16 @@ from app.quiz_generator import extract_quizzes_from_records, compute_question_ha
 
 class TestAdminAndSections(unittest.TestCase):
     def setUp(self):
-        self.db_path = "bot.db"
+        self.db_path = "test_admin_temp.db"
         self.output_dir = Path("test_output")
         self.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def tearDown(self):
+        if os.path.exists(self.db_path):
+            try:
+                os.remove(self.db_path)
+            except Exception:
+                pass
 
     def test_admin_dashboard_html_rendering(self):
         html = render_admin_dashboard_html(self.db_path)

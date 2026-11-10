@@ -291,7 +291,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
     @staticmethod
     def resolve_db_path(db_path: Optional[str] = None) -> str:
         """Resolves the absolute, canonical database path to avoid relative working directory mismatches."""
-        if db_path and db_path != "bot.db" and os.path.exists(db_path):
+        if db_path and db_path != "bot.db":
             return str(Path(db_path).resolve())
         env_db = os.getenv("DATABASE_PATH")
         if env_db and os.path.exists(env_db):

@@ -5912,13 +5912,13 @@ async def download_store_content_cmd(update: Update, context: ContextTypes.DEFAU
             await context.bot.send_message(chat_id=chat_id, text="⛔ Restricted to administrators only.")
         return
 
+    products = packaging_agent.get_all_products(DB_PATH)
     status_msg = await context.bot.send_message(
         chat_id=chat_id,
-        text="⏳ <i>सर्व १८ डिजिटल ई-बुक्स गोळा करून ZIP आर्काइव्ह तयार करत आहे...</i>",
+        text=f"⏳ <i>सर्व {len(products)} डिजिटल ई-बुक्स गोळा करून ZIP आर्काइव्ह तयार करत आहे...</i>",
         parse_mode="HTML"
     )
 
-    products = packaging_agent.get_all_products(DB_PATH)
     storage_products_dir = STORAGE_DIR / "products"
     storage_products_dir.mkdir(parents=True, exist_ok=True)
 
@@ -5958,14 +5958,15 @@ async def download_store_content_cmd(update: Update, context: ContextTypes.DEFAU
     ]
 
     try:
-        await context.bot.send_document(
-            chat_id=user.id,
-            document=open(zip_path, "rb"),
-            filename="ExamRankers_Full_Store_Content.zip",
-            caption=caption,
-            parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(kb)
-        )
+        with open(zip_path, "rb") as zf_doc:
+            await context.bot.send_document(
+                chat_id=user.id,
+                document=zf_doc,
+                filename="ExamRankers_Full_Store_Content.zip",
+                caption=caption,
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(kb)
+            )
         await status_msg.delete()
     except Exception:
         await status_msg.edit_text(
