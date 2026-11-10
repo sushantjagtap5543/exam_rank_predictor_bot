@@ -189,7 +189,7 @@ def extract_pdf_text_with_status(path: str, max_ocr_pages: int = None) -> tuple:
             return "", "empty_ocr"
 
         ocr_pages = []
-        limit = min(max_ocr_pages, total_pages) if max_ocr_pages else min(total_pages, 8)
+        limit = min(max_ocr_pages, total_pages) if max_ocr_pages else min(total_pages, 50)
         for i in range(limit):
             page = doc[i]
             pix = page.get_pixmap(dpi=100)
@@ -247,48 +247,90 @@ def recover_digialm_url_from_pdf(path: str) -> str:
                     doc.close()
                     return cand
 
-        # 3. Document Title metadata + Page 0 OCR footer (Microsoft Print to PDF)
+        # 3. Document Title metadata + Page 0 OCR footer (Microsoft Print to PDF / Chrome Print)
         meta_title = doc.metadata.get("title", "")
-        m_fn = re.search(r'([A-Za-z0-9_-]+\.html)', meta_title)
-        meta_raw_fn = m_fn.group(1) if m_fn else ""
-
         ocr = get_ocr_engine()
         if ocr and total_pages > 0:
-            page0 = doc[0]
-            h = page0.rect.height
-            w = page0.rect.width
+            p0 = doc[0]
+            h = p0.rect.height
+            w = p0.rect.width
             crop_boxes = [
                 fitz.Rect(0, h * 0.88, w, h),  # Footer where print URL is located
                 fitz.Rect(0, 0, w, h * 0.12),  # Header fallback
             ]
+            ocr_lines = []
             for crop_rect in crop_boxes:
-                pix = page0.get_pixmap(dpi=110, clip=crop_rect)
+                pix = p0.get_pixmap(dpi=110, clip=crop_rect)
                 res, _ = ocr(pix.tobytes("png"))
                 if res:
-                    for line in res:
-                        raw_text_line = line[1]
-                        # Fix common OCR misrecognitions for URLs
-                        text_line = raw_text_line.replace(" ", "").replace(".c0m", ".com")
-                        if "http" in text_line and "digialm.com" in text_line and ".html" in text_line:
-                            cand_url = text_line.strip()
-                            if is_allowed_response_url(cand_url):
-                                doc.close()
-                                return cand_url
-                        if "digialm.com" in text_line and "touchstone" in text_line:
-                            m_dir = re.search(r'([A-Za-z0-9_./]+)/(\d+)\.\.\.', text_line)
-                            if m_dir and meta_raw_fn:
-                                base_path = m_dir.group(1).lstrip('/')
-                                prefix_digits = m_dir.group(2)
-                                m_sub = re.search(r'^(\d+)_(.+)$', meta_raw_fn)
-                                if m_sub:
-                                    suffix_digits = m_sub.group(1)
-                                    clean_fn = m_sub.group(2)
-                                    full_folder = prefix_digits + suffix_digits
-                                    url = f"https://{base_path}/{full_folder}/{clean_fn}"
-                                    clean_url = re.sub(r"(?<!:)//+", "/", url)
-                                    if is_allowed_response_url(clean_url):
-                                        doc.close()
-                                        return clean_url
+                    for l in res:
+                        ocr_lines.append(l[1])
+
+            # Direct full URL check first
+            for raw_line in ocr_lines:
+                text_line = raw_line.replace(" ", "").replace(".c0m", ".com")
+                m_direct = re.search(r'(https?://[^\s"\'<>]*(?:digialm\.com|touchstone)[^\s"\'<>]+\.html)', text_line)
+                if m_direct:
+                    cand_url = re.sub(r"(?<!:)//+", "/", m_direct.group(1))
+                    if is_allowed_response_url(cand_url):
+                        doc.close()
+                        return cand_url
+
+            # Truncated URL reconstruction: sort lines with most slashes first (deepest folder)
+            trunc_lines = [l.replace(" ", "").replace(".c0m", ".com") for l in ocr_lines if ("digialm.com" in l or "touchstone" in l) and "/" in l]
+            trunc_lines.sort(key=lambda x: (x.count("/"), len(x)), reverse=True)
+
+            m_fn = re.search(r'(\d+_[A-Za-z0-9_]+\.html)', meta_title)
+            raw_fn = m_fn.group(1) if m_fn else ""
+
+            for text_line in trunc_lines:
+                line = text_line
+                if not line.startswith("http"):
+                    line = "https://" + line.lstrip("/")
+                line = re.sub(r"(?<!:)//+", "/", line)
+
+                idx = line.rfind("/")
+                if idx > 0 and raw_fn:
+                    dir_part = line[:idx]
+                    tail = line[idx+1:].rstrip(".").rstrip("…")
+
+                    # Case A: Line ends with filename prefix (e.g. /150215..)
+                    m_cand = re.search(r'(' + re.escape(tail) + r'[A-Za-z0-9_]*\.html)', raw_fn)
+                    if m_cand:
+                        full_url = f"{dir_part}/{m_cand.group(1)}"
+                        clean_url = re.sub(r"(?<!:)//+", "/", full_url)
+                        if is_allowed_response_url(clean_url):
+                            doc.close()
+                            return clean_url
+
+                    # Case B: Line ends with folder prefix (e.g. /17921303154218..)
+                    m_split = re.search(r'^(\d+)_(.+)$', raw_fn)
+                    if m_split:
+                        folder_continuation = m_split.group(1)
+                        actual_fn = m_split.group(2)
+                        full_folder = f"{tail}{folder_continuation}"
+                        full_url = f"{dir_part}/{full_folder}/{actual_fn}"
+                        clean_url = re.sub(r"(?<!:)//+", "/", full_url)
+                        if is_allowed_response_url(clean_url):
+                            doc.close()
+                            return clean_url
+
+                    # Case C: Overlap matching fallback
+                    last_folder = dir_part.rstrip("/").split("/")[-1]
+                    cand_fn = raw_fn
+                    for k in range(min(len(last_folder), 15), 1, -1):
+                        suffix = last_folder[-k:]
+                        if cand_fn.startswith(suffix + "_"):
+                            cand_fn = cand_fn[len(suffix) + 1:]
+                            break
+                        elif cand_fn.startswith(suffix):
+                            cand_fn = cand_fn[len(suffix):]
+                            break
+                    full_url = f"{dir_part}/{cand_fn}"
+                    clean_url = re.sub(r"(?<!:)//+", "/", full_url)
+                    if is_allowed_response_url(clean_url):
+                        doc.close()
+                        return clean_url
         doc.close()
     except Exception as e:
         logger.warning(f"Error checking PDF for DigiALM URL: {e}")
