@@ -155,8 +155,8 @@ DB_PATH = os.getenv("DATABASE_PATH", str(PERSISTENT_ROOT / "bot.db"))
 STORAGE_DIR = Path(os.getenv("ADMIN_STORAGE_DIR", str(PERSISTENT_ROOT / "admin_storage"))).resolve()
 RESPONSE_DIR = STORAGE_DIR / "response_sheets"
 REPORT_DIR = STORAGE_DIR / "reports"
-ADMIN_IDS = {int(x.strip()) for x in (os.getenv("ADMIN_TELEGRAM_IDS") or os.getenv("ADMIN_USER_IDS") or "").split(",") if x.strip().isdigit()}
-PAID_CHANNEL_ID = os.getenv("PAID_CHANNEL_ID", "").strip()
+ADMIN_IDS = {int(x.strip()) for x in (os.getenv("ADMIN_TELEGRAM_IDS") or os.getenv("ADMIN_USER_IDS") or "705909048").split(",") if x.strip().isdigit()}
+PAID_CHANNEL_ID = os.getenv("PAID_CHANNEL_ID", "-1004381339759").strip()
 PAID_CHANNEL_LINK = get_paid_channel_link()
 _configured_dl_key = os.getenv("DOWNLOAD_SECRET_KEY", "").strip()
 if not _configured_dl_key or len(_configured_dl_key) < 16 or _configured_dl_key == "examrankers_secure_download_secret_key_32b":
@@ -789,24 +789,25 @@ def format_subjectwise_dashboard(sections: dict) -> str:
     lines.append("━━━━━━━━━━━━━━━━━━━━━━")
     return "\n".join(lines)
 
-async def auto_post_quizzes_background(bot, text: str, exam_name: str, records: list = None):
+async def auto_post_quizzes_background(bot, text: str, exam_name: str, records: list = None, chat_id: int or str = None):
     """
-    Background Task: Extracts all unposted questions from records or text.
-    Auto-posting to public/VIP channel is disabled by default to prevent unwanted spam.
-    Admin publishes manually on-demand using /postquizzes at a steady rate (3-4 quizzes/min).
+    Background Task: Extracts all unposted questions from records or text,
+    syncs them to master question bank, and automatically posts them 1-by-1 to
+    the Telegram channel or group.
     """
-    if os.getenv("ENABLE_AUTO_QUIZ_POSTING", "").lower() not in ("true", "1", "yes"):
-        logger.info("Auto-posting quizzes to channel is paused (Manual Admin Control mode). Admin can publish via /postquizzes.")
+    if os.getenv("ENABLE_AUTO_QUIZ_POSTING", "true").lower() in ("false", "0", "no"):
+        logger.info("Auto-posting quizzes to channel is paused (disabled via ENABLE_AUTO_QUIZ_POSTING=false).")
         return
-    channel = os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID
-    if not channel or channel.startswith("http"):
+    channel = chat_id or os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID or "-1004381339759"
+    if not channel or str(channel).startswith("http"):
+        logger.warning(f"No valid numeric or username channel ID found for auto quiz posting (channel='{channel}').")
         return
 
     try:
         # Step 1: Extract all unposted quizzes from records or text
         quizzes = []
         if records:
-            quizzes = extract_quizzes_from_records(records, max_questions=500, filter_unposted=True, db_path=DB_PATH)
+            quizzes = extract_quizzes_from_records(records, max_questions=2500, filter_unposted=True, db_path=DB_PATH)
         elif text:
             from .parser import parse_answers, parse_html_response_sheet
             parsed_text = text
@@ -814,9 +815,9 @@ async def auto_post_quizzes_background(bot, text: str, exam_name: str, records: 
                 parsed_text = parse_html_response_sheet(text)
             parsed_recs = parse_answers(parsed_text)
             if parsed_recs:
-                quizzes = extract_quizzes_from_records(parsed_recs, max_questions=500, filter_unposted=True, db_path=DB_PATH)
+                quizzes = extract_quizzes_from_records(parsed_recs, max_questions=2500, filter_unposted=True, db_path=DB_PATH)
             if not quizzes:
-                quizzes = extract_quizzes_locally(parsed_text, max_questions=50, db_path=DB_PATH)
+                quizzes = extract_quizzes_locally(parsed_text, max_questions=100, db_path=DB_PATH)
 
         if not quizzes:
             logger.info("No unposted quizzes found for this response sheet (all already published).")
@@ -2037,8 +2038,9 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
         roll_entropy = hashlib.sha256(f"{user_id}:{clean_roll}:{time.time()}".encode()).hexdigest()[:8]
 
         # Admin Bulk Response Sheet / Master MCQ PDF Processor & Store Synchronizer
-        is_bulk_request = (user_id in ADMIN_IDS) and (
-            context.user_data.get("admin_bulk_mode") is True
+        is_bulk_request = (
+            (user_id in ADMIN_IDS)
+            or context.user_data.get("admin_bulk_mode") is True
             or any(k in safe_name.lower() for k in ["bulk", "master", "qbank", "mcq", "gmc", "exam", "paper", "test", "question"])
             or len(records) > 30
             or not clean_roll
@@ -2073,15 +2075,25 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
                      0.0, len(quizzes), 0, 0, "admin_bulk")
                 )
 
-            # Sync questions into master question bank
+            # 1. Sync questions into master question bank (qbank_master.json)
             sync_res = packaging_agent.bulk_sync_questions_to_store_qbank(quizzes, db_path=DB_PATH)
             total_bank = sync_res.get("total_questions_in_bank", len(quizzes))
             new_added = sync_res.get("newly_added", len(quizzes))
 
-            # Auto-posting quizzes to channel is manual-only by admin via /postquizzes or direct button
-            if os.getenv("ENABLE_AUTO_QUIZ_POSTING", "").lower() in ("true", "1", "yes"):
-                asyncio.create_task(auto_post_quizzes_background(context.bot, text, "TCS/IBPS Master Bulk QBank", records=records))
+            # 2. Automatically trigger 1-by-1 quiz posting to the group or channel
+            target_chat_for_quiz = None
+            if update.effective_chat and str(update.effective_chat.type) in ("group", "supergroup"):
+                target_chat_for_quiz = update.effective_chat.id
 
+            asyncio.create_task(auto_post_quizzes_background(
+                context.bot,
+                text,
+                detected.get("name") or "TCS/IBPS Master Bulk QBank",
+                records=records,
+                chat_id=target_chat_for_quiz
+            ))
+
+            channel_target_display = target_chat_for_quiz or os.getenv("PAID_CHANNEL_ID", "").strip() or PAID_CHANNEL_ID or "-1004381339759"
             report_msg = (
                 f"✅ <b>Master TCS/IBPS Bulk PDF यशस्वीरित्या प्रोसेस झाले!</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -2089,10 +2101,10 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
                 f"🆕 <b>मास्टर प्रश्नसंचातील नवीन प्रश्न:</b> {new_added}\n"
                 f"📚 <b>एकूण उपलब्ध प्रश्नसंख्या:</b> {total_bank}+ MCQs\n"
                 f"📂 <b>साठवलेली फाईल:</b> <code>{canonical_name}</code>\n\n"
-                f"🔄 <b>सिंक्रोनायझेशन स्थिती:</b>\n"
-                f"• 📢 <b>चॅनेल क्विझेस:</b> सर्व प्रश्न १-बाय-१ चॅनेलवर पोस्ट करण्यासाठी तयार आहेत.\n"
-                f"  👉 थेट चॅनेलवर पाठवण्यासाठी खालील बटण दाबा किंवा <code>/postquizzes</code> वापरा.\n"
-                f"• 💾 <b>सुरक्षित बॅकअप:</b> फाईल डेटाबेस व बॅकएंड रिस्पॉन्स शीट्समध्ये जतन झाली आहे.\n\n"
+                f"🔄 <b>स्वयंचलित सिंक्रोनायझेशन व क्विझ पोस्टिंग सुरू:</b>\n"
+                f"• 🧠 <b>Question Bank:</b> सर्व प्रश्न <code>qbank_master.json</code> व मास्टर स्टोअरमध्ये जोडले गेले आहेत.\n"
+                f"• 📢 <b>1-by-1 क्विझ:</b> ग्रुप/चॅनेलवर (<code>{channel_target_display}</code>) १-बाय-१ क्विझ पोस्टिंग स्वयंचलित सुरू झाले आहे! 🚀\n"
+                f"• 💾 <b>सुरक्षित बॅकअप:</b> सर्व प्रश्नपत्रिका डेटाबेसमध्ये सुरक्षित जतन केल्या आहेत.\n\n"
                 f"👉 स्टोअर लिंक: <a href=\"{get_store_web_url()}\">येथे तपासा</a>"
             )
             context.user_data["admin_bulk_mode"] = False
@@ -2262,9 +2274,18 @@ async def _complete_analysis_impl(update: Update, context: ContextTypes.DEFAULT_
     swot_text = format_swot_telegram_message(swot)
     full_card = f"{card}\n\n{swot_text}"
 
-    # Candidate upload: questions are saved to SQLite DB; channel posting is manually controlled by Admin via /postquizzes
-    if os.getenv("ENABLE_AUTO_QUIZ_POSTING", "").lower() in ("true", "1", "yes"):
-        asyncio.create_task(auto_post_quizzes_background(context.bot, raw_text, exam_display_name, records=records))
+    # Automatically post unposted exam questions 1-by-1 to configured channel/group
+    target_chat_for_quiz = None
+    if update.effective_chat and str(update.effective_chat.type) in ("group", "supergroup"):
+        target_chat_for_quiz = update.effective_chat.id
+
+    asyncio.create_task(auto_post_quizzes_background(
+        context.bot,
+        raw_text,
+        exam_display_name,
+        records=records,
+        chat_id=target_chat_for_quiz
+    ))
 
     # Gated access: Only after candidate submits response sheet, generate single-use VIP channel invite
     channel_join_url = PAID_CHANNEL_LINK or "https://t.me/+EjtGp-pH4hMxZDM1"
