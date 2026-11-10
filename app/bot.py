@@ -1734,7 +1734,6 @@ async def handle_url_sheet(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                 await status_msg.edit_text("❌ No question-answer pairs detected in the response sheet from this URL.")
                 return
 
-            category = context.user_data.get("category", "Open")
             post_name = meta.get("post_name", "General")
             context.user_data["post_name"] = post_name
             context.user_data["candidate_meta"] = meta
@@ -2021,6 +2020,9 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
             return
+
+        detected = detect_exam(text, EXAMS)
+        records = parse_answers(text)
 
         # Extract post name and candidate metadata from response sheet
         meta = extract_post_and_metadata(text)
@@ -2859,7 +2861,7 @@ async def post_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 else:
                     parsed_text = extract_pdf_text(str(s_path))
 
-                recs = parse_answers(parsed_text)
+                recs = parse_answers(parsed_text) or parse_general_mcqs(parsed_text)
                 batch = extract_quizzes_from_records(
                     recs,
                     max_questions=max_q - len(all_unposted_quizzes),
@@ -2907,7 +2909,7 @@ async def post_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                 if is_quiz_already_posted(q_hash, q_txt, db_path=DB_PATH):
                                     continue
                                 sec = item.get("subject") or item.get("section") or "General"
-                                exp = str(item.get("explanation") or f"TCS/IBPS अधिकृत उत्तरतालिकेनुसार प्रमाणित स्पष्टीकरण.")[:195]
+                                exp = str(item.get("explanation") or "TCS/IBPS अधिकृत उत्तरतालिकेनुसार प्रमाणित स्पष्टीकरण.")[:195]
                                 all_unposted_quizzes.append({
                                     "question": f"[{sec}] {q_txt}"[:295],
                                     "passage": "",
@@ -4023,8 +4025,6 @@ async def post_promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     promo_banner_path = Path(__file__).resolve().parent.parent / "assets" / "promo_banner.jpg"
 
     yt_link = get_youtube_link()
-    yt_line = f"\n🔴 <b>अधिकृत YouTube:</b> <a href=\"{yt_link}\">{yt_link}</a>" if yt_link else ""
-
     promo_caption = safe_photo_caption(get_promotional_broadcast_caption(yt_link), 950)
 
     kb = [
@@ -4096,8 +4096,6 @@ async def three_hour_promo_scheduler_loop(application: Application):
                 promo_banner_path = Path(__file__).resolve().parent.parent / "assets" / "promo_banner.jpg"
 
                 yt_link = get_youtube_link()
-                yt_line = f"\n🔴 <b>अधिकृत YouTube:</b> <a href=\"{yt_link}\">{yt_link}</a>" if yt_link else ""
-
                 promo_caption = safe_photo_caption(get_promotional_broadcast_caption(yt_link), 950)
 
                 kb = [
@@ -5537,7 +5535,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
 
 async def vip_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Explains that the channel is 100% FREE and guides users to our official Digital Store (₹10-₹50)."""
-    user = update.effective_user
+    track_user(update.effective_user)
     store_url = get_store_web_url()
     free_channel = PAID_CHANNEL_LINK or "https://t.me/+EjtGp-pH4hMxZDM1"
 
@@ -5662,10 +5660,6 @@ async def agency_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Restricted to administrators only.")
         return
 
-    # Check if a detailed sub-view was requested
-    args = context.args or []
-    subview = args[0].lower() if args else ""
-
     status_msg = await update.message.reply_text("⏳ <i>CEO व AI Lead Director सर्व विभागांचे लाइव्ह ऑडिट घेत आहेत...</i>", parse_mode="HTML")
 
     # Fast parallel execution with strict 1.5s timeout circuit breaker
@@ -5688,6 +5682,8 @@ async def agency_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "══════════════════════════",
         f"👑 <b>CEO Brief:</b> {ceo_brief.get('executive_summary', 'Operating smoothly.')}\n",
         f"🎯 <b>ब्रँड प्रतिष्ठा इंडेक्स:</b> <code>{ceo_brief.get('brand_reputation_index', 98)}/100</code>",
+        f"⚡ <b>AI Mesh:</b> <code>{ai_health.get('status', 'Healthy')}</code> | <b>UX:</b> <code>{ux_standards.get('score', '100%')}</code> | <b>Ops:</b> <code>{ops_health.get('status', 'Active')}</code>",
+        f"🔬 <b>Research Digest:</b> <i>{research_digest.get('summary', 'TCS/IBPS पॅटर्नचे सखोल विश्लेषण चालू आहे.')}</i>",
         f"💬 <i>\"{ceo_brief.get('ceo_quote_marathi', 'अथक परिश्रम आणि योग्य तंत्रज्ञान = सरकारी नोकरीत यश!')}\"</i>\n",
         "🤖 <b>सध्या कोणता AI एजंट काय करतो आणि कसे कार्य करतो? (Live Roster):</b>",
         "━━━━━━━━━━━━━━━━━━━━━━",
