@@ -705,6 +705,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         """
         Dynamically synthesizes or retrieves product PDF file.
         Returns the absolute Path to the ready-to-deliver PDF file.
+        Respects ENABLE_AUTO_EBOOK_GENERATION: If disabled and PDF does not physically exist, does not auto-generate.
         """
         if output_dir is None:
             output_dir = Path(__file__).resolve().parent.parent.parent / "admin_storage" / "products"
@@ -723,6 +724,13 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
 
         if not force_rebuild and target_path.exists() and target_path.stat().st_size > 1024:
             return target_path
+
+        # Check if automatic eBook generation is disabled
+        if not force_rebuild and os.getenv("ENABLE_AUTO_EBOOK_GENERATION", "").lower() not in ("true", "1", "yes"):
+            if target_path.exists():
+                return target_path
+            logger.info(f"Auto eBook generation disabled: not generating dummy/auto PDF for '{product_id}'.")
+            return None
 
         # If product is Current Affairs, use Chalu Ghadamodi specification layout
         if prod.get("subject") == "Current Affairs" or "ca" in product_id:

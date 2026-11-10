@@ -700,10 +700,8 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 <button class="btn btn-outline" onclick="document.getElementById('pdfFileInput').click()">📁 थेट Single PDF</button>
                 <input type="file" id="pdfFileInput" style="display:none;" accept=".pdf" onchange="uploadDirectPdf(this)">
                 <input type="file" id="bulkModalFileInput" style="display:none;" accept=".pdf" multiple onchange="handleBulkFilesSelected(this.files)">
-                <button class="btn btn-purple" onclick="generateQBank()">📑 ४-स्तंभ प्रश्नसंच बनवा</button>
-                <button class="btn btn-green" onclick="generateChaluGhadamodi()">📰 चालू घडामोडी PDF बनवा</button>
                 <button class="btn btn-outline" onclick="syncFolderPdfs()">🔄 फोल्डर PDF सिंक</button>
-                <button class="btn btn-danger" onclick="purgeAllProducts()">🧹 सर्व ऑटो-जनरेटेड ई-बुक्स हटवा</button>
+                <button class="btn btn-danger" onclick="purgeAllProducts()">🧹 सर्व ई-बुक्स हटवा (Clean Slate)</button>
                 <a href="/admin/download_all_products" class="btn btn-outline">📦 ZIP बॅकअप</a>
             </div>
         </div>
@@ -1576,10 +1574,10 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 const res = await adminFetch('/api/admin/generate_qbank', {{ method: 'POST' }});
                 const data = await res.json();
                 if (data.success) {{
-                    alert('🎉 प्रश्नसंच तयार झाला व स्टोअरमध्ये आपोआप जोडला गेला!');
+                    alert('🎉 प्रश्नसंच तयार झाला व स्टोअरमध्ये जोडला गेला!');
                     location.reload();
                 }} else {{
-                    alert('❌ त्रुटी: ' + data.message);
+                    alert('❌ त्रुटी: ' + (data.message || 'त्रुटी आली'));
                 }}
             }} catch(e) {{
                 alert('❌ सर्व्हर त्रुटी: ' + e.message);
@@ -1595,7 +1593,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                     alert('🎉 चालू घडामोडी PDF तयार झाली व स्टोअरमध्ये जोडली गेली!');
                     location.reload();
                 }} else {{
-                    alert('❌ त्रुटी: ' + data.message);
+                    alert('❌ त्रुटी: ' + (data.message || 'त्रुटी आली'));
                 }}
             }} catch(e) {{
                 alert('❌ सर्व्हर त्रुटी: ' + e.message);

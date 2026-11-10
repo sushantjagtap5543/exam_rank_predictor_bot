@@ -2034,24 +2034,28 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
                 # Auto-posting quizzes to channel is manual-only by admin via /postquizzes
                 if os.getenv("ENABLE_AUTO_QUIZ_POSTING", "").lower() in ("true", "1", "yes"):
                     asyncio.create_task(auto_post_quizzes_background(context.bot, text, "TCS/IBPS Master Bulk QBank", records=records))
-                sync_res = packaging_agent.bulk_sync_questions_to_store_qbank(quizzes, db_path=DB_PATH)
-                total_bank = sync_res.get("total_questions_in_bank", len(quizzes))
-                new_added = sync_res.get("newly_added", len(quizzes))
+                if os.getenv("ENABLE_AUTO_EBOOK_GENERATION", "").lower() in ("true", "1", "yes"):
+                    sync_res = packaging_agent.bulk_sync_questions_to_store_qbank(quizzes, db_path=DB_PATH)
+                    total_bank = sync_res.get("total_questions_in_bank", len(quizzes))
+                    new_added = sync_res.get("newly_added", len(quizzes))
+                else:
+                    total_bank = len(quizzes)
+                    new_added = len(quizzes)
 
                 report_msg = (
                     f"✅ <b>Master TCS/IBPS Bulk PDF यशस्वीरित्या प्रोसेस झाले!</b>\n"
                     f"━━━━━━━━━━━━━━━━━━━━━━\n"
                     f"📑 <b>एकूण डिटेक्ट झालेले प्रश्न:</b> {len(quizzes)}\n"
                     f"🆕 <b>डेटाबेसमध्ये नवीन जोडलेले:</b> {new_added}\n"
-                    f"📚 <b>स्टोअर मास्टर प्रश्नसंच आकार:</b> {total_bank}+ MCQs\n\n"
+                    f"📚 <b>मास्टर प्रश्नसंच आकार:</b> {total_bank}+ MCQs\n\n"
                     f"🔄 <b>सिंक्रोनायझेशन स्थिती:</b>\n"
                     f"• 📢 <b>चॅनेल क्विझेस:</b> सर्व प्रश्न १-बाय-१ चॅनेलवर पोस्ट करण्यासाठी रांगेत जोडले आहेत.\n"
-                    f"• 🛒 <b>डिजिटल स्टोअर:</b> 'TCS/IBPS सर्व रिस्पॉन्स शीट्स वनलायनर प्रश्नसंच' (₹२९) ई-बुक तात्काळ री-जनरेट होऊन अपडेट झाले आहे!\n\n"
-                    f"👉 स्टोअर लिंक: <a href=\"{get_store_web_url()}?prod=prod_tcs_response_sheet_qbank\">येथे तपासा</a>"
+                    f"• 🛒 <b>डिजिटल स्टोअर:</b> मॅन्युअल मोड सक्रिय (केवळ ॲडमिनने अपलोड केलेले PDFs स्टोअरमध्ये राहतील).\n\n"
+                    f"👉 स्टोअर लिंक: <a href=\"{get_store_web_url()}\">येथे तपासा</a>"
                 )
                 context.user_data["admin_bulk_mode"] = False
                 kb = [
-                    [InlineKeyboardButton("🛒 अपडेटेड ई-बुक पहा", url=f"{get_store_web_url()}?prod=prod_tcs_response_sheet_qbank")],
+                    [InlineKeyboardButton("🛒 डिजिटल स्टोअर पहा", url=get_store_web_url())],
                     [InlineKeyboardButton("📦 सर्व स्टोअर फाईल्स ZIP डाऊनलोड करा", callback_data="download_store_zip")]
                 ]
                 await status_msg.edit_text(report_msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb), disable_web_page_preview=True)
@@ -4216,11 +4220,13 @@ async def set_bot_commands(application: Application):
         if os.getenv("ENABLE_AUTO_YT_BROADCAST", "").lower() in ("true", "1", "yes"):
             asyncio.create_task(youtube_upload_watcher_loop(application))
 
-        # Core background tasks: Daily Current Affairs DB updater, Multi-Agent Health Orchestrator, Nightly SQLite Backup
-        asyncio.create_task(daily_current_affairs_updater_loop(application))
+        # Core background tasks: Multi-Agent Health Orchestrator, Nightly SQLite Backup
+        # Auto-generation of eBooks and daily Current Affairs eBook updates are disabled by default
+        if os.getenv("ENABLE_AUTO_EBOOK_GENERATION", "").lower() in ("true", "1", "yes"):
+            asyncio.create_task(daily_current_affairs_updater_loop(application))
         asyncio.create_task(continuous_autonomous_agency_orchestrator(application))
         asyncio.create_task(nightly_backup_scheduler_loop(application))
-        logger.info("Background Schedulers launched: Daily Current Affairs DB updater, Agency Orchestrator, Nightly Backup (Auto-promotions STOPPED; manual admin control active).")
+        logger.info("Background Schedulers launched: Agency Orchestrator, Nightly Backup (Auto eBook generation disabled; 100% manual admin upload control active).")
     except Exception as e:
         logger.warning(f"Could not set bot commands or description: {e}")
 
