@@ -672,6 +672,137 @@ def parse_answers(text: str):
             "raw_excerpt": clean_excerpt
         })
 
+    # Robust fallback: If structured TCS/iON parsing found 0 or very few questions,
+    # parse general MCQ compilation / question bank format (Q. 1, 1., Options A-D / 1-4, Ans)
+    if not records or len(records) < 3:
+        general_records = parse_general_mcqs(text)
+        if len(general_records) > len(records):
+            return general_records
+
+    return records
+
+def parse_general_mcqs(text: str) -> list[dict]:
+    """
+    Universal MCQ Parser for Bulk Question Banks and Compilation PDFs.
+    Parses questions formatted as:
+      1. Question text / Q. 1 / प्रश्न १ / प्र. क्र. १
+      A) / (A) / 1) / (1) Option text
+      Ans: B / उत्तर: B / Answer: 2 / [Correct Option]
+    """
+    records = []
+    dev_digits = {"०": "0", "१": "1", "२": "2", "३": "3", "४": "4", "५": "5", "६": "6", "७": "7", "८": "8", "९": "9"}
+    def norm_num(s):
+        if not s:
+            return ""
+        return "".join(dev_digits.get(c, c) for c in str(s))
+
+    # Match section headers
+    sec_pattern = re.compile(
+        r"(?m)^\s*(?:Section(?:\s*Name)?|Subject|विभाग|घटक|Part\s*[:\-])\s*[:\-]+\s*([A-Za-z0-9\s&,/\-\u0900-\u097F]+?)\s*$",
+        re.IGNORECASE
+    )
+
+    # Match question starters at line starts
+    q_pattern = re.compile(
+        r"(?m)^\s*(?:(?:Q(?:ue)?\.?|Question|प्रश्न|प्र\s*\.\s*क्र\.?)\s*(?:No\.?|Number)?\s*([\d१-९]+)|(\d+|[१-९]+)\s*[\.\:\-]\s+)(.*?)$",
+        re.IGNORECASE
+    )
+    matches = list(q_pattern.finditer(text))
+    if not matches:
+        return []
+
+    ans_pattern = re.compile(
+        r"(?:Ans(?:wer)?|उत्तर|Correct(?:\s*Option)?|योग्य\s*पर्याय|अचूक\s*उत्तर)\s*[:\-\.]*\s*(?:Option\s*)?[\(\[]?([A-Da-d1-4१-४])[\)\]]?",
+        re.IGNORECASE
+    )
+    opt_line_pattern = re.compile(
+        r"^\s*(?:[\(\[]?([A-Da-d1-4१-४])[\)\]\.\:\-]\s*|\b([A-Da-d1-4१-४])[\)\.\:\-]\s+)(.*)$",
+        re.IGNORECASE
+    )
+
+    current_section = "General Paper"
+
+    for idx in range(len(matches)):
+        m = matches[idx]
+        start_pos = m.start()
+        end_pos = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
+        block = text[start_pos:end_pos].strip()
+
+        # Check for section header inside block
+        sec_m = sec_pattern.search(block)
+        if sec_m:
+            cand_sec = sec_m.group(1).strip()
+            cand_sec = re.sub(r"\s+", " ", cand_sec)
+            if len(cand_sec) > 3 and not cand_sec.isdigit():
+                current_section = cand_sec[:40]
+
+        raw_qnum = m.group(1) or m.group(2) or str(idx + 1)
+        qnum = norm_num(raw_qnum)
+
+        header_text = m.group(3).strip()
+        lines = block.splitlines()
+
+        q_lines = [header_text] if header_text else []
+        options = {}
+        correct_num = None
+
+        in_options = False
+        for line in lines[1:]:
+            s_line = line.strip()
+            if not s_line:
+                continue
+
+            ans_m = ans_pattern.search(s_line)
+            if ans_m:
+                raw_a = ans_m.group(1).upper()
+                k_map = {"A": "1", "B": "2", "C": "3", "D": "4"}
+                correct_num = k_map.get(norm_num(raw_a), norm_num(raw_a))
+                continue
+
+            opt_m = opt_line_pattern.match(s_line)
+            if opt_m:
+                in_options = True
+                k_raw = opt_m.group(1) or opt_m.group(2)
+                k_raw = k_raw.upper()
+                k_map = {"A": "1", "B": "2", "C": "3", "D": "4"}
+                opt_key = k_map.get(norm_num(k_raw), norm_num(k_raw))
+                val = opt_m.group(3).strip()
+
+                if re.search(r"\[Correct Option\]|rightAns|[✓✔☑]", val, re.IGNORECASE):
+                    correct_num = opt_key
+                val = re.sub(r"\[Correct Option\]|rightAns|[✓✔☑]", "", val, flags=re.IGNORECASE).strip()
+                if opt_key in ("1", "2", "3", "4"):
+                    options[opt_key] = val
+            elif not in_options:
+                q_lines.append(s_line)
+            elif in_options and len(options) > 0:
+                last_k = sorted(options.keys())[-1]
+                options[last_k] = (options[last_k] + " " + s_line).strip()
+
+        full_q = " ".join(q_lines).strip()
+        full_q = re.sub(r"\s+", " ", full_q)
+
+        if len(options) >= 2 and full_q:
+            c_num = correct_num or "1"
+            records.append({
+                "question_number": int(qnum) if qnum.isdigit() else len(records) + 1,
+                "section_question_number": int(qnum) if qnum.isdigit() else len(records) + 1,
+                "question_id": str(qnum),
+                "section": current_section,
+                "question_text": full_q,
+                "options": options,
+                "selected_option_id": None,
+                "correct_option_id": c_num,
+                "chosen_option_number": None,
+                "chosen_option_text": "",
+                "correct_option_number": c_num,
+                "correct_option_text": options.get(str(c_num), options.get("1", "")),
+                "comprehension": "",
+                "option_ids": {},
+                "status_text": "Answered" if correct_num else "Unanswered",
+                "raw_excerpt": full_q[:300]
+            })
+
     return records
 
 def score_answers(records: list, exam_config: dict):

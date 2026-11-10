@@ -13,6 +13,8 @@ from app.ai_analysis import generate_oneliner_question_bank_pdf, SECTION_DEFS
 from app.digital_store import packaging_agent
 from app.chalu_ghadamodi_builder import build_chalu_ghadamodi_pdf, structure_raw_data_to_chalu_ghadamodi
 from app.agents.product_catalog_content import get_subject_specific_content
+from app.parser import parse_answers, parse_general_mcqs
+from app.quiz_generator import extract_quizzes_from_records, compute_question_hash, is_quiz_already_posted
 
 class TestAdminAndSections(unittest.TestCase):
     def setUp(self):
@@ -69,6 +71,40 @@ class TestAdminAndSections(unittest.TestCase):
             price = p.get("price_inr", 0)
             self.assertGreaterEqual(price, 10, f"Product {p.get('id')} price {price} is less than 10")
             self.assertLessEqual(price, 50, f"Product {p.get('id')} price {price} is greater than 50")
+
+    def test_bulk_general_mcq_parsing(self):
+        sample_qbank_text = """
+1. भारताचे पहिले पंतप्रधान कोण होते?
+A) महात्मा गांधी
+B) पं. जवाहरलाल नेहरू
+C) डॉ. बाबासाहेब आंबेडकर
+D) सरदार पटेल
+उत्तर: B
+
+2. महाराष्ट्राची उपराजधानी कोणती आहे?
+1) पुणे
+2) नागपूर
+3) नाशिक
+4) छत्रपती संभाजीनगर
+Ans: 2
+
+Q. 3 खालीलपैकी कोणता मूलभूत हक्क नाही?
+A) समतेचा हक्क
+B) स्वातंत्र्याचा हक्क
+C) संपत्तीचा हक्क
+D) शोषणाविरुद्धचा हक्क
+उत्तर: C
+"""
+        records = parse_answers(sample_qbank_text)
+        self.assertGreaterEqual(len(records), 3)
+        self.assertEqual(records[0]["question_text"], "भारताचे पहिले पंतप्रधान कोण होते?")
+        self.assertEqual(records[0]["correct_option_number"], "2")
+        self.assertEqual(records[1]["correct_option_number"], "2")
+        self.assertEqual(records[2]["correct_option_number"], "3")
+
+        quizzes = extract_quizzes_from_records(records, max_questions=10, filter_unposted=False, db_path=self.db_path)
+        self.assertGreaterEqual(len(quizzes), 3)
+        self.assertEqual(quizzes[0]["correct_option_index"], 1)
 
 if __name__ == "__main__":
     unittest.main()

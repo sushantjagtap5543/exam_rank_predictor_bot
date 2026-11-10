@@ -110,14 +110,17 @@ from .parser import (
     extract_pdf_text_with_status,
     extract_post_and_metadata,
     parse_answers,
+    parse_general_mcqs,
     parse_html_response_sheet,
     recover_digialm_url_from_pdf,
     score_answers,
 )
 from .quiz_generator import (
+    compute_question_hash,
     extract_quizzes_from_records,
     extract_quizzes_locally,
     init_quiz_db,
+    is_quiz_already_posted,
     send_quizzes_to_channel,
 )
 from .rank import estimate_cohort_rank
@@ -1432,6 +1435,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.answer("प्रमोशनल ॲड चॅनेलवर पोस्ट करत आहे...", show_alert=False)
         await post_promo_cmd(update, context)
 
+    elif data in ("admin_post_quizzes", "post_quizzes_now"):
+        if update.effective_user.id not in ADMIN_IDS:
+            await q.answer("⛔ Restricted to admin.", show_alert=True)
+            return
+        await q.answer("क्विझेस चॅनेलवर पोस्ट करण्याची प्रक्रिया सुरू करत आहे...", show_alert=False)
+        await post_quizzes(update, context)
+
     elif data.startswith("getfile:"):
         fid = int(data.split(":", 1)[1])
         if update.effective_user.id not in ADMIN_IDS:
@@ -2012,54 +2022,80 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
             )
             return
 
-        detected = detect_exam(text, EXAMS)
-        records = parse_answers(text)
+        # Extract post name and candidate metadata from response sheet
+        meta = extract_post_and_metadata(text)
+        roll_raw = meta.get("roll_number") or ""
+        clean_roll = re.sub(r'[^A-Za-z0-9_-]', '', str(roll_raw))
+        user_id = update.effective_user.id
+        roll_entropy = hashlib.sha256(f"{user_id}:{clean_roll}:{time.time()}".encode()).hexdigest()[:8]
 
         # Admin Bulk Response Sheet / Master MCQ PDF Processor & Store Synchronizer
-        user_id = update.effective_user.id
         is_bulk_request = (user_id in ADMIN_IDS) and (
             context.user_data.get("admin_bulk_mode") is True
-            or any(k in safe_name.lower() for k in ["bulk_qbank", "master_mcq", "master_qbank", "bulk_mcq", "gmc", "bulk", "master", "qbank"])
-            or len(records) > 120
+            or any(k in safe_name.lower() for k in ["bulk", "master", "qbank", "mcq", "gmc", "exam", "paper", "test", "question"])
+            or len(records) > 30
+            or not clean_roll
         )
+
+        RESPONSE_DIR.mkdir(parents=True, exist_ok=True)
+        if is_bulk_request:
+            canonical_name = f"admin_bulk_{user_id}_{roll_entropy}_{safe_name}"
+        else:
+            canonical_name = f"user_{user_id}_roll_{clean_roll or 'none'}_{roll_entropy}.pdf"
+        stored_path = RESPONSE_DIR / canonical_name
+        shutil.copy2(path, stored_path)
+
+        context.user_data["stored_path"] = str(stored_path)
+        context.user_data["doc_name"] = canonical_name
+        context.user_data["last_records"] = records
+        context.user_data["last_raw_text"] = text
+
         if is_bulk_request:
             quizzes = extract_quizzes_from_records(records, max_questions=2500, filter_unposted=False, db_path=DB_PATH)
-            if quizzes:
-                await status_msg.edit_text(
-                    f"⚙️ <b>Admin Master Bulk Processor:</b>\n"
-                    f"• {len(records)} उत्तरे व {len(quizzes)} TCS/IBPS प्रश्न डिटेक्ट झाले आहेत.\n"
-                    f"• चॅनेल क्विझेस शेड्यूलिंग व डिजिटल स्टोअर सिंक सुरू आहे... ⏳",
-                    parse_mode="HTML"
-                )
-                # Auto-posting quizzes to channel is manual-only by admin via /postquizzes
-                if os.getenv("ENABLE_AUTO_QUIZ_POSTING", "").lower() in ("true", "1", "yes"):
-                    asyncio.create_task(auto_post_quizzes_background(context.bot, text, "TCS/IBPS Master Bulk QBank", records=records))
-                if os.getenv("ENABLE_AUTO_EBOOK_GENERATION", "").lower() in ("true", "1", "yes"):
-                    sync_res = packaging_agent.bulk_sync_questions_to_store_qbank(quizzes, db_path=DB_PATH)
-                    total_bank = sync_res.get("total_questions_in_bank", len(quizzes))
-                    new_added = sync_res.get("newly_added", len(quizzes))
-                else:
-                    total_bank = len(quizzes)
-                    new_added = len(quizzes)
+            if not quizzes:
+                quizzes = extract_quizzes_locally(text, max_questions=2500, db_path=DB_PATH)
 
-                report_msg = (
-                    f"✅ <b>Master TCS/IBPS Bulk PDF यशस्वीरित्या प्रोसेस झाले!</b>\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"📑 <b>एकूण डिटेक्ट झालेले प्रश्न:</b> {len(quizzes)}\n"
-                    f"🆕 <b>डेटाबेसमध्ये नवीन जोडलेले:</b> {new_added}\n"
-                    f"📚 <b>मास्टर प्रश्नसंच आकार:</b> {total_bank}+ MCQs\n\n"
-                    f"🔄 <b>सिंक्रोनायझेशन स्थिती:</b>\n"
-                    f"• 📢 <b>चॅनेल क्विझेस:</b> सर्व प्रश्न १-बाय-१ चॅनेलवर पोस्ट करण्यासाठी रांगेत जोडले आहेत.\n"
-                    f"• 🛒 <b>डिजिटल स्टोअर:</b> मॅन्युअल मोड सक्रिय (केवळ ॲडमिनने अपलोड केलेले PDFs स्टोअरमध्ये राहतील).\n\n"
-                    f"👉 स्टोअर लिंक: <a href=\"{get_store_web_url()}\">येथे तपासा</a>"
+            exam_key_for_bulk = detected.get("key") or "saralseva_general"
+            with get_connection() as db:
+                db.execute(
+                    """INSERT INTO uploads (
+                        telegram_user_id, filename, storage_path, exam_key, category, post_name,
+                        score, correct_count, incorrect_count, unanswered_count, status
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (user_id, safe_name, str(stored_path), exam_key_for_bulk, "Open", "Master Bulk QBank",
+                     0.0, len(quizzes), 0, 0, "admin_bulk")
                 )
-                context.user_data["admin_bulk_mode"] = False
-                kb = [
-                    [InlineKeyboardButton("🛒 डिजिटल स्टोअर पहा", url=get_store_web_url())],
-                    [InlineKeyboardButton("📦 सर्व स्टोअर फाईल्स ZIP डाऊनलोड करा", callback_data="download_store_zip")]
-                ]
-                await status_msg.edit_text(report_msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb), disable_web_page_preview=True)
-                return
+
+            # Sync questions into master question bank
+            sync_res = packaging_agent.bulk_sync_questions_to_store_qbank(quizzes, db_path=DB_PATH)
+            total_bank = sync_res.get("total_questions_in_bank", len(quizzes))
+            new_added = sync_res.get("newly_added", len(quizzes))
+
+            # Auto-posting quizzes to channel is manual-only by admin via /postquizzes or direct button
+            if os.getenv("ENABLE_AUTO_QUIZ_POSTING", "").lower() in ("true", "1", "yes"):
+                asyncio.create_task(auto_post_quizzes_background(context.bot, text, "TCS/IBPS Master Bulk QBank", records=records))
+
+            report_msg = (
+                f"✅ <b>Master TCS/IBPS Bulk PDF यशस्वीरित्या प्रोसेस झाले!</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"📑 <b>एकूण डिटेक्ट झालेले प्रश्न:</b> {len(quizzes)}\n"
+                f"🆕 <b>मास्टर प्रश्नसंचातील नवीन प्रश्न:</b> {new_added}\n"
+                f"📚 <b>एकूण उपलब्ध प्रश्नसंख्या:</b> {total_bank}+ MCQs\n"
+                f"📂 <b>साठवलेली फाईल:</b> <code>{canonical_name}</code>\n\n"
+                f"🔄 <b>सिंक्रोनायझेशन स्थिती:</b>\n"
+                f"• 📢 <b>चॅनेल क्विझेस:</b> सर्व प्रश्न १-बाय-१ चॅनेलवर पोस्ट करण्यासाठी तयार आहेत.\n"
+                f"  👉 थेट चॅनेलवर पाठवण्यासाठी खालील बटण दाबा किंवा <code>/postquizzes</code> वापरा.\n"
+                f"• 💾 <b>सुरक्षित बॅकअप:</b> फाईल डेटाबेस व बॅकएंड रिस्पॉन्स शीट्समध्ये जतन झाली आहे.\n\n"
+                f"👉 स्टोअर लिंक: <a href=\"{get_store_web_url()}\">येथे तपासा</a>"
+            )
+            context.user_data["admin_bulk_mode"] = False
+            kb = [
+                [InlineKeyboardButton("📢 चॅनेलवर क्विझेस पोस्ट करा (/postquizzes)", callback_data="admin_post_quizzes")],
+                [InlineKeyboardButton("🛒 डिजिटल स्टोअर पहा", url=get_store_web_url())],
+                [InlineKeyboardButton("📦 सर्व स्टोअर फाईल्स ZIP डाऊनलोड करा", callback_data="download_store_zip")]
+            ]
+            await status_msg.edit_text(report_msg, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb), disable_web_page_preview=True)
+            return
 
         if not records:
             keyboard = [
@@ -2075,15 +2111,6 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
             return
-
-        # Extract post name and candidate metadata from response sheet
-        meta = extract_post_and_metadata(text)
-        roll_raw = meta.get("roll_number") or ""
-        clean_roll = re.sub(r'[^A-Za-z0-9_-]', '', str(roll_raw))
-        roll_entropy = hashlib.sha256(f"{user_id}:{clean_roll}:{time.time()}".encode()).hexdigest()[:8]
-        canonical_name = f"user_{user_id}_roll_{clean_roll or 'none'}_{roll_entropy}.pdf"
-        stored_path = RESPONSE_DIR / canonical_name
-        shutil.copy2(path, stored_path)
 
         post_name = meta.get("post_name", "General")
         context.user_data["post_name"] = post_name
@@ -2776,6 +2803,7 @@ async def post_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     scanned_sources = []
 
     try:
+        seen_paths = set()
         # Case A: Specific upload ID requested
         if forced_upload_id:
             with get_connection() as db:
@@ -2783,23 +2811,44 @@ async def post_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if row and Path(row[0]).is_file():
                 s_path = Path(row[0])
                 scanned_sources.append((s_path, row[1] or "महाराष्ट्र सरळसेवा भरती"))
+                seen_paths.add(str(s_path.resolve()))
         else:
             # Case B: Collect from ALL uploaded response sheets in database & disk
             with get_connection() as db:
                 rows = db.execute("SELECT DISTINCT storage_path, exam_key FROM uploads WHERE storage_path IS NOT NULL ORDER BY id DESC").fetchall()
                 for sp, ek in rows:
                     if sp and Path(sp).is_file():
-                        scanned_sources.append((Path(sp), ek or "महाराष्ट्र सरळसेवा भरती"))
+                        p_obj = Path(sp).resolve()
+                        if str(p_obj) not in seen_paths:
+                            scanned_sources.append((Path(sp), ek or "महाराष्ट्र सरळसेवा भरती"))
+                            seen_paths.add(str(p_obj))
 
-            # Fallback to RESPONSE_DIR if DB has no paths
-            if not scanned_sources and RESPONSE_DIR.exists():
+            # Check recent upload in context.user_data
+            user_stored = context.user_data.get("stored_path")
+            if user_stored and Path(user_stored).is_file():
+                p_obj = Path(user_stored).resolve()
+                if str(p_obj) not in seen_paths:
+                    scanned_sources.append((Path(user_stored), context.user_data.get("exam_key") or "महाराष्ट्र सरळसेवा भरती"))
+                    seen_paths.add(str(p_obj))
+
+            # Fallback to RESPONSE_DIR if more files exist
+            if RESPONSE_DIR.exists():
                 for p in RESPONSE_DIR.iterdir():
                     if p.is_file() and p.suffix.lower() in (".html", ".htm", ".pdf"):
-                        scanned_sources.append((p, "महाराष्ट्र सरळसेवा भरती"))
+                        p_obj = p.resolve()
+                        if str(p_obj) not in seen_paths:
+                            scanned_sources.append((p, "महाराष्ट्र सरळसेवा भरती"))
+                            seen_paths.add(str(p_obj))
 
-        if not scanned_sources:
-            await status_msg.edit_text("❌ कोणतीही रिस्पॉन्स शीट उपलब्ध नाही. कृपया आधी रिस्पॉन्स शीट अपलोड करा.")
-            return
+            # Fallback to products storage directory for uploaded PDFs
+            products_dir = STORAGE_DIR / "products"
+            if products_dir.exists():
+                for p in products_dir.iterdir():
+                    if p.is_file() and p.suffix.lower() == ".pdf":
+                        p_obj = p.resolve()
+                        if str(p_obj) not in seen_paths:
+                            scanned_sources.append((p, "महाराष्ट्र सरळसेवा भरती"))
+                            seen_paths.add(str(p_obj))
 
         # Extract quizzes from all collected response sheets
         for s_path, ek in scanned_sources:
@@ -2817,17 +2866,76 @@ async def post_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     filter_unposted=True,
                     db_path=DB_PATH
                 )
+                if not batch and parsed_text:
+                    batch = extract_quizzes_locally(
+                        parsed_text,
+                        max_questions=max_q - len(all_unposted_quizzes),
+                        db_path=DB_PATH
+                    )
                 all_unposted_quizzes.extend(batch)
                 if len(all_unposted_quizzes) >= max_q:
                     break
             except Exception as e:
                 logger.warning(f"Error parsing {s_path} in post_quizzes: {e}")
 
+        # Master Question Bank Fallback (qbank_master.json) if more questions needed
+        if len(all_unposted_quizzes) < max_q:
+            possible_qbank_paths = [
+                STORAGE_DIR / "qbank_master.json",
+                STORAGE_DIR.parent / "admin_storage" / "qbank_master.json",
+                PROJECT_ROOT / "admin_storage" / "qbank_master.json"
+            ]
+            for qb_path in possible_qbank_paths:
+                if qb_path.exists():
+                    try:
+                        q_data = json.loads(qb_path.read_text(encoding="utf-8"))
+                        if isinstance(q_data, list):
+                            for item in q_data:
+                                if len(all_unposted_quizzes) >= max_q:
+                                    break
+                                q_txt = str(item.get("q") or item.get("question") or "").strip()
+                                opts = item.get("options") or item.get("opts") or []
+                                if not q_txt or len(opts) < 4:
+                                    continue
+                                c_val = str(item.get("correct") or item.get("ans") or "").strip()
+                                c_idx = 0
+                                for o_i, o_v in enumerate(opts):
+                                    if str(o_v).strip() == c_val:
+                                        c_idx = o_i
+                                        break
+                                q_hash = compute_question_hash(q_txt, [str(o) for o in opts[:4]])
+                                if is_quiz_already_posted(q_hash, q_txt, db_path=DB_PATH):
+                                    continue
+                                sec = item.get("subject") or item.get("section") or "General"
+                                exp = str(item.get("explanation") or f"TCS/IBPS अधिकृत उत्तरतालिकेनुसार प्रमाणित स्पष्टीकरण.")[:195]
+                                all_unposted_quizzes.append({
+                                    "question": f"[{sec}] {q_txt}"[:295],
+                                    "passage": "",
+                                    "options": [str(o)[:95] for o in opts[:4]],
+                                    "correct_option_index": c_idx,
+                                    "explanation": exp,
+                                    "section": sec,
+                                    "hash": q_hash
+                                })
+                    except Exception as qb_err:
+                        logger.warning(f"Error loading qbank_master.json in post_quizzes: {qb_err}")
+                    if len(all_unposted_quizzes) >= max_q:
+                        break
+
         if not all_unposted_quizzes:
-            await status_msg.edit_text(
-                "✅ <b>सर्व प्रश्न आधीच चॅनेलवर पोस्ट केलेले आहेत!</b>\n"
-                "कोणताही नवीन अप्रकाशित प्रश्न शिल्लक नाही. नवीन रिस्पॉन्स शीट येताच आपोआप पुढील प्रश्न १-बाय-१ पोस्ट केले जातील."
-            )
+            if not scanned_sources:
+                await status_msg.edit_text(
+                    "❌ <b>कोणतीही रिस्पॉन्स शीट किंवा प्रश्नसंच उपलब्ध नाही.</b>\n\n"
+                    "💡 <b>प्रश्न अपलोड करण्यासाठी:</b>\n"
+                    "1️⃣ <code>/bulk_upload</code> कमांड वापरून सर्व प्रश्नांची Master PDF पाठवा.\n"
+                    "2️⃣ किंवा तुमची DigiALM रिस्पॉन्स शीट लिंक / PDF येथे पाठवा.",
+                    parse_mode="HTML"
+                )
+            else:
+                await status_msg.edit_text(
+                    "✅ <b>सर्व प्रश्न आधीच चॅनेलवर पोस्ट केलेले आहेत!</b>\n"
+                    "कोणताही नवीन अप्रकाशित प्रश्न शिल्लक नाही. नवीन रिस्पॉन्स शीट येताच आपोआप पुढील प्रश्न १-बाय-१ पोस्ट केले जातील."
+                )
             return
 
         total_to_post = len(all_unposted_quizzes)
@@ -5144,6 +5252,23 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
 
                 with open(dest_path, "wb") as f:
                     f.write(pdf_bytes)
+
+                # Also copy to RESPONSE_DIR and insert into uploads table so bot/quizzes always have it
+                try:
+                    RESPONSE_DIR.mkdir(parents=True, exist_ok=True)
+                    resp_copy_path = RESPONSE_DIR / f"admin_upload_{safe_fn}"
+                    shutil.copy2(dest_path, resp_copy_path)
+                    with get_connection() as db:
+                        db.execute(
+                            """INSERT INTO uploads(
+                                telegram_user_id, filename, storage_path, exam_key, category, post_name,
+                                score, correct_count, incorrect_count, unanswered_count, status
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (0, safe_fn, str(resp_copy_path), "admin_portal_upload", "Open", "Admin Uploaded Book",
+                             0.0, 0, 0, 0, "admin_bulk")
+                        )
+                except Exception as sync_e:
+                    logger.warning(f"Error registering web upload in uploads DB: {sync_e}")
 
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
