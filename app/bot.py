@@ -2292,6 +2292,11 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     raw_text = (msg.text or "").strip()
 
+    # If the forwarded message contains a document/PDF, route directly to handle_document
+    if msg.document:
+        await handle_document(update, context)
+        return
+
     # Check if message was forwarded from a channel
     forward_chat = None
     if getattr(msg, "forward_from_chat", None):

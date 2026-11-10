@@ -45,9 +45,9 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             except Exception:
                 pass
 
-            # Digital Products (Both Active and Inactive for Admin)
+            # Digital Products (Both Active and Inactive for Admin - newest uploaded first)
             try:
-                prods_rows = db.execute("SELECT * FROM digital_products ORDER BY id DESC").fetchall()
+                prods_rows = db.execute("SELECT * FROM digital_products ORDER BY rowid DESC").fetchall()
                 products = [dict(r) for r in prods_rows]
             except Exception:
                 pass

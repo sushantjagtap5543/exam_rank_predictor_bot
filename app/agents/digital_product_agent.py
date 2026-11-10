@@ -574,33 +574,33 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         inferred_subject = "General Knowledge"
         inferred_icon = "📚"
         inferred_badge = f"🔥 नवीन संच (₹{price_inr})"
-        inferred_title = f"{fn_clean} (महाराष्ट्र स्पर्धा परीक्षा विशेष ई-बुक)"
+        inferred_title = fn_clean
 
         if any(k in fn_lower for k in ["ca", "current", "ghadamodi", "chalu"]):
             inferred_subject = "Current Affairs"
             inferred_icon = "📰"
             inferred_badge = f"🔥 चालू घडामोडी (₹{price_inr})"
-            inferred_title = f"{fn_clean} — चालू घडामोडी Top MCQs व विश्लेषण"
+            inferred_title = fn_clean
         elif any(k in fn_lower for k in ["marathi", "vyakaran", "grammar"]):
             inferred_subject = "Marathi"
             inferred_icon = "✍️"
             inferred_badge = f"⚡ मराठी व्याकरण (₹{price_inr})"
-            inferred_title = f"{fn_clean} — मराठी व्याकरण संपूर्ण ट्रिक्स व नियम"
+            inferred_title = fn_clean
         elif any(k in fn_lower for k in ["math", "reason", "ankganit", "buddhimate"]):
             inferred_subject = "Maths & Reasoning"
             inferred_icon = "🔢"
             inferred_badge = f"⚡ शॉर्टकट सूत्रे (₹{price_inr})"
-            inferred_title = f"{fn_clean} — गणित व बुद्धिमत्ता १५-सेकंद ट्रिक्स"
+            inferred_title = fn_clean
         elif any(k in fn_lower for k in ["english", "vocab", "comprehension"]):
             inferred_subject = "English"
             inferred_icon = "📖"
             inferred_badge = f"⭐ English Mastery (₹{price_inr})"
-            inferred_title = f"{fn_clean} — TCS/IBPS English Grammar & Vocab"
+            inferred_title = fn_clean
         elif any(k in fn_lower for k in ["qbank", "question_bank", "oneliner", "response", "sheet"]):
             inferred_subject = "PYQ & Response Sheets"
             inferred_icon = "📑"
-            inferred_badge = f"🎯 ४-स्तंभ प्रश्नसंच (₹{price_inr})"
-            inferred_title = f"TCS/IBPS अधिकृत प्रश्नसंच (४-Columns AI स्पष्टीकरण) — {filename}"
+            inferred_badge = f"🎯 प्रश्नसंच (₹{price_inr})"
+            inferred_title = fn_clean
 
         final_title = title or inferred_title
         final_subtitle = subtitle or "TCS/IBPS परीक्षा विशेष अधिकृत ई-बुक"
@@ -689,9 +689,9 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         with sqlite3.connect(db_path) as db:
             db.row_factory = sqlite3.Row
             if include_inactive:
-                rows = db.execute("SELECT * FROM digital_products ORDER BY id DESC").fetchall()
+                rows = db.execute("SELECT * FROM digital_products ORDER BY rowid DESC").fetchall()
             else:
-                rows = db.execute("SELECT * FROM digital_products WHERE is_active = 1 ORDER BY price_inr ASC").fetchall()
+                rows = db.execute("SELECT * FROM digital_products WHERE is_active = 1 ORDER BY rowid DESC").fetchall()
             return [dict(r) for r in rows]
 
     def get_product_by_id(self, product_id: str, db_path: str = "bot.db") -> Optional[Dict[str, Any]]:
