@@ -843,17 +843,23 @@
 
     <!-- Sample Preview Modal -->
     <div class="modal-overlay" id="sampleModal">
-        <div class="modal" style="max-width: 620px;">
+        <div class="modal" style="max-width: 660px; max-height: 92vh; display: flex; flex-direction: column;">
             <button class="modal-close" onclick="closeModal('sampleModal')">&times;</button>
-            <span class="card-badge" style="color:var(--accent-gold); border-color:var(--accent-gold);">FREE SAMPLE PREVIEW</span>
-            <h2 id="sampleModalTitle" style="margin-top:10px; font-size:19px; color:#fff;">नमुना प्रश्न व स्पष्टीकरण</h2>
-            <p style="color:var(--text-muted); font-size:13px; margin-bottom:14px;">पुस्तकातील दर्जा आणि सविस्तर स्पष्टीकरणे खालीलप्रमाणे आहेत:</p>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+                <span class="card-badge" style="color:var(--accent-gold); border-color:var(--accent-gold);">📖 FREE SAMPLE PREVIEW</span>
+                <span id="sampleBadgePages" class="card-badge" style="color:var(--accent-cyan); border-color:var(--accent-cyan);">📄 पृष्ठ १ नमुना</span>
+            </div>
+            <h2 id="sampleModalTitle" style="margin-top:2px; font-size:18px; color:#fff; line-height:1.35;">नमुना पूर्वावलोकन</h2>
+            <p id="sampleModalSub" style="color:var(--text-muted); font-size:12.5px; margin-bottom:12px;">या दस्तऐवजाचे प्रत्यक्ष पहिले पृष्ठ (Actual First Page Preview):</p>
 
-            <div id="sampleContentArea">
+            <div id="sampleContentArea" style="overflow-y:auto; flex:1; max-height:60vh; padding-right:4px;">
                 <!-- Samples inserted via JS -->
             </div>
 
-            <button class="btn-buy btn-full" id="sampleBuyBtn" onclick="buyFromSample()">👉 हे संपूर्ण ई-बुक खरेदी करा</button>
+            <div style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08);">
+                <button class="btn-buy btn-full" id="sampleBuyBtn" onclick="buyFromSample()">👉 हे संपूर्ण ई-बुक खरेदी करा</button>
+                <div style="font-size:11px; color:#94a3b8; text-align:center; margin-top:6px;">🔒 १००% सुरक्षित पेमेंट • पेमेंट पूर्ण होताच संपूर्ण PDF डाऊनलोड त्वरित उपलब्ध होते</div>
+            </div>
         </div>
     </div>
 
@@ -1130,42 +1136,99 @@
             }
         }
 
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/[&<>"']/g, function(m) {
+                return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'}[m];
+            });
+        }
+
         function openSampleModal(id) {
             currentProduct = PRODUCTS.find(p => p.id === id);
-            const sampleData = (typeof SAMPLES !== 'undefined' && SAMPLES[id]) 
-                ? SAMPLES[id] 
-                : (typeof SAMPLES !== 'undefined' && SAMPLES['prod_ca_monthly_top200'] ? SAMPLES['prod_ca_monthly_top200'] : {
-                    title: (currentProduct ? currentProduct.title : 'ई-बुक नमुना'),
-                    samples: [
-                        {
-                            q: "१. महाराष्ट्र शासनाने महिला सक्षमीकरणासाठी सुरू केलेल्या 'लाडकी बहीण योजने'अंतर्गत दरमहा किती मदत दिली जाते?",
-                            options: ["A) ₹१,०००", "B) ₹१,५०० (योग्य उत्तर)", "C) ₹२,०००", "D) ₹२,५००"],
-                            explanation: "स्पष्टीकरण: अंतरिम अर्थसंकल्प २०२४-२५ मध्ये २१ ते ६५ वयोगटातील महिलांसाठी ही योजना मंजूर करण्यात आली असून दरमहा ₹१,५०० थेट DBT द्वारे बँक खात्यात दिले जातात.",
-                            tip: "💡 टीप: वार्षिक कौटुंबिक उत्पन्न मर्यादा ₹२.५ लाख आहे."
-                        },
-                        {
-                            q: "२. 'रामाने रावणास मारले' या वाक्यातील प्रयोग ओळखा.",
-                            options: ["A) कर्तरी प्रयोग", "B) कर्मणी प्रयोग", "C) भावे प्रयोग (योग्य उत्तर)", "D) संकीर्ण प्रयोग"],
-                            explanation: "क्लृप्ती: कर्त्याला तृतीया विभक्ती (ने) आणि कर्माला द्वितीया विभक्ती (स) प्रत्यय असेल आणि क्रियापद तृतीयपुरुषी नपुंसकलिंगी एकावचनी असेल तर तो भावे प्रयोग असतो.",
-                            tip: "⚡ १५-सेकंद ट्रिक: कर्ता + कर्म दोघांनाही प्रत्यय = १००% भावे प्रयोग!"
-                        }
-                    ]
-                });
+            const title = currentProduct ? currentProduct.title : 'ई-बुक नमुना';
+            const subject = currentProduct ? currentProduct.subject : '';
+            const price = currentProduct ? currentProduct.price_inr : 19;
+            const approxPages = currentProduct ? (currentProduct.pages || '') : '';
 
-            document.getElementById('sampleModalTitle').innerText = sampleData.title;
-            const container = document.getElementById('sampleContentArea');
-            container.innerHTML = sampleData.samples.map(s => `
-                <div class="sample-item">
-                    <div class="sample-q">${s.q}</div>
-                    <div class="sample-opts">${s.options.join('<br>')}</div>
-                    <div class="sample-exp">${s.explanation}</div>
-                    <div style="font-size:11.5px; color:#facc15; margin-top:6px; font-weight:600;">${s.tip || ''}</div>
-                </div>
-            `).join('');
+            document.getElementById('sampleModalTitle').innerText = title;
+            const subEl = document.getElementById('sampleModalSub');
+            if (subEl) {
+                subEl.innerHTML = `${subject ? '<b>विषय:</b> ' + escapeHtml(subject) + ' • ' : ''}<b>पहिले पृष्ठ नमुना पूर्वावलोकन</b> (First Page Sample)`;
+            }
+            const pagesBadge = document.getElementById('sampleBadgePages');
+            if (pagesBadge) {
+                pagesBadge.innerText = approxPages ? `📄 एकूण ${approxPages} पृष्ठे` : '📄 पृष्ठ १ नमुना';
+            }
 
             const buyPrice = currentProduct ? currentProduct.price_inr : 19;
             document.getElementById('sampleBuyBtn').innerText = currentLang === 'en' ? `👉 Buy Complete E-Book (₹${buyPrice})` : `👉 संपूर्ण ई-बुक खरेदी करा (₹${buyPrice})`;
+            
+            const container = document.getElementById('sampleContentArea');
+            container.innerHTML = `
+                <div id="sampleLoadingBox" style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:35px 20px; background:rgba(15,23,42,0.6); border-radius:12px; border:1px dashed rgba(56,189,248,0.3); text-align:center;">
+                    <div style="width:34px; height:34px; border:3px solid #334155; border-top-color:#38bdf8; border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:12px;"></div>
+                    <div style="font-size:13px; color:#cbd5e1; font-weight:600;">या फाइलचे पृष्ठ १ लोड होत आहे...</div>
+                    <div style="font-size:11.5px; color:#94a3b8; margin-top:4px;">(Rendering Page 1 Preview for ${escapeHtml(title)})</div>
+                </div>
+            `;
+
             document.getElementById('sampleModal').classList.add('active');
+
+            const imgUrl = `/api/sample_image?id=${encodeURIComponent(id)}`;
+
+            // Fetch metadata to update total page count accurately
+            fetch(`/api/sample_preview?id=${encodeURIComponent(id)}`)
+                .then(r => r.json())
+                .then(meta => {
+                    if (meta && meta.total_pages && pagesBadge) {
+                        pagesBadge.innerText = `📄 एकूण ${meta.total_pages} पृष्ठे`;
+                    }
+                }).catch(() => {});
+
+            // Load Page 1 image
+            const img = new Image();
+            img.onload = function() {
+                container.innerHTML = `
+                    <div style="background:rgba(15, 23, 42, 0.7); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:12px; text-align:center;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:12px; color:#94a3b8; padding:0 4px;">
+                            <span>📄 <b>पृष्ठ १ / Page 1</b></span>
+                            <span style="background:rgba(56,189,248,0.15); color:#38bdf8; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:600;">अस्सल PDF नमुना</span>
+                        </div>
+                        <div style="position:relative; display:inline-block; max-width:100%; border-radius:8px; overflow:hidden; box-shadow:0 12px 30px rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.08); background:#1e293b;">
+                            <img src="${imgUrl}" alt="Page 1 Sample Preview" style="display:block; max-width:100%; max-height:55vh; width:auto; height:auto; object-fit:contain; margin:0 auto; user-select:none; pointer-events:none;" />
+                            <div style="position:absolute; bottom:0; left:0; right:0; background:linear-gradient(to top, rgba(15,23,42,0.95), transparent); padding:20px 10px 8px; color:#f8fafc; font-size:11.5px; text-align:center; font-weight:500;">
+                                🔒 नमुना पूर्वावलोकन • संपूर्ण फाईल खरेदी केल्यावर सर्व पृष्ठे त्वरित डाउनलोड करता येतील
+                            </div>
+                        </div>
+                    </div>
+                `;
+            };
+            img.onerror = function() {
+                // Fallback to text preview
+                fetch(`/api/sample_preview?id=${encodeURIComponent(id)}`)
+                    .then(r => r.json())
+                    .then(meta => {
+                        let textContent = (meta && meta.page_text) ? meta.page_text : 'या फाईलचे पहिले पृष्ठ उपलब्ध आहे. संपूर्ण ई-बुक मिळवण्यासाठी खरेदी करा.';
+                        container.innerHTML = `
+                            <div class="sample-item" style="background:#1e293b; border-color:rgba(56,189,248,0.3);">
+                                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                                    <span style="font-weight:700; color:#38bdf8;">📄 पृष्ठ १ (मजकूर पूर्वावलोकन)</span>
+                                    <span style="font-size:11px; color:#94a3b8;">एकूण पृष्ठे: ${(meta && meta.total_pages) || 1}</span>
+                                </div>
+                                <pre style="white-space:pre-wrap; font-family:inherit; font-size:12.5px; color:#cbd5e1; line-height:1.6; max-height:45vh; overflow-y:auto; background:rgba(0,0,0,0.25); padding:10px; border-radius:6px;">${escapeHtml(textContent)}</pre>
+                            </div>
+                        `;
+                    })
+                    .catch(() => {
+                        container.innerHTML = `
+                            <div class="sample-item" style="text-align:center; padding:20px;">
+                                <div style="font-size:14px; font-weight:600; color:#fff; margin-bottom:6px;">${escapeHtml(title)}</div>
+                                <div style="font-size:12.5px; color:#94a3b8;">या फाईलचे नमुना पृष्ठ तयार आहे. संपूर्ण फाईल खरेदी करून लगेच डाऊनलोड करा.</div>
+                            </div>
+                        `;
+                    });
+            };
+            img.src = imgUrl;
         }
 
         function buyFromSample() {

@@ -86,6 +86,8 @@ from .digital_store import (
     DEFAULT_PRODUCTS,
     SAMPLE_PREVIEWS,
     fulfillment_agent,
+    get_product_sample_page_image,
+    get_product_sample_preview_data,
     packaging_agent,
     render_digital_store_html,
 )
@@ -4380,6 +4382,39 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(png_bytes)
+            return
+
+        # 0a. API: Dynamic Product 1st Page Sample Image (Page 1)
+        if path == "/api/sample_image":
+            query_params = urllib.parse.parse_qs(parsed.query)
+            prod_id = query_params.get("id", [""])[0].strip()
+            png_bytes = get_product_sample_page_image(prod_id, db_path=DB_PATH)
+            if not png_bytes:
+                self.send_response(404)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(b"Sample not found")
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Cache-Control", "public, max-age=1800")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(png_bytes)
+            return
+
+        # 0b. API: Dynamic Product Sample Preview JSON
+        if path == "/api/sample_preview":
+            query_params = urllib.parse.parse_qs(parsed.query)
+            prod_id = query_params.get("id", [""])[0].strip()
+            preview_data = get_product_sample_preview_data(prod_id, db_path=DB_PATH)
+            resp_bytes = json.dumps(preview_data, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(resp_bytes)
             return
 
         # 1. API: Products list

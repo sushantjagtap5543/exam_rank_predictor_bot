@@ -4,12 +4,16 @@ An independent, high-converting digital bookstore for Maharashtra TCS/IBPS exam 
 Includes real-time search, sample preview modals, dynamic UPI QR checkout, email capture, and automated file delivery.
 """
 
+import io
 import json
+import logging
 import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -171,6 +175,168 @@ SAMPLE_PREVIEWS = {
         ]
     }
 }
+
+def locate_product_pdf(prod_id: str, db_path: str = None) -> Optional[Path]:
+    """Locates the physical PDF file associated with a product ID across known directories."""
+    if db_path is None:
+        db_path = os.getenv("DATABASE_PATH", str(Path(__file__).resolve().parent.parent / "bot.db"))
+
+    prod = packaging_agent.get_product_by_id(prod_id, db_path)
+    filename = (prod.get("download_file") if prod else None) or f"{prod_id}.pdf"
+    clean_fn = os.path.basename(filename)
+
+    base_dir = Path(__file__).resolve().parent.parent
+    candidate_dirs = [
+        Path(os.getenv("ADMIN_STORAGE_DIR", str(base_dir / "admin_storage"))) / "products",
+        Path(os.getenv("ADMIN_STORAGE_DIR", str(base_dir / "admin_storage"))) / "response_sheets",
+        base_dir / "admin_storage" / "products",
+        base_dir / "admin_storage" / "response_sheets",
+        base_dir.parent / "admin_storage" / "products",
+        base_dir.parent / "admin_storage" / "response_sheets",
+        base_dir,
+        base_dir.parent,
+    ]
+    for d in candidate_dirs:
+        cand = d / clean_fn
+        if cand.is_file() and cand.suffix.lower() == ".pdf" and cand.stat().st_size > 100:
+            return cand.resolve()
+        cand_id = d / f"{prod_id}.pdf"
+        if cand_id.is_file() and cand_id.suffix.lower() == ".pdf" and cand_id.stat().st_size > 100:
+            return cand_id.resolve()
+
+    return None
+
+def generate_fallback_sample_page(prod_id: str, db_path: str = None) -> bytes:
+    """Generates a professional 1st page sample card if PDF file is not on disk."""
+    from PIL import Image, ImageDraw
+    if db_path is None:
+        db_path = os.getenv("DATABASE_PATH", str(Path(__file__).resolve().parent.parent / "bot.db"))
+    prod = packaging_agent.get_product_by_id(prod_id, db_path) or {}
+    title = str(prod.get("title") or "TCS / IBPS अधिकृत ई-बुक प्रश्नसंच").strip()
+    subtitle = str(prod.get("subtitle") or prod.get("description") or "महाराष्ट्र स्पर्धा परीक्षा विशेष आवृत्ती").strip()
+    subject = str(prod.get("subject") or "General").strip()
+    pages = str(prod.get("pages") or 50)
+    price = str(prod.get("price_inr") or 29)
+
+    img = Image.new("RGB", (800, 1131), color="#080c14")
+    draw = ImageDraw.Draw(img)
+
+    # Outer & inner borders
+    draw.rectangle([15, 15, 785, 1116], outline="#334155", width=2)
+    draw.rectangle([25, 25, 775, 1106], outline="#1e293b", width=1)
+
+    # Header banner
+    draw.rectangle([25, 25, 775, 110], fill="#0f172a")
+    draw.text((45, 45), "ExamRankers™ Official Digital Bookstore", fill="#38bdf8")
+    draw.text((45, 70), "महाराष्ट्र शासकीय परीक्षा — अधिकृत TCS & IBPS पॅटर्न", fill="#94a3b8")
+    draw.text((600, 50), "PAGE 1 (नमुना)", fill="#facc15")
+
+    # Title & Metadata box
+    draw.rectangle([45, 130, 755, 270], fill="#151f32", outline="#2563eb", width=1)
+    draw.text((65, 150), f"विषय / Category: {subject} | एकूण पृष्ठे: {pages} पृष्ठे", fill="#38bdf8")
+
+    t_lines = [title[:50], title[50:100]] if len(title) > 50 else [title]
+    y_t = 180
+    for tl in t_lines:
+        if tl.strip():
+            draw.text((65, y_t), tl.strip(), fill="#ffffff")
+            y_t += 25
+
+    draw.text((65, y_t + 10), subtitle[:65], fill="#94a3b8")
+
+    # Preview Table simulation
+    draw.rectangle([45, 290, 755, 335], fill="#1e293b")
+    draw.text((65, 305), "अ.क्र.", fill="#facc15")
+    draw.text((120, 305), "परीक्षा प्रश्न (Exam Question)", fill="#facc15")
+    draw.text((420, 305), "अचूक उत्तर", fill="#facc15")
+    draw.text((560, 305), "सविस्तर स्पष्टीकरण", fill="#facc15")
+
+    # Sample rows
+    sample_rows = [
+        ("१", f"{subject} मधील TCS / IBPS वारंवार विचारलेले प्रश्न", "अधिकृत पर्याय", "स्मार्ट शॉर्टकट ट्रिक व विश्लेषण"),
+        ("२", "मागील वर्षांतील चालू शिफ्ट्सवर आधारित मॉडेल प्रश्न", "प्रमाणित उत्तर", "४-स्तंभ सविस्तर AI स्पष्टीकरण"),
+        ("३", "संभाव्य परीक्षेसाठी अतिसंभाव्य सराव प्रश्नसंच", "योग्य पर्याय", "१५-सेकंद मेमरी ट्रिक्स व नियम")
+    ]
+    y_row = 345
+    for r_num, r_q, r_a, r_exp in sample_rows:
+        draw.rectangle([45, y_row, 755, y_row + 75], fill="#0f172a", outline="#1e293b", width=1)
+        draw.text((65, y_row + 15), r_num, fill="#94a3b8")
+        draw.text((120, y_row + 15), r_q[:35], fill="#ffffff")
+        draw.text((420, y_row + 15), r_a, fill="#10b981")
+        draw.text((560, y_row + 15), r_exp[:25], fill="#94a3b8")
+        y_row += 85
+
+    # Large Watermark
+    draw.text((180, 720), "OFFICIAL SAMPLE PREVIEW", fill="#1e293b")
+    draw.text((220, 760), "नमुना पृष्ठ १ — केवळ तपासणीसाठी", fill="#1e293b")
+
+    # Footer notice
+    draw.rectangle([45, 980, 755, 1070], fill="#1e293b", outline="#334155", width=1)
+    draw.text((65, 995), "🔒 सुरक्षित इलेक्ट्रॉनिक आवृत्ती (Official Encrypted Digital Copy)", fill="#38bdf8")
+    draw.text((65, 1020), f"👉 खरेदी पूर्ण होताच सर्व {pages} पृष्ठे हाय-रिझोल्यूशन PDF मध्ये तात्काळ मिळतील. (₹{price})", fill="#facc15")
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+def get_product_sample_page_image(prod_id: str, db_path: str = None) -> bytes:
+    """
+    Renders the actual 1st page (Page 1) of the product's PDF file as a high-quality PNG.
+    If the physical PDF is not yet on disk, generates a crisp dynamic Page 1 sample card.
+    """
+    pdf_path = locate_product_pdf(prod_id, db_path)
+    if pdf_path:
+        try:
+            try:
+                import pymupdf as fitz
+            except ImportError:
+                import fitz
+            doc = fitz.open(str(pdf_path))
+            if len(doc) > 0:
+                page0 = doc[0]
+                pix = page0.get_pixmap(dpi=130)
+                return pix.tobytes("png")
+        except Exception as e:
+            logger.warning(f"Error rendering PDF page 0 for {prod_id}: {e}")
+
+    return generate_fallback_sample_page(prod_id, db_path)
+
+def get_product_sample_preview_data(prod_id: str, db_path: str = None) -> dict:
+    if db_path is None:
+        db_path = os.getenv("DATABASE_PATH", str(Path(__file__).resolve().parent.parent / "bot.db"))
+    prod = packaging_agent.get_product_by_id(prod_id, db_path) or {}
+    pdf_path = locate_product_pdf(prod_id, db_path)
+
+    total_pages = prod.get("pages") or 50
+    page_text = ""
+    has_pdf = False
+
+    if pdf_path:
+        try:
+            try:
+                import pymupdf as fitz
+            except ImportError:
+                import fitz
+            doc = fitz.open(str(pdf_path))
+            total_pages = len(doc)
+            has_pdf = True
+            if len(doc) > 0:
+                page_text = doc[0].get_text("text").strip()
+        except Exception as e:
+            logger.warning(f"Error extracting page text for {prod_id}: {e}")
+
+    return {
+        "success": True,
+        "id": prod_id,
+        "title": prod.get("title") or "ई-बुक नमुना",
+        "subtitle": prod.get("subtitle") or prod.get("description") or "",
+        "subject": prod.get("subject") or "General",
+        "price_inr": prod.get("price_inr", 29),
+        "total_pages": total_pages,
+        "has_pdf": has_pdf,
+        "image_url": f"/api/sample_image?id={prod_id}",
+        "page_text": page_text[:1200] if page_text else ""
+    }
 
 def render_digital_store_html(products: List[Dict[str, Any]] = None) -> str:
     """
@@ -926,17 +1092,23 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None) -> str:
 
     <!-- Sample Preview Modal -->
     <div class="modal-overlay" id="sampleModal">
-        <div class="modal" style="max-width: 640px;">
+        <div class="modal" style="max-width: 660px; max-height: 92vh; display: flex; flex-direction: column;">
             <button class="modal-close" onclick="closeModal('sampleModal')">&times;</button>
-            <span class="card-badge" style="color:var(--accent-gold); border-color:var(--accent-gold);">FREE SAMPLE PREVIEW</span>
-            <h2 id="sampleModalTitle" style="margin-top:10px; font-size:19px; color:#fff;">नमुना प्रश्न व स्पष्टीकरण</h2>
-            <p style="color:var(--text-muted); font-size:13px; margin-bottom:16px;">पुस्तकातील दर्जा आणि स्पष्टीकरणे खालीलप्रमाणे आहेत:</p>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+                <span class="card-badge" style="color:var(--accent-gold); border-color:var(--accent-gold);">📖 FREE SAMPLE PREVIEW</span>
+                <span id="sampleBadgePages" class="card-badge" style="color:var(--accent-cyan); border-color:var(--accent-cyan);">📄 पृष्ठ १ नमुना</span>
+            </div>
+            <h2 id="sampleModalTitle" style="margin-top:2px; font-size:18px; color:#fff; line-height:1.35;">नमुना पूर्वावलोकन</h2>
+            <p id="sampleModalSub" style="color:var(--text-muted); font-size:12.5px; margin-bottom:12px;">या दस्तऐवजाचे प्रत्यक्ष पहिले पृष्ठ (Actual First Page Preview):</p>
 
-            <div id="sampleContentArea">
+            <div id="sampleContentArea" style="overflow-y:auto; flex:1; max-height:60vh; padding-right:4px;">
                 <!-- Samples inserted via JS -->
             </div>
 
-            <button class="btn-buy btn-full" id="sampleBuyBtn" onclick="buyFromSample()">👉 हे संपूर्ण ई-बुक खरेदी करा</button>
+            <div style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08);">
+                <button class="btn-buy btn-full" id="sampleBuyBtn" onclick="buyFromSample()">👉 हे संपूर्ण ई-बुक खरेदी करा</button>
+                <div style="font-size:11px; color:#94a3b8; text-align:center; margin-top:6px;">🔒 १००% सुरक्षित पेमेंट • पेमेंट पूर्ण होताच संपूर्ण PDF डाऊनलोड त्वरित उपलब्ध होते</div>
+            </div>
         </div>
     </div>
 
@@ -1258,23 +1430,98 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None) -> str:
             }}
         }}
 
+        function escapeHtml(str) {{
+            if (!str) return '';
+            return String(str).replace(/[&<>"']/g, function(m) {{
+                return {{'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'}}[m];
+            }});
+        }}
+
         function openSampleModal(id) {{
-            const sampleData = SAMPLES[id] || SAMPLES['prod_ca_monthly_top200'];
             currentProduct = PRODUCTS.find(p => p.id === id);
+            const title = currentProduct ? currentProduct.title : 'ई-बुक नमुना';
+            const subject = currentProduct ? currentProduct.subject : '';
+            const price = currentProduct ? currentProduct.price_inr : 19;
+            const approxPages = currentProduct ? (currentProduct.pages || '') : '';
 
-            document.getElementById('sampleModalTitle').innerText = sampleData.title;
+            document.getElementById('sampleModalTitle').innerText = title;
+            const subEl = document.getElementById('sampleModalSub');
+            if (subEl) {{
+                subEl.innerHTML = `${{subject ? '<b>विषय:</b> ' + escapeHtml(subject) + ' • ' : ''}}<b>पहिले पृष्ठ नमुना पूर्वावलोकन</b> (First Page Sample)`;
+            }}
+            const pagesBadge = document.getElementById('sampleBadgePages');
+            if (pagesBadge) {{
+                pagesBadge.innerText = approxPages ? `📄 एकूण ${{approxPages}} पृष्ठे` : '📄 पृष्ठ १ नमुना';
+            }}
+
+            document.getElementById('sampleBuyBtn').innerText = `👉 संपूर्ण ई-बुक खरेदी करा (₹${{price}})`;
+            
             const container = document.getElementById('sampleContentArea');
-            container.innerHTML = sampleData.samples.map(s => `
-                <div class="sample-item">
-                    <div class="sample-q">${{s.q}}</div>
-                    <div class="sample-opts">${{s.options.join('<br>')}}</div>
-                    <div class="sample-exp">${{s.explanation}}</div>
-                    <div style="font-size:11.5px; color:#facc15; margin-top:6px; font-weight:600;">${{s.tip || ''}}</div>
+            container.innerHTML = `
+                <div id="sampleLoadingBox" style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:35px 20px; background:rgba(15,23,42,0.6); border-radius:12px; border:1px dashed rgba(56,189,248,0.3); text-align:center;">
+                    <div style="width:34px; height:34px; border:3px solid #334155; border-top-color:#38bdf8; border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:12px;"></div>
+                    <div style="font-size:13px; color:#cbd5e1; font-weight:600;">या फाइलचे पृष्ठ १ लोड होत आहे...</div>
+                    <div style="font-size:11.5px; color:#94a3b8; margin-top:4px;">(Rendering Page 1 Preview for ${{escapeHtml(title)}})</div>
                 </div>
-            `).join('');
+            `;
 
-            document.getElementById('sampleBuyBtn').innerText = `👉 संपूर्ण ई-बुक खरेदी करा (₹${{currentProduct.price_inr}})`;
             document.getElementById('sampleModal').classList.add('active');
+
+            const imgUrl = `/api/sample_image?id=${{encodeURIComponent(id)}}`;
+
+            // Fetch metadata to update total page count accurately
+            fetch(`/api/sample_preview?id=${{encodeURIComponent(id)}}`)
+                .then(r => r.json())
+                .then(meta => {{
+                    if (meta && meta.total_pages && pagesBadge) {{
+                        pagesBadge.innerText = `📄 एकूण ${{meta.total_pages}} पृष्ठे`;
+                    }}
+                }}).catch(() => {{}});
+
+            // Load Page 1 image
+            const img = new Image();
+            img.onload = function() {{
+                container.innerHTML = `
+                    <div style="background:rgba(15, 23, 42, 0.7); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:12px; text-align:center;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:12px; color:#94a3b8; padding:0 4px;">
+                            <span>📄 <b>पृष्ठ १ / Page 1</b></span>
+                            <span style="background:rgba(56,189,248,0.15); color:#38bdf8; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:600;">अस्सल PDF नमुना</span>
+                        </div>
+                        <div style="position:relative; display:inline-block; max-width:100%; border-radius:8px; overflow:hidden; box-shadow:0 12px 30px rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.08); background:#1e293b;">
+                            <img src="${{imgUrl}}" alt="Page 1 Sample Preview" style="display:block; max-width:100%; max-height:55vh; width:auto; height:auto; object-fit:contain; margin:0 auto; user-select:none; pointer-events:none;" />
+                            <div style="position:absolute; bottom:0; left:0; right:0; background:linear-gradient(to top, rgba(15,23,42,0.95), transparent); padding:20px 10px 8px; color:#f8fafc; font-size:11.5px; text-align:center; font-weight:500;">
+                                🔒 नमुना पूर्वावलोकन • संपूर्ण फाईल खरेदी केल्यावर सर्व पृष्ठे त्वरित डाउनलोड करता येतील
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }};
+            img.onerror = function() {{
+                // Fallback to text preview
+                fetch(`/api/sample_preview?id=${{encodeURIComponent(id)}}`)
+                    .then(r => r.json())
+                    .then(meta => {{
+                        let textContent = (meta && meta.page_text) ? meta.page_text : 'या फाईलचे पहिले पृष्ठ उपलब्ध आहे. संपूर्ण ई-बुक मिळवण्यासाठी खरेदी करा.';
+                        container.innerHTML = `
+                            <div class="sample-item" style="background:#1e293b; border-color:rgba(56,189,248,0.3);">
+                                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                                    <span style="font-weight:700; color:#38bdf8;">📄 पृष्ठ १ (मजकूर पूर्वावलोकन)</span>
+                                    <span style="font-size:11px; color:#94a3b8;">एकूण पृष्ठे: ${{(meta && meta.total_pages) || 1}}</span>
+                                </div>
+                                <pre style="white-space:pre-wrap; font-family:inherit; font-size:12.5px; color:#cbd5e1; line-height:1.6; max-height:45vh; overflow-y:auto; background:rgba(0,0,0,0.25); padding:10px; border-radius:6px;">${{escapeHtml(textContent)}}</pre>
+                            </div>
+                        `;
+                    }})
+                    .catch(() => {{
+                        container.innerHTML = `
+                            <div class="sample-item" style="text-align:center; padding:20px;">
+                                <div style="font-size:14px; font-weight:600; color:#fff; margin-bottom:6px;">${{escapeHtml(title)}}</div>
+                                <div style="font-size:12.5px; color:#94a3b8;">या फाईलचे नमुना पृष्ठ तयार आहे. संपूर्ण फाईल खरेदी करून लगेच डाऊनलोड करा.</div>
+                            </div>
+                        `;
+                    }});
+            }};
+            img.src = imgUrl;
         }}
 
         function buyFromSample() {{

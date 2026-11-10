@@ -165,5 +165,34 @@ class TestHTTPEndpoints(unittest.TestCase):
         self.assertTrue(data.get("success"))
         self.assertEqual(data.get("status"), "approved")
 
+    def test_sample_image_and_preview_apis(self):
+        # 1. Test /api/sample_preview returns JSON
+        req_prev = urllib.request.urlopen(f"{self.base_url}/api/sample_preview?id=prod_file_0169460b0a")
+        self.assertEqual(req_prev.status, 200)
+        prev_data = json.loads(req_prev.read().decode("utf-8"))
+        self.assertTrue(prev_data.get("success"))
+        self.assertIn("image_url", prev_data)
+        self.assertIn("total_pages", prev_data)
+
+        # 2. Test /api/sample_image returns PNG binary image
+        req_img = urllib.request.urlopen(f"{self.base_url}/api/sample_image?id=prod_file_0169460b0a")
+        self.assertEqual(req_img.status, 200)
+        self.assertEqual(req_img.headers.get("Content-Type"), "image/png")
+        img_bytes = req_img.read()
+        self.assertTrue(len(img_bytes) > 1000)
+        # PNG signature check: \x89PNG\r\n\x1a\n
+        self.assertTrue(img_bytes.startswith(b"\x89PNG\r\n\x1a\n"))
+
+        # 3. Test fallback for nonexistent product ID
+        req_prev_none = urllib.request.urlopen(f"{self.base_url}/api/sample_preview?id=prod_non_existent_999")
+        self.assertEqual(req_prev_none.status, 200)
+        data_none = json.loads(req_prev_none.read().decode("utf-8"))
+        self.assertTrue(data_none.get("success"))
+
+        req_img_none = urllib.request.urlopen(f"{self.base_url}/api/sample_image?id=prod_non_existent_999")
+        self.assertEqual(req_img_none.status, 200)
+        self.assertEqual(req_img_none.headers.get("Content-Type"), "image/png")
+        self.assertTrue(req_img_none.read().startswith(b"\x89PNG\r\n\x1a\n"))
+
 if __name__ == "__main__":
     unittest.main()
