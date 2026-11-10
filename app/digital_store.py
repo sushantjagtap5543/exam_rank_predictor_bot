@@ -251,11 +251,11 @@ def generate_fallback_sample_page(prod_id: str, db_path: str = None) -> bytes:
     draw.text((420, 305), "अचूक उत्तर", fill="#facc15")
     draw.text((560, 305), "सविस्तर स्पष्टीकरण", fill="#facc15")
 
-    # Sample rows
+    # Sample rows dynamically tailored to this specific product
     sample_rows = [
-        ("१", f"{subject} मधील TCS / IBPS वारंवार विचारलेले प्रश्न", "अधिकृत पर्याय", "स्मार्ट शॉर्टकट ट्रिक व विश्लेषण"),
-        ("२", "मागील वर्षांतील चालू शिफ्ट्सवर आधारित मॉडेल प्रश्न", "प्रमाणित उत्तर", "४-स्तंभ सविस्तर AI स्पष्टीकरण"),
-        ("३", "संभाव्य परीक्षेसाठी अतिसंभाव्य सराव प्रश्नसंच", "योग्य पर्याय", "१५-सेकंद मेमरी ट्रिक्स व नियम")
+        ("१", f"{title[:35]} — अधिकृत घटक १", "प्रमाणित उत्तर", "सविस्तर विश्लेषण व ट्रिक्स"),
+        ("२", f"{subject} TCS / IBPS पॅटर्न संभाव्य प्रश्न", "अचूक पर्याय", "स्मार्ट शॉर्टकट पद्धत"),
+        ("३", f"मागील परीक्षेतील विचारलेले प्रश्नसंच ({pages} पृष्ठे)", "योग्य पर्याय", "४-स्तंभ AI स्पष्टीकरण")
     ]
     y_row = 345
     for r_num, r_q, r_a, r_exp in sample_rows:
@@ -1468,7 +1468,7 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None, db_path: Op
 
             document.getElementById('sampleModal').classList.add('active');
 
-            const imgUrl = `/api/sample_image?id=${{encodeURIComponent(id)}}`;
+            const imgUrl = `/api/sample_image?id=${{encodeURIComponent(id)}}&t=${{Date.now()}}`;
 
             // Fetch metadata to update total page count accurately
             fetch(`/api/sample_preview?id=${{encodeURIComponent(id)}}`)

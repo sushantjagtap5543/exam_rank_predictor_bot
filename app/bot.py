@@ -1908,7 +1908,7 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
 
         if not downloaded or not Path(path).is_file() or Path(path).stat().st_size == 0:
             is_large_file = file_size >= 20_000_000
-            has_mtproto = bool(os.getenv("TELEGRAM_API_ID") and os.getenv("TELEGRAM_API_HASH"))
+            has_mtproto = bool(os.getenv("TELEGRAM_API_ID", "31309393").strip() and os.getenv("TELEGRAM_API_HASH", "6876ef173762650c05c4ab2af73370a1").strip())
             
             if is_large_file and not has_mtproto:
                 size_mb = round(file_size / (1024 * 1024), 1)
@@ -1954,7 +1954,10 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
                 )
                 try:
                     headers = {
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Connection": "keep-alive"
                     }
                     curr_url = clean_url
                     async with httpx.AsyncClient(timeout=35.0, follow_redirects=False, headers=headers) as client:
@@ -4398,7 +4401,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 return
             self.send_response(200)
             self.send_header("Content-Type", "image/png")
-            self.send_header("Cache-Control", "public, max-age=1800")
+            self.send_header("Cache-Control", "no-cache, must-revalidate")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(png_bytes)
@@ -5291,6 +5294,29 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
 
                 with open(dest_path, "wb") as f:
                     f.write(pdf_bytes)
+
+                # Immediately register uploaded PDF as active digital store product with exact page count
+                try:
+                    actual_pages = 1
+                    try:
+                        import pymupdf as fitz
+                    except ImportError:
+                        import fitz
+                    d_tmp = fitz.open(str(dest_path))
+                    actual_pages = max(1, len(d_tmp))
+                    d_tmp.close()
+
+                    clean_title = os.path.splitext(safe_fn)[0].replace("_", " ").strip()
+                    clean_title = re.sub(r"\s+", " ", clean_title).title()
+                    packaging_agent.register_pdf_file_as_product(
+                        dest_path,
+                        title=f"{clean_title} (अधिकृत ई-बुक प्रश्नसंच)",
+                        pages=actual_pages,
+                        price=49,
+                        db_path=DB_PATH
+                    )
+                except Exception as reg_e:
+                    logger.warning(f"Direct registration of product {safe_fn} failed: {reg_e}")
 
                 # Also copy to RESPONSE_DIR and insert into uploads table so bot/quizzes always have it
                 try:

@@ -687,19 +687,16 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
 
     def sync_folder_pdfs_to_products(self, db_path: str = "bot.db") -> int:
         """
-        Scans all designated product directories and automatically adds any new PDF
-        files to the web store with a price randomly between 10-50 INR.
+        Scans designated product directories and automatically registers any new PDF
+        files into the digital store. Strictly excludes candidate response sheets.
         """
         db_path = self.resolve_db_path(db_path)
         root_dir = Path(__file__).resolve().parent.parent.parent
         scan_dirs = [
-            root_dir / "products",
             root_dir / "admin_storage" / "products",
-            root_dir / "admin_storage" / "response_sheets",
+            root_dir / "products",
+            Path(os.getenv("ADMIN_STORAGE_DIR", str(root_dir / "admin_storage"))) / "products",
             root_dir.parent / "admin_storage" / "products",
-            root_dir.parent / "admin_storage" / "response_sheets",
-            root_dir,
-            root_dir.parent,
         ]
 
         added_count = 0
@@ -708,6 +705,9 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             if s_dir.exists() and s_dir.is_dir():
                 for pdf_file in s_dir.glob("*.pdf"):
                     fn = pdf_file.name
+                    # Never register candidate response sheets as store products
+                    if fn.startswith("user_") or re.match(r"^\d+_AgAD", fn) or "admin_upload_user_" in fn:
+                        continue
                     if fn in seen_filenames:
                         continue
                     seen_filenames.add(fn)
@@ -730,7 +730,12 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
                 rows = db.execute("SELECT * FROM digital_products ORDER BY rowid DESC").fetchall()
             else:
                 rows = db.execute("SELECT * FROM digital_products WHERE is_active = 1 ORDER BY rowid DESC").fetchall()
-            return [dict(r) for r in rows]
+            products = [dict(r) for r in rows]
+            if not include_inactive:
+                # Strictly filter out ghost/dummy products without a physical PDF on disk
+                from ..digital_store import locate_product_pdf
+                products = [p for p in products if locate_product_pdf(p.get("id"), db_path)]
+            return products
 
     def get_product_by_id(self, product_id: str, db_path: str = "bot.db") -> Optional[Dict[str, Any]]:
         db_path = self.resolve_db_path(db_path)

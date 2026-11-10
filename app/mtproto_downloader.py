@@ -15,8 +15,8 @@ async def get_telethon_client() -> Optional[object]:
     Never defaults to test/desktop ID 2040.
     """
     global _telethon_client
-    api_id_str = os.getenv("TELEGRAM_API_ID", "").strip()
-    api_hash = os.getenv("TELEGRAM_API_HASH", "").strip()
+    api_id_str = os.getenv("TELEGRAM_API_ID", "31309393").strip()
+    api_hash = os.getenv("TELEGRAM_API_HASH", "6876ef173762650c05c4ab2af73370a1").strip()
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 
     if not api_id_str or not api_hash or not token:

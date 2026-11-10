@@ -1190,7 +1190,7 @@
 
             document.getElementById('sampleModal').classList.add('active');
 
-            const imgUrl = `/api/sample_image?id=${encodeURIComponent(id)}`;
+            const imgUrl = `/api/sample_image?id=${encodeURIComponent(id)}&t=${Date.now()}`;
 
             // Fetch metadata to update total page count accurately
             fetch(`/api/sample_preview?id=${encodeURIComponent(id)}`)
