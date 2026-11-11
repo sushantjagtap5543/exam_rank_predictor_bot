@@ -850,6 +850,7 @@ def render_mindmap_image(topic: dict, output_path: Path) -> Path:
     footer_text = "📚 ExamRankers India Bot (@ExamRankersIndiaBot) | अधिकृत परीक्षा रँक, स्पष्टीकरण व क्विझ चॅनेल"
     draw.text((40, 752), footer_text, font=font_footer, fill=(148, 163, 184))
 
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     img.save(output_path, format="JPEG", quality=95)
     logger.info(f"Generated dynamic mindmap image: {output_path}")
     return output_path

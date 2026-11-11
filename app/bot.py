@@ -306,6 +306,20 @@ def backup_sqlite_database(db_path: str = DB_PATH, backup_dir: Optional[Path] = 
         with sqlite3.connect(db_path, timeout=30.0) as src, sqlite3.connect(str(backup_file), timeout=30.0) as dst:
             src.backup(dst, pages=100, sleep=0.01)
         logger.info(f"SQLite backup successfully created at {backup_file}")
+
+        # Disk retention: keep last 7 backups, prune older ones to avoid ENOSPC
+        try:
+            existing_backups = sorted(backup_dir.glob("bot_backup_*.db"), key=lambda p: p.stat().st_mtime)
+            if len(existing_backups) > 7:
+                for old_b in existing_backups[:-7]:
+                    try:
+                        old_b.unlink()
+                        logger.info(f"Pruned old backup file: {old_b.name}")
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
         return backup_file
     except Exception as e:
         logger.error(f"Failed to create SQLite backup: {e}")

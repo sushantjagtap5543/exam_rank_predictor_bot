@@ -18,8 +18,8 @@ def main():
         price = prod.get("price_inr", 0)
         try:
             pdf_path = agent.ensure_product_pdf(pid, force_rebuild=True)
-            doc = fitz.open(str(pdf_path))
-            page_count = len(doc)
+            with fitz.open(str(pdf_path)) as doc:
+                page_count = len(doc)
             size_kb = pdf_path.stat().st_size / 1024
             results.append((pid, title, price, page_count, f"{size_kb:.1f} KB", "SUCCESS"))
             print(f"OK: [{pid}] {title[:35]} -> {page_count} pages, {size_kb:.1f} KB")
