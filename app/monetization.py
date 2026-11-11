@@ -45,7 +45,7 @@ def generate_qr_bytes(data: str) -> bytes:
         qr.make(fit=True)
         img = qr.make_image(fill_color="black", back_color="white")
         with io.BytesIO() as buf:
-            img.save(buf, format="PNG")
+            img.save(buf)
             return buf.getvalue()
     except Exception as e:
         logger.warning(f"Local QR bytes error: {e}")
