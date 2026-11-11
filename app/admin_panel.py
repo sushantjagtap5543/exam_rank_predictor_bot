@@ -998,7 +998,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
     <script>
         function getAdminKey() {{
             const urlParams = new URLSearchParams(window.location.search);
-            const keyFromUrl = urlParams.get('key');
+            const keyFromUrl = urlParams.get('key') || urlParams.get('token') || urlParams.get('admin_key');
             if (keyFromUrl) {{
                 sessionStorage.setItem('admin_key', keyFromUrl);
                 document.cookie = "admin_key=" + encodeURIComponent(keyFromUrl) + "; path=/; max-age=86400; SameSite=Lax";
@@ -1653,7 +1653,13 @@ def render_admin_login_html(error_msg: str = "") -> str:
     </div>
 
     <script>
-        // Check if key is already stored in sessionStorage
+        // Clear rejected invalid key if server rendered login page with a key parameter
+        if (window.location.search.includes('key=') || window.location.search.includes('token=') || window.location.search.includes('admin_key=')) {{
+            sessionStorage.removeItem('admin_key');
+            document.cookie = "admin_key=; path=/; max-age=0; SameSite=Lax";
+        }}
+
+        // Check if a valid key is stored in sessionStorage
         const savedKey = sessionStorage.getItem('admin_key');
         if (savedKey && !window.location.search.includes('key=')) {{
             window.location.href = '/admin?key=' + encodeURIComponent(savedKey);
