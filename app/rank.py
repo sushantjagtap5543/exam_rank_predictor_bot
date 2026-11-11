@@ -7,16 +7,25 @@ Computes:
 4. Category Rank (प्रवर्ग निहाय रँक - e.g. OBC / EWS / SC / ST)
 """
 
+import math
+
 MIN_COHORT_FOR_RANK = 30
 MAX_POSSIBLE_SCORE = 200.0
 MIN_POSSIBLE_SCORE = -50.0
 
 def _calc_rank_and_percentile(score: float, scores: list[float]) -> tuple[int, int, float]:
     """Helper to calculate 1-based competition rank, total count, and percentile."""
-    combined = list(scores) if scores else []
+    if score is None or (isinstance(score, float) and (math.isnan(score) or math.isinf(score))):
+        score = 0.0
+    combined = [
+        s for s in (scores or [])
+        if s is not None and not (isinstance(s, float) and (math.isnan(s) or math.isinf(s)))
+    ]
     if score not in combined:
         combined.append(score)
     total = len(combined)
+    if not total:
+        return 1, 1, 100.0
     rank = 1 + sum(1 for s in combined if s > score)
     percentile = round(100.0 * sum(1 for s in combined if s <= score) / total, 2)
     return rank, total, percentile
@@ -41,10 +50,14 @@ def estimate_cohort_rank(
     # 0. Impossible Score Detection & Safe Type Conversion
     try:
         student_score = float(student_score)
+        if math.isnan(student_score) or math.isinf(student_score):
+            student_score = 0.0
     except (ValueError, TypeError):
         student_score = 0.0
     try:
         max_marks = float(max_marks)
+        if math.isnan(max_marks) or math.isinf(max_marks) or max_marks <= 0:
+            max_marks = MAX_POSSIBLE_SCORE
     except (ValueError, TypeError):
         max_marks = MAX_POSSIBLE_SCORE
 

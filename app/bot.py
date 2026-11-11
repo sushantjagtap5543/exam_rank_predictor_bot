@@ -2176,7 +2176,13 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
             )
         else:
             keyboard = [[InlineKeyboardButton(c["display_name"], callback_data=f"exam:{k}")] for k, c in EXAMS.items()]
-            await status_msg.edit_text("⚠️ Could not auto-detect the exam title from document text. Please select your exam:", reply_markup=InlineKeyboardMarkup(keyboard))
+            keyboard.append([InlineKeyboardButton("🔙 मुख्य मेनू (Main Menu)", callback_data="main_menu")])
+            await status_msg.edit_text(
+                "⚠️ <b>या PDF मधून परीक्षेचे नाव थेट डिटेक्ट झाले नाही.</b>\n\n"
+                "कृपया खालील यादीतून तुमची परीक्षा निवडा:",
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
 
 async def complete_analysis(update: Update, context: ContextTypes.DEFAULT_TYPE, exam_key: str):
     """Computes score, ranks candidate, and generates subject-wise dashboard & objection options."""
