@@ -1116,7 +1116,12 @@ async def send_question_review_page(update: Update, context: ContextTypes.DEFAUL
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
-    await q.answer()
+    if not q:
+        return
+    try:
+        await q.answer()
+    except Exception as e:
+        logger.debug(f"Note on initial callback query answer: {e}")
     data = q.data
 
     if data in ("main_menu", "change_category", "analyze"):

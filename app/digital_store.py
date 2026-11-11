@@ -357,7 +357,7 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None, db_path: Op
     if static_file.exists():
         try:
             content = static_file.read_text(encoding="utf-8")
-            content = re.sub(r'const PRODUCTS = \[.*?\];', lambda m: 'const PRODUCTS = ' + products_json + ';', content, count=1, flags=re.DOTALL)
+            content = re.sub(r'(?:const|let) PRODUCTS = \[.*?\];', lambda m: 'let PRODUCTS = ' + products_json + ';', content, count=1, flags=re.DOTALL)
             content = re.sub(r'const SAMPLES = \{.*?\};', lambda m: 'const SAMPLES = ' + samples_json + ';', content, count=1, flags=re.DOTALL)
             content = re.sub(r'const MERCHANT_UPI = "[^"]*";', lambda m: f'const MERCHANT_UPI = "{upi_id}";', content, count=1)
             content = re.sub(r'const MERCHANT_NAME = "[^"]*";', lambda m: f'const MERCHANT_NAME = "{upi_name}";', content, count=1)
