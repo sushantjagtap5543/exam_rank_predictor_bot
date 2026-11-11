@@ -291,11 +291,11 @@ def get_product_sample_page_image(prod_id: str, db_path: str = None) -> bytes:
                 import pymupdf as fitz
             except ImportError:
                 import fitz
-            doc = fitz.open(str(pdf_path))
-            if len(doc) > 0:
-                page0 = doc[0]
-                pix = page0.get_pixmap(dpi=130)
-                return pix.tobytes("png")
+            with fitz.open(str(pdf_path)) as doc:
+                if len(doc) > 0:
+                    page0 = doc[0]
+                    pix = page0.get_pixmap(dpi=130)
+                    return pix.tobytes("png")
         except Exception as e:
             logger.warning(f"Error rendering PDF page 0 for {prod_id}: {e}")
 

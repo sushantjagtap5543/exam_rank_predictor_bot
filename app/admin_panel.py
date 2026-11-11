@@ -12,7 +12,7 @@ Features:
 - Order Management with 1-Click UTR Approval & Rejection
 """
 
-import html
+import html as html_lib
 import json
 import sqlite3
 
@@ -104,23 +104,30 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             "is_active": is_active
         }).replace('"', '&quot;').replace("'", "&#39;")
 
+        safe_title = html_lib.escape(title)
+        safe_subtitle = html_lib.escape(subtitle)
+        safe_subject = html_lib.escape(subject)
+        safe_badge = html_lib.escape(badge)
+        safe_pid = html_lib.escape(p_id)
+        safe_dl_file = html_lib.escape(dl_file)
+
         product_rows_html.append(f"""
-            <tr id="row_{p_id}">
+            <tr id="row_{safe_pid}">
                 <td style="font-size:18px; text-align:center;">{icon}</td>
                 <td>
-                    <b style="color:#ffffff; font-size:14px;">{title}</b><br>
-                    <span style="font-size:11.5px; color:#94a3b8;">ID: <code>{p_id}</code> | 📄 {pages} पृष्ठे | <span class="badge badge-gray">{badge}</span></span>
+                    <b style="color:#ffffff; font-size:14px;">{safe_title}</b><br>
+                    <span style="font-size:11.5px; color:#94a3b8;">ID: <code>{safe_pid}</code> | 📄 {pages} पृष्ठे | <span class="badge badge-gray">{safe_badge}</span></span>
                 </td>
-                <td><span class="badge badge-sub">{subject}</span></td>
+                <td><span class="badge badge-sub">{safe_subject}</span></td>
                 <td>
                     <div style="display:flex; align-items:center; gap:6px;">
                         <span>₹</span>
-                        <input type="number" id="price_{p_id}" value="{price}" min="10" max="100" class="input-mini">
-                        <button class="btn-sm btn-action" onclick="updateProductPrice('{p_id}')">💾</button>
+                        <input type="number" id="price_{safe_pid}" value="{price}" min="10" max="100" class="input-mini">
+                        <button class="btn-sm btn-action" onclick="updateProductPrice('{safe_pid}')">💾</button>
                     </div>
                 </td>
                 <td style="text-align:center;">
-                    {f'<a href="/admin/download_pdf?file={dl_file}" class="btn-sm btn-link" target="_blank">📥 {dl_file[:14]}...</a>' if dl_file else '<span style="color:#64748b; font-size:11px;">PDF नाही</span>'}
+                    {f'<a href="/admin/download_pdf?file={safe_dl_file}" class="btn-sm btn-link" target="_blank">📥 {safe_dl_file[:14]}...</a>' if safe_dl_file else '<span style="color:#64748b; font-size:11px;">PDF नाही</span>'}
                 </td>
                 <td style="text-align:center;">
                     <span class="status-pill {'status-active' if is_active else 'status-inactive'}">
@@ -129,13 +136,13 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 </td>
                 <td style="text-align:center;">
                     <div style="display:flex; gap:6px; justify-content:center;">
-                        <button class="btn-sm btn-toggle" title="स्थिती बदला (Toggle Active/Hidden)" onclick="toggleProductStatus('{p_id}')">
+                        <button class="btn-sm btn-toggle" title="स्थिती बदला (Toggle Active/Hidden)" onclick="toggleProductStatus('{safe_pid}')">
                             {'👁️ लपवा' if is_active else '✅ सुरू करा'}
                         </button>
                         <button class="btn-sm btn-edit" title="संपादित करा (Edit Product)" onclick='openEditModal({p_json})'>
                             ✏️ Edit
                         </button>
-                        <button class="btn-sm btn-del" title="कायमचे हटवा (Delete Product)" onclick="deleteProduct('{p_id}')">
+                        <button class="btn-sm btn-del" title="कायमचे हटवा (Delete Product)" onclick="deleteProduct('{safe_pid}')">
                             🗑️
                         </button>
                     </div>
@@ -161,14 +168,21 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         elif action == "download_pdf":
             action_badge = "badge-blue"
 
+        safe_ip = html_lib.escape(str(ip))
+        safe_dev = html_lib.escape(str(dev))
+        safe_action = html_lib.escape(str(action))
+        safe_page = html_lib.escape(str(page))
+        safe_prod_id = html_lib.escape(str(prod_id))
+        safe_ts = html_lib.escape(str(ts))
+
         visitor_rows_html.append(f"""
             <tr>
-                <td><code>{ip}</code></td>
-                <td>{'📱' if dev == 'Mobile' else '💻'} {dev}</td>
-                <td><span class="badge {action_badge}">{action}</span></td>
-                <td><span style="color:#cbd5e1; font-size:12px;">{page}</span></td>
-                <td><span style="color:#94a3b8; font-size:11.5px;">{prod_id}</span></td>
-                <td style="color:#64748b; font-size:11px;">{ts}</td>
+                <td><code>{safe_ip}</code></td>
+                <td>{'📱' if dev == 'Mobile' else '💻'} {safe_dev}</td>
+                <td><span class="badge {action_badge}">{safe_action}</span></td>
+                <td><span style="color:#cbd5e1; font-size:12px;">{safe_page}</span></td>
+                <td><span style="color:#94a3b8; font-size:11.5px;">{safe_prod_id}</span></td>
+                <td style="color:#64748b; font-size:11px;">{safe_ts}</td>
             </tr>
         """)
 
@@ -226,22 +240,30 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         elif status == "rejected":
             status_class = "status-rejected"
 
+        safe_token = html_lib.escape(str(token))
+        safe_email = html_lib.escape(str(email))
+        safe_prod_title = html_lib.escape(str(prod_title))
+        safe_utr = html_lib.escape(str(utr))
+        safe_status = html_lib.escape(str(status))
+        safe_deliv = html_lib.escape(str(delivery_status))
+        safe_ts = html_lib.escape(str(ts))
+
         order_rows_html.append(f"""
             <tr class="order-row" data-status="{status}">
-                <td><code>{token}</code></td>
+                <td><code>{safe_token}</code></td>
                 <td>
-                    <b style="color:#ffffff;">{email}</b><br>
-                    <span style="font-size:11px; color:#94a3b8;">📖 {prod_title[:28]}</span>
+                    <b style="color:#ffffff;">{safe_email}</b><br>
+                    <span style="font-size:11px; color:#94a3b8;">📖 {safe_prod_title[:28]}</span>
                 </td>
                 <td style="color:#10b981; font-weight:700;">₹{amount}</td>
-                <td><code style="background:rgba(250,204,21,0.1); color:var(--accent-gold); padding:3px 7px; border-radius:4px; font-weight:700;">{utr}</code></td>
+                <td><code style="background:rgba(250,204,21,0.1); color:var(--accent-gold); padding:3px 7px; border-radius:4px; font-weight:700;">{safe_utr}</code></td>
                 <td>
                     <span class="status-pill {status_class}">
-                        {status.upper()}
+                        {safe_status.upper()}
                     </span><br>
-                    <span class="badge {deliv_badge}" style="font-size:10px; margin-top:3px;">{delivery_status}</span>
+                    <span class="badge {deliv_badge}" style="font-size:10px; margin-top:3px;">{safe_deliv}</span>
                 </td>
-                <td style="color:#64748b; font-size:11px;">{ts}</td>
+                <td style="color:#64748b; font-size:11px;">{safe_ts}</td>
                 <td style="text-align:center;">{action_btns}</td>
             </tr>
         """)

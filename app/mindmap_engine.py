@@ -17,7 +17,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "db.sqlite3")
+DEFAULT_DB_PATH = os.getenv("DB_PATH") or os.getenv("DATABASE_PATH") or os.path.join(os.path.dirname(os.path.dirname(__file__)), "bot.db")
 STORAGE_DIR = Path(__file__).resolve().parent.parent / "admin_storage" / "mindmaps"
 
 MINDMAP_TOPICS = [

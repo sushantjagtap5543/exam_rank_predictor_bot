@@ -25,7 +25,7 @@ def is_ads_enabled() -> bool:
 
 def get_db_path() -> str:
     default_db = str(Path(__file__).resolve().parent.parent / "bot.db")
-    return os.getenv("DATABASE_PATH", default_db)
+    return os.getenv("DB_PATH") or os.getenv("DATABASE_PATH") or default_db
 
 def get_paid_channel_link() -> str:
     return os.getenv("PAID_CHANNEL_LINK", DEFAULT_PAID_CHANNEL_LINK).strip() or DEFAULT_PAID_CHANNEL_LINK
@@ -221,13 +221,16 @@ async def approve_and_generate_invite(bot: Bot, payment_id: int) -> tuple[bool, 
 
     # Deliver invite link to user
     user_message = (
-        "🎉 <b>Payment Verified! Welcome to the Paid Quiz Channel!</b>\n\n"
-        f"Hello {first_name or 'Aspirant'},\n"
-        "Your ₹99 payment has been verified. Here is your access link to join the VIP Exam Quiz Channel:\n\n"
-        f"👉 <b><a href=\"{invite_link}\">Click Here to Join Paid Quiz Channel</a></b>\n\n"
-        "⚡ <i>Join now to start attempting all official exam quizzes!</i>"
+        "🎉 <b>पेमेंट यशस्वीरित्या पडताळले! VIP क्विझ चॅनेलमध्ये स्वागत आहे!</b>\n\n"
+        f"नमस्कार {first_name or 'विद्यार्थी मित्र'},\n"
+        "तुमच्या ₹९९ पेमेंटची पडताळणी पूर्ण झाली आहे. VIP भरती सराव क्विझ चॅनेलमध्ये सामील होण्यासाठी खालील लिंकवर क्लिक करा:\n\n"
+        f"👉 <b><a href=\"{invite_link}\">चॅनेल जॉइन करण्यासाठी येथे क्लिक करा</a></b>\n\n"
+        "⚡ <i>लगेच जॉइन व्हा आणि सर्व अधिकृत TCS/IBPS पॅटर्न क्विझ सोडवा!</i>"
     )
-    await bot.send_message(chat_id=user_id, text=user_message, parse_mode="HTML")
+    try:
+        await bot.send_message(chat_id=user_id, text=user_message, parse_mode="HTML")
+    except Exception as e:
+        logger.warning(f"Failed to deliver invite link message to user {user_id}: {e}")
     return True, invite_link
 
 async def reject_payment(bot: Bot, payment_id: int, reason: str = "") -> tuple[bool, str]:

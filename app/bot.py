@@ -4264,8 +4264,19 @@ async def continuous_autonomous_agency_orchestrator(application: Application):
         await asyncio.sleep(1800)  # Continuous 30-minute operational heartbeat
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data.clear()
-    await update.message.reply_text("Current action cancelled. Send /start to begin again.")
+    if context.user_data:
+        context.user_data.clear()
+    msg = "🚫 सध्याची प्रक्रिया रद्द करण्यात आली आहे. पुन्हा सुरू करण्यासाठी /start दाबा."
+    if update and update.effective_message:
+        try:
+            await update.effective_message.reply_text(msg)
+        except Exception:
+            pass
+    elif update and update.effective_chat:
+        try:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=msg)
+        except Exception:
+            pass
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Logs detailed traceback, captures via Sentry if enabled, and alerts admins if critical."""
