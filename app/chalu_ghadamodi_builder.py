@@ -35,7 +35,18 @@ STANDARD_CATEGORIES = [
 
 def find_browser_executable() -> Optional[str]:
     """Finds Google Chrome or Microsoft Edge for headless PDF rendering."""
+    import shutil
+    for cmd in ["google-chrome", "chrome", "msedge", "chromium-browser", "chromium"]:
+        p = shutil.which(cmd)
+        if p and os.path.exists(p):
+            return p
+
     candidate_paths = [
+        os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+        os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\Application\msedge.exe"),
+        os.path.expandvars(r"%PROGRAMFILES%\Google\Chrome\Application\chrome.exe"),
+        os.path.expandvars(r"%PROGRAMFILES(X86)%\Google\Chrome\Application\chrome.exe"),
+        os.path.expandvars(r"%PROGRAMFILES(X86)%\Microsoft\Edge\Application\msedge.exe"),
         r"C:\Program Files\Google\Chrome\Application\chrome.exe",
         r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
         r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
@@ -45,7 +56,7 @@ def find_browser_executable() -> Optional[str]:
         "/usr/bin/chromium",
     ]
     for p in candidate_paths:
-        if os.path.exists(p):
+        if p and os.path.exists(p):
             return p
     return None
 

@@ -32,7 +32,14 @@ async def get_telethon_client() -> Optional[object]:
         logger.warning(f"Invalid TELEGRAM_API_ID: '{api_id_str}'")
         return None
 
-    if _telethon_client is None or not _telethon_client.is_connected():
+    if _telethon_client is not None and not _telethon_client.is_connected():
+        try:
+            await _telethon_client.disconnect()
+        except Exception:
+            pass
+        _telethon_client = None
+
+    if _telethon_client is None:
         try:
             from telethon import TelegramClient
             storage_dir = Path(os.getenv("ADMIN_STORAGE_DIR", "admin_storage"))
@@ -43,6 +50,7 @@ async def get_telethon_client() -> Optional[object]:
             logger.info("Telethon MTProto client initialized successfully with own credentials!")
         except Exception as e:
             logger.warning(f"Failed to initialize Telethon MTProto client: {e}")
+            _telethon_client = None
             return None
 
     return _telethon_client

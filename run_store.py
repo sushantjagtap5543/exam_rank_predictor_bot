@@ -33,6 +33,7 @@ def run_store(port: int = 8080, open_browser: bool = True):
     packaging_agent = DigitalProductPackagingAgent()
     packaging_agent.init_products_db(DB_PATH)
 
+    http.server.ThreadingHTTPServer.allow_reuse_address = True
     server_address = ("0.0.0.0", port)
     server = http.server.ThreadingHTTPServer(server_address, HealthCheckHandler)
     url = f"http://localhost:{port}"
