@@ -9,12 +9,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install system dependencies & Devanagari fonts for ReportLab PDF generation + curl for healthcheck
+# Install system dependencies & Devanagari fonts for ReportLab PDF generation + curl for healthcheck + GL/ONNX libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-deva \
     fonts-indic \
     ca-certificates \
     curl \
+    libgl1 \
+    libglib2.0-0 \
+    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create secure non-root user

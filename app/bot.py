@@ -1688,6 +1688,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await q.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
+    elif data == "use_rec_url":
+        rec_url = context.user_data.get("recovered_url", "")
+        if rec_url:
+            await q.message.edit_text("⚡ <b>अधिकृत वेब लिंकवरून रिस्पॉन्स शीट तपासत आहे...</b> ⏳", parse_mode="HTML")
+            await handle_url_sheet(update, context, rec_url)
+            return
+
     elif data == "manual_calc":
         keyboard = [[InlineKeyboardButton(c["display_name"], callback_data=f"man_exam:{k}")] for k, c in EXAMS.items()]
         keyboard.append([InlineKeyboardButton("🔙 Back to Main Menu", callback_data="main_menu")])
@@ -2017,6 +2024,7 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
             if not is_safe:
                 logger.warning(f"SSRF protection: rejected recovered URL '{clean_url}': {sec_err}")
             else:
+                context.user_data["recovered_url"] = clean_url
                 await status_msg.edit_text(
                     "🔗 <b>मूळ DigiALM रिस्पॉन्स शीट लिंक डिटेक्ट झाली:</b>\n"
                     f"<code>{html.escape(clean_url[:70])}...</code>\n\n"
@@ -2027,27 +2035,28 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
                     headers = {
                         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
                         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-                        "Accept-Language": "en-US,en;q=0.9",
+                        "Accept-Language": "en-US,en;q=0.9,mr;q=0.8",
                         "Connection": "keep-alive"
                     }
                     curr_url = clean_url
-                    async with httpx.AsyncClient(timeout=35.0, follow_redirects=False, headers=headers) as client:
-                        for hop in range(3):
-                            resp = await client.get(curr_url)
-                            if resp.is_redirect:
-                                next_url = resp.headers.get("Location", "")
-                                next_url = urllib.parse.urljoin(curr_url, next_url)
-                                hop_safe, hop_err = validate_safe_url(next_url)
-                                if not hop_safe:
-                                    logger.warning(f"SSRF redirect blocked to {next_url}: {hop_err}")
-                                    break
-                                curr_url = next_url
-                            else:
-                                if resp.status_code == 200 and len(resp.content) > 1000:
-                                    if len(resp.content) <= 15_000_000:
-                                        html_str = resp.content.decode("utf-8", errors="ignore")
-                                        text = parse_html_response_sheet(html_str)
-                                break
+                    async with httpx.AsyncClient(timeout=45.0, follow_redirects=True, headers=headers) as client:
+                        resp = await client.get(curr_url)
+                        if resp.status_code == 200 and len(resp.content) > 1000:
+                            if len(resp.content) <= 25_000_000:
+                                html_str = resp.content.decode("utf-8", errors="ignore")
+                                text = parse_html_response_sheet(html_str)
+                                if text.strip():
+                                    logger.info(f"Successfully fetched and parsed recovered DigiALM HTML ({len(text)} chars)")
+                        elif resp.status_code in (400, 403):
+                            # Mobile user-agent fallback
+                            m_headers = {
+                                "User-Agent": "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
+                                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+                            }
+                            resp_m = await client.get(curr_url, headers=m_headers)
+                            if resp_m.status_code == 200 and len(resp_m.content) > 1000:
+                                html_str = resp_m.content.decode("utf-8", errors="ignore")
+                                text = parse_html_response_sheet(html_str)
                 except Exception as e:
                     logger.warning(f"Could not fetch recovered DigiALM URL: {e}")
 
@@ -2062,11 +2071,20 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
             text, pdf_err_code = await asyncio.to_thread(extract_pdf_text_with_status, path)
 
         if not text.strip():
+            rec_url = context.user_data.get("recovered_url", "")
             keyboard = [
                 [InlineKeyboardButton("✍️ Quick Score & Rank Calculator", callback_data="manual_calc")],
                 [InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]
             ]
-            if pdf_err_code == "password_protected":
+            if rec_url:
+                keyboard.insert(0, [InlineKeyboardButton("⚡ या लिंकवरून थेट निकाल पहा (1-Click)", callback_data="use_rec_url")])
+                err_detail = (
+                    "🔗 <b>तुमच्या PDF मधून अधिकृत DigiALM लिंक सापडली आहे:</b>\n"
+                    f"<code>{html.escape(rec_url)}</code>\n\n"
+                    "⚠️ सर्व्हरवरील नेटवर्क वेळेच्या मर्यादेमुळे थेट फाईल डाऊनलोड होऊ शकली नाही.\n"
+                    "💡 <b>उपाय:</b> वरील लिंक कॉपी करून थेट चॅटमध्ये पाठवा किंवा खालील <b>१-क्लिक बटण</b> दाबा!"
+                )
+            elif pdf_err_code == "password_protected":
                 err_detail = (
                     "🔒 <b>हा PDF पासवर्ड प्रोटेक्टेड (Password Protected) आहे.</b>\n\n"
                     "कृपया या PDF चा पासवर्ड काढून किंवा अनलॉक करून ती पुन्हा पाठवा."
