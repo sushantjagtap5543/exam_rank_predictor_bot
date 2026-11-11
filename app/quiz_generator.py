@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import sqlite3
+from typing import Union
 
 import httpx
 from telegram import Bot
@@ -417,7 +418,7 @@ def extract_quizzes_locally(raw_text: str, max_questions: int = 10, db_path: str
 
 async def send_quizzes_to_channel(
     bot: Bot,
-    channel_id: str or int,
+    channel_id: Union[str, int],
     quizzes: list[dict],
     header_text: str = None,
     send_priority_topics: bool = False,

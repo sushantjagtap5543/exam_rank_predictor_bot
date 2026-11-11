@@ -8,7 +8,7 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, Union
 
 from .base_agent import BaseSeniorAgent
 
@@ -115,7 +115,7 @@ class ChannelBrandingAgent(BaseSeniorAgent):
         )[:255]
         return title, desc
 
-    async def sync_telegram_channel_title(self, bot, channel_id: str or int, db_path: str = "bot.db") -> Dict[str, Any]:
+    async def sync_telegram_channel_title(self, bot, channel_id: Union[str, int], db_path: str = "bot.db") -> Dict[str, Any]:
         """
         Executes real-time sync with Telegram API to rename channel if exam has shifted.
         """

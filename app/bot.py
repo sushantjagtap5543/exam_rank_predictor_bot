@@ -22,7 +22,7 @@ import urllib.parse
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import httpx
 from dotenv import load_dotenv
@@ -171,7 +171,8 @@ from .cashfree_client import get_cashfree_client
 SENTRY_DSN = os.getenv("SENTRY_DSN", "").strip()
 if SENTRY_DSN:
     try:
-        import sentry_sdk
+        import importlib
+        sentry_sdk = importlib.import_module("sentry_sdk")
         sentry_sdk.init(dsn=SENTRY_DSN, traces_sample_rate=0.2)
         logger.info("Sentry monitoring initialized successfully.")
     except Exception as e:
@@ -302,7 +303,7 @@ def backup_sqlite_database(db_path: str = DB_PATH, backup_dir: Optional[Path] = 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_file = backup_dir / f"bot_backup_{timestamp}.db"
     try:
-        with sqlite3.connect(db_path, timeout=30.0) as src, sqlite3.connect(str(backup_file, timeout=30.0)) as dst:
+        with sqlite3.connect(db_path, timeout=30.0) as src, sqlite3.connect(str(backup_file), timeout=30.0) as dst:
             src.backup(dst, pages=100, sleep=0.01)
         logger.info(f"SQLite backup successfully created at {backup_file}")
         return backup_file
@@ -801,7 +802,7 @@ def format_subjectwise_dashboard(sections: dict) -> str:
     lines.append("━━━━━━━━━━━━━━━━━━━━━━")
     return "\n".join(lines)
 
-async def auto_post_quizzes_background(bot, text: str, exam_name: str, records: list = None, chat_id: int or str = None):
+async def auto_post_quizzes_background(bot, text: str, exam_name: str, records: list = None, chat_id: Optional[Union[int, str]] = None):
     """
     Background Task: Extracts all unposted questions from records or text,
     syncs them to master question bank, and automatically posts them 1-by-1 to
@@ -4294,7 +4295,8 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     logger.error(f"Telegram Handler Exception: {context.error}\n{tb_string}")
     if os.getenv("SENTRY_DSN"):
         try:
-            import sentry_sdk
+            import importlib
+            sentry_sdk = importlib.import_module("sentry_sdk")
             sentry_sdk.capture_exception(context.error)
         except Exception:
             pass
