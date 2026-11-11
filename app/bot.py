@@ -4793,6 +4793,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.send_response(403)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(login_bytes)))
+                self.send_security_headers(is_admin=True)
                 self.end_headers()
                 self.wfile.write(login_bytes)
                 return
@@ -4802,6 +4803,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(dash_bytes)))
+                self.send_security_headers(is_admin=True)
                 self.end_headers()
                 self.wfile.write(dash_bytes)
                 return

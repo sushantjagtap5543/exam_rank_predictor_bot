@@ -347,8 +347,8 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None, db_path: Op
         target_db = packaging_agent.resolve_db_path(db_path)
         products = packaging_agent.get_all_products(db_path=target_db)
 
-    products_json = json.dumps(products)
-    samples_json = json.dumps(SAMPLE_PREVIEWS)
+    products_json = json.dumps(products).replace("</", "\\u003c/")
+    samples_json = json.dumps(SAMPLE_PREVIEWS).replace("</", "\\u003c/")
     upi_id = os.getenv("UPI_ID", "").strip()
     upi_name = os.getenv("UPI_NAME", "ExamRankers India").strip()
     razorpay_key_id = os.getenv("RAZORPAY_KEY_ID", "").strip()
