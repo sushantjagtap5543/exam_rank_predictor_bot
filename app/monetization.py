@@ -7,6 +7,7 @@ Monetization & Ads Management Engine with ₹99 Paid Telegram Channel Integratio
 """
 
 import base64
+import html
 import io
 import logging
 import os
@@ -43,9 +44,9 @@ def generate_qr_bytes(data: str) -> bytes:
         qr.add_data(data)
         qr.make(fit=True)
         img = qr.make_image(fill_color="black", back_color="white")
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return buf.getvalue()
+        with io.BytesIO() as buf:
+            img.save(buf, format="PNG")
+            return buf.getvalue()
     except Exception as e:
         logger.warning(f"Local QR bytes error: {e}")
         return b""
@@ -220,9 +221,10 @@ async def approve_and_generate_invite(bot: Bot, payment_id: int) -> tuple[bool, 
         )
 
     # Deliver invite link to user
+    safe_name = html.escape(str(first_name or "विद्यार्थी मित्र"))
     user_message = (
         "🎉 <b>पेमेंट यशस्वीरित्या पडताळले! VIP क्विझ चॅनेलमध्ये स्वागत आहे!</b>\n\n"
-        f"नमस्कार {first_name or 'विद्यार्थी मित्र'},\n"
+        f"नमस्कार {safe_name},\n"
         "तुमच्या ₹९९ पेमेंटची पडताळणी पूर्ण झाली आहे. VIP भरती सराव क्विझ चॅनेलमध्ये सामील होण्यासाठी खालील लिंकवर क्लिक करा:\n\n"
         f"👉 <b><a href=\"{invite_link}\">चॅनेल जॉइन करण्यासाठी येथे क्लिक करा</a></b>\n\n"
         "⚡ <i>लगेच जॉइन व्हा आणि सर्व अधिकृत TCS/IBPS पॅटर्न क्विझ सोडवा!</i>"
@@ -244,16 +246,17 @@ async def reject_payment(bot: Bot, payment_id: int, reason: str = "") -> tuple[b
         user_id, first_name, status = row
         db.execute("UPDATE payments SET status = 'rejected' WHERE id = ?", (payment_id,))
 
+    safe_name = html.escape(str(first_name or "Aspirant"))
     user_message = (
         "❌ <b>पेमेंट पडताळणी अयशस्वी (Payment Verification Failed)</b>\n\n"
-        f"नमस्कार {first_name or 'Aspirant'},\n"
+        f"नमस्कार {safe_name},\n"
         "तुमच्या सबमिट केलेल्या ₹99 पेमेंटची पडताळणी होऊ शकली नाही किंवा चुकीचा UTR / स्क्रीनशॉट आढळला आहे.\n\n"
         "💡 <b>काय करावे?</b>\n"
         "१. कृपया बँकेच्या / UPI ॲपच्या पासबुकमधून अचूक १२-अंकी UTR किंवा ट्रान्झॅक्शन नंबर तपासा.\n"
         "२. योग्य UTR सह पुन्हा /vip कमांड देऊन स्क्रीनशॉट पाठवा किंवा ऍडमिनशी संपर्क साधा."
     )
     if reason:
-        user_message += f"\n\nकारण: {reason}"
+        user_message += f"\n\nकारण: {html.escape(str(reason))}"
     try:
         await bot.send_message(chat_id=user_id, text=user_message, parse_mode="HTML")
     except Exception as e:

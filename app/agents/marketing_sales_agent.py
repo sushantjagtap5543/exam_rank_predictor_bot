@@ -4,6 +4,7 @@ Crafts viral, high-converting Telegram promotional campaigns, teaser questions,
 flash sales, and scarcity triggers to sell digital products in the Telegram Channel.
 """
 
+import html
 import logging
 from typing import Any, Dict, Optional
 
@@ -43,15 +44,16 @@ class MarketingSalesAgent(BaseSeniorAgent):
         """
         Generates a high-converting promotional post for a specific digital product.
         """
-        title = product.get("title", "")
+        title = html.escape(str(product.get("title", "")))
         price = product.get("price_inr", 29)
         orig_price = product.get("original_price_inr", 149)
 
         sample_text = ""
         if sample_q:
+            safe_q = html.escape(str(sample_q.get("question", "")))
             sample_text = (
                 f"\n📌 <b>पुस्तकातील नमुना प्रश्न (Sample Question):</b>\n"
-                f"❓ <i>{sample_q.get('question', '')}</i>\n"
+                f"❓ <i>{safe_q}</i>\n"
                 f"👉 योग्य उत्तर व सविस्तर नियम ई-बुकमध्ये उपलब्ध आहे.\n"
             )
 
