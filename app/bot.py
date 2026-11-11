@@ -682,6 +682,44 @@ async def safe_send_message(bot, chat_id, text: str, parse_mode="HTML", reply_ma
         )
     return last_msg
 
+async def safe_edit_message(target, text: str, parse_mode="HTML", reply_markup=None, disable_web_page_preview=True):
+    """
+    Safely edits an existing Telegram message.
+    Gracefully handles 'Message is not modified' (from repeated button taps)
+    and 'Message to edit not found', preventing unhandled BadRequest crashes.
+    """
+    try:
+        if hasattr(target, "edit_text"):
+            return await target.edit_text(
+                text=text[:4096],
+                parse_mode=parse_mode,
+                reply_markup=reply_markup,
+                disable_web_page_preview=disable_web_page_preview
+            )
+        elif hasattr(target, "edit_message_text"):
+            return await target.edit_message_text(
+                text=text[:4096],
+                parse_mode=parse_mode,
+                reply_markup=reply_markup,
+                disable_web_page_preview=disable_web_page_preview
+            )
+    except Exception as e:
+        err_msg = str(e).lower()
+        if "message is not modified" in err_msg:
+            return target
+        if "message to edit not found" in err_msg:
+            logger.debug("Message to edit was deleted.")
+            return None
+        logger.warning(f"safe_edit_message error: {e}")
+        if "can't parse entities" in err_msg or "entity" in err_msg:
+            try:
+                plain = re.sub(r"<[^>]+>", "", text)
+                if hasattr(target, "edit_text"):
+                    return await target.edit_text(text=plain[:4096], parse_mode=None, reply_markup=reply_markup)
+            except Exception:
+                pass
+        return None
+
 def track_user(user, category: str = None):
     """Registers or updates active user in the database."""
     if not user:

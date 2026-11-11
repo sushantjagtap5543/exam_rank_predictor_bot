@@ -27,7 +27,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 # Cache & Telemetry DB
-DEFAULT_CACHE_DB = os.getenv("DATABASE_PATH", "bot.db")
+DEFAULT_CACHE_DB = os.getenv("DB_PATH") or os.getenv("DATABASE_PATH") or "bot.db"
 
 # Strict list of verified free OpenRouter models
 OPENROUTER_FREE_MODELS = [
@@ -49,7 +49,7 @@ def init_ai_cache_db(db_path: str = DEFAULT_CACHE_DB):
         dir_name = os.path.dirname(db_path)
         if dir_name:
             os.makedirs(dir_name, exist_ok=True)
-        with sqlite3.connect(db_path, timeout=10.0) as conn:
+        with sqlite3.connect(db_path, timeout=30.0) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS ai_response_cache (
                     prompt_hash TEXT PRIMARY KEY,
@@ -117,7 +117,7 @@ class FreeAIClient:
         """Returns True if daily request cap is still within limits."""
         today = time.strftime("%Y-%m-%d")
         try:
-            with sqlite3.connect(self.db_path, timeout=5.0) as conn:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
                 row = conn.execute("SELECT request_count FROM ai_daily_usage WHERE day_date = ?", (today,)).fetchone()
                 if row and row[0] >= self.daily_cap:
                     logger.warning(f"AI daily soft cap ({self.daily_cap}) reached for {today}. Using cache/offline fallback.")
@@ -130,7 +130,7 @@ class FreeAIClient:
         """Records daily telemetry in SQLite."""
         today = time.strftime("%Y-%m-%d")
         try:
-            with sqlite3.connect(self.db_path, timeout=5.0) as conn:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
                 conn.execute("""
                     INSERT INTO ai_daily_usage (day_date, request_count, cache_hits, provider_calls)
                     VALUES (?, 1, ?, ?)
@@ -145,7 +145,7 @@ class FreeAIClient:
     def _get_from_cache(self, prompt_hash: str) -> Optional[str]:
         """Fetches cached response if available."""
         try:
-            with sqlite3.connect(self.db_path, timeout=5.0) as conn:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
                 row = conn.execute("SELECT response_text FROM ai_response_cache WHERE prompt_hash = ?", (prompt_hash,)).fetchone()
                 if row and row[0]:
                     return row[0]
@@ -158,7 +158,7 @@ class FreeAIClient:
         if not response_text:
             return
         try:
-            with sqlite3.connect(self.db_path, timeout=5.0) as conn:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
                 conn.execute("""
                     INSERT OR REPLACE INTO ai_response_cache (prompt_hash, provider, model, response_text)
                     VALUES (?, ?, ?, ?)
@@ -369,7 +369,7 @@ class FreeAIClient:
         daily_reqs = 0
         cache_hits = 0
         try:
-            with sqlite3.connect(self.db_path, timeout=5.0) as conn:
+            with sqlite3.connect(self.db_path, timeout=30.0) as conn:
                 row = conn.execute("SELECT request_count, cache_hits FROM ai_daily_usage WHERE day_date = ?", (today,)).fetchone()
                 if row:
                     daily_reqs, cache_hits = row[0], row[1]
