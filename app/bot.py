@@ -2539,7 +2539,7 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
         for admin_id in ADMIN_IDS:
             try:
                 if photo_id:
-                    await context.bot.send_photo(chat_id=admin_id, photo=photo_id, caption=admin_alert, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(admin_kb))
+                    await context.bot.send_photo(chat_id=admin_id, photo=photo_id, caption=safe_photo_caption(admin_alert, 950), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(admin_kb))
                 else:
                     await context.bot.send_message(chat_id=admin_id, text=admin_alert, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(admin_kb))
             except Exception as e:
@@ -2581,9 +2581,9 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
         ]
         admin_msg = (
             f"🔔 <b>New ₹99 VIP Channel Payment Request #{pay_id}!</b>\n"
-            f"👤 User: {user.first_name} (@{user.username or 'NoUsername'})\n"
+            f"👤 User: {html.escape(user.first_name or '')} (@{html.escape(user.username or 'NoUsername')})\n"
             f"🆔 Telegram ID: <code>{user.id}</code>\n"
-            f"📝 UTR / Details: <code>{utr_text}</code>"
+            f"📝 UTR / Details: <code>{html.escape(str(utr_text))}</code>"
         )
         for admin_id in ADMIN_IDS:
             try:
@@ -2591,7 +2591,7 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
                     await context.bot.send_photo(
                         chat_id=admin_id,
                         photo=photo_id,
-                        caption=admin_msg,
+                        caption=safe_photo_caption(admin_msg, 950),
                         parse_mode="HTML",
                         reply_markup=InlineKeyboardMarkup(admin_kb)
                     )
@@ -4725,8 +4725,11 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(file_size))
             self.send_security_headers()
             self.end_headers()
-            with open(pdf_path, "rb") as f:
-                shutil.copyfileobj(f, self.wfile, length=64 * 1024)
+            try:
+                with open(pdf_path, "rb") as f:
+                    shutil.copyfileobj(f, self.wfile, length=64 * 1024)
+            except (BrokenPipeError, ConnectionResetError):
+                logger.debug(f"Client disconnected during download of {filename}")
             return
 
         # 3b. Order Return Page: /order/<order_id>
@@ -4813,6 +4816,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
 </html>"""
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_security_headers()
             self.end_headers()
             self.wfile.write(page_html.encode("utf-8"))
             return
@@ -4946,13 +4950,14 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Content-Length", str(file_size))
                 self.send_security_headers(is_admin=True)
                 self.end_headers()
-                with open(found_path, "rb") as f:
-                    shutil.copyfileobj(f, self.wfile, length=64 * 1024)
+                try:
+                    with open(found_path, "rb") as f:
+                        shutil.copyfileobj(f, self.wfile, length=64 * 1024)
+                except (BrokenPipeError, ConnectionResetError):
+                    logger.debug(f"Client disconnected while downloading {safe_name}")
                 return
             except Exception as e:
                 logger.error(f"Error serving admin PDF {safe_name}: {e}")
-                self.send_response(500)
-                self.end_headers()
                 return
 
         # 5. Admin 1-Click ZIP Download for all store digital products
@@ -4987,8 +4992,11 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(file_size))
             self.send_security_headers(is_admin=True)
             self.end_headers()
-            with open(zip_path, "rb") as f:
-                shutil.copyfileobj(f, self.wfile, length=64 * 1024)
+            try:
+                with open(zip_path, "rb") as f:
+                    shutil.copyfileobj(f, self.wfile, length=64 * 1024)
+            except (BrokenPipeError, ConnectionResetError):
+                logger.debug("Client disconnected while downloading full content zip")
             return
 
         # 6. Default Root / Store: Serve ExamRankers Digital Products Storefront!
@@ -5446,9 +5454,8 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                         import pymupdf as fitz
                     except ImportError:
                         import fitz
-                    d_tmp = fitz.open(str(dest_path))
-                    actual_pages = max(1, len(d_tmp))
-                    d_tmp.close()
+                    with fitz.open(str(dest_path)) as d_tmp:
+                        actual_pages = max(1, len(d_tmp))
 
                     clean_title = os.path.splitext(safe_fn)[0].replace("_", " ").strip()
                     clean_title = re.sub(r"\s+", " ", clean_title).title()
