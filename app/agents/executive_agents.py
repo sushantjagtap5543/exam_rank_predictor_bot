@@ -54,7 +54,7 @@ class ChiefExecutiveOfficer(BaseSeniorAgent):
         """
         metrics = {"total_uploads": 0, "total_orders": 0, "total_revenue_inr": 0, "active_products": 0}
         try:
-            with sqlite3.connect(db_path) as db:
+            with sqlite3.connect(db_path, timeout=30.0) as db:
                 db.row_factory = sqlite3.Row
                 tables = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
                 uploads_cnt = db.execute("SELECT COUNT(*) FROM uploads").fetchone()[0] if "uploads" in tables else 0

@@ -103,10 +103,17 @@ Return ONLY a valid JSON array of objects with keys:
                 data = resp.json()
                 content = data["choices"][0]["message"]["content"].strip()
 
-                match = re.search(r"\[.*\]", content, re.DOTALL)
-                json_str = match.group(0) if match else content
+                # Robust JSON extraction: strip markdown fences and match outer array brackets
+                clean_content = re.sub(r"^```(?:json)?|```$", "", content.strip(), flags=re.MULTILINE).strip()
+                match = re.search(r"\[.*\]", clean_content, re.DOTALL)
+                json_str = match.group(0) if match else clean_content
 
-                ai_results = json.loads(json_str)
+                try:
+                    ai_results = json.loads(json_str)
+                except Exception:
+                    # Fallback: remove trailing commas before closing brackets
+                    sanitized_json = re.sub(r",\s*([\]}])", r"\1", json_str)
+                    ai_results = json.loads(sanitized_json)
                 merged = []
                 for orig in sample:
                     qid = str(orig.get("question_id"))
@@ -1718,7 +1725,7 @@ def generate_oneliner_question_bank_pdf(db_path: str, output_path: str, exam_nam
 
     # 2. Collect from uploaded response sheets in database
     try:
-        with sqlite3.connect(db_path) as conn:
+        with sqlite3.connect(db_path, timeout=30.0) as conn:
             cur = conn.cursor()
             cur.execute("SELECT DISTINCT storage_path, exam_key FROM uploads WHERE storage_path IS NOT NULL ORDER BY id DESC")
             rows = cur.fetchall()

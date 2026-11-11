@@ -732,7 +732,7 @@ def init_mindmap_db(db_path: str = DEFAULT_DB_PATH):
     dir_name = os.path.dirname(db_path)
     if dir_name:
         os.makedirs(dir_name, exist_ok=True)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(db_path, timeout=30.0) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS posted_mindmaps (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -893,7 +893,7 @@ def get_next_dynamic_mindmap(db_path: str = DEFAULT_DB_PATH) -> tuple[dict, Path
     Returns: (topic_dict, image_path, formatted_caption)
     """
     init_mindmap_db(db_path)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(db_path, timeout=30.0) as conn:
         posted_ids = [r[0] for r in conn.execute("SELECT topic_id FROM posted_mindmaps").fetchall()]
 
     # Find unposted topic
@@ -905,7 +905,7 @@ def get_next_dynamic_mindmap(db_path: str = DEFAULT_DB_PATH) -> tuple[dict, Path
 
     # If all 10+ topics have been posted, recycle least recently used
     if not chosen_topic:
-        with sqlite3.connect(db_path) as conn:
+        with sqlite3.connect(db_path, timeout=30.0) as conn:
             oldest_row = conn.execute("SELECT topic_id FROM posted_mindmaps ORDER BY posted_at ASC LIMIT 1").fetchone()
         oldest_id = oldest_row[0] if oldest_row else MINDMAP_TOPICS[0]["id"]
         for t in MINDMAP_TOPICS:
@@ -927,7 +927,7 @@ def get_next_dynamic_mindmap(db_path: str = DEFAULT_DB_PATH) -> tuple[dict, Path
 def record_mindmap_posted(topic_id: str, topic_title: str, db_path: str = DEFAULT_DB_PATH):
     """Records that a topic mindmap was published to prevent repeating it."""
     init_mindmap_db(db_path)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(db_path, timeout=30.0) as conn:
         conn.execute(
             """INSERT INTO posted_mindmaps (topic_id, topic_title, posted_at)
                VALUES (?, ?, CURRENT_TIMESTAMP)

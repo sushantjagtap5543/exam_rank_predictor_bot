@@ -250,8 +250,11 @@ class FreeAIClient:
                     resp = await client.post(url, headers=headers, json=payload)
                     if resp.status_code == 200:
                         data = resp.json()
-                        content = data["choices"][0]["message"]["content"]
-                        return content, model
+                        choices = data.get("choices", [])
+                        if choices and "message" in choices[0]:
+                            content = choices[0]["message"].get("content", "")
+                            if content:
+                                return content, model
                     elif resp.status_code in (401, 403):
                         logger.warning(f"OpenRouter auth rejected ({resp.status_code}). Tripping circuit.")
                         self._trip_circuit("openrouter_free", 900.0)
@@ -277,8 +280,11 @@ class FreeAIClient:
             resp = await client.post(url, json=payload)
             if resp.status_code == 200:
                 data = resp.json()
-                text = data["candidates"][0]["content"]["parts"][0]["text"]
-                return text, model
+                candidates = data.get("candidates", [])
+                if candidates and "content" in candidates[0]:
+                    parts = candidates[0]["content"].get("parts", [])
+                    if parts and "text" in parts[0]:
+                        return parts[0]["text"], model
             elif resp.status_code in (401, 403):
                 self._trip_circuit("google_free", 900.0)
         return None, model
@@ -303,7 +309,9 @@ class FreeAIClient:
             resp = await client.post(url, headers=headers, json=payload)
             if resp.status_code == 200:
                 data = resp.json()
-                return data["choices"][0]["message"]["content"], model
+                choices = data.get("choices", [])
+                if choices and "message" in choices[0]:
+                    return choices[0]["message"].get("content", ""), model
             elif resp.status_code in (401, 403):
                 self._trip_circuit("groq_free", 900.0)
         return None, model

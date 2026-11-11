@@ -110,7 +110,10 @@ class CashfreeClient:
         url = f"{self.base_url}/orders"
         try:
             resp = requests.post(url, json=payload, headers=self._get_headers(), timeout=15.0)
-            data = resp.json()
+            try:
+                data = resp.json()
+            except Exception:
+                data = {"message": f"Gateway HTTP {resp.status_code}: {resp.text[:120]}"}
             if resp.status_code in (200, 201):
                 return data
             logger.error(f"Cashfree create_order failed [{resp.status_code}]: {data}")
@@ -131,7 +134,10 @@ class CashfreeClient:
         url = f"{self.base_url}/orders/{order_id}"
         try:
             resp = requests.get(url, headers=self._get_headers(), timeout=12.0)
-            data = resp.json()
+            try:
+                data = resp.json()
+            except Exception:
+                data = {"error": f"Gateway HTTP {resp.status_code}: {resp.text[:120]}"}
             if resp.status_code == 200:
                 return True, data
             logger.warning(f"Cashfree get_order [{resp.status_code}] for {order_id}: {data}")

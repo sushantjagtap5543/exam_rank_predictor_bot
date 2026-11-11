@@ -95,7 +95,7 @@ def init_quiz_db(db_path: str = DEFAULT_DB_PATH):
     dir_name = os.path.dirname(db_path)
     if dir_name:
         os.makedirs(dir_name, exist_ok=True)
-    with sqlite3.connect(db_path) as conn:
+    with sqlite3.connect(db_path, timeout=30.0) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS posted_quizzes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -126,7 +126,7 @@ def is_quiz_already_posted(question_hash: str, question_text: str = "", db_path:
     """Checks if a quiz with the same content hash or normalized question text was already posted."""
     try:
         init_quiz_db(db_path)
-        with sqlite3.connect(db_path) as conn:
+        with sqlite3.connect(db_path, timeout=30.0) as conn:
             cur = conn.cursor()
             cur.execute("SELECT 1 FROM posted_quizzes WHERE question_hash = ? LIMIT 1", (question_hash,))
             if cur.fetchone() is not None:
@@ -147,7 +147,7 @@ def mark_quiz_as_posted(question_hash: str, question_text: str, section: str = "
     try:
         init_quiz_db(db_path)
         norm_q = normalize_question_text(question_text)
-        with sqlite3.connect(db_path) as conn:
+        with sqlite3.connect(db_path, timeout=30.0) as conn:
             conn.execute(
                 """INSERT OR IGNORE INTO posted_quizzes 
                    (question_hash, question_text, normalized_q, section, has_passage) 
@@ -483,13 +483,27 @@ async def send_quizzes_to_channel(
             except Exception as e:
                 logger.warning(f"Error sending comprehension passage to {target_chat}: {e}")
 
+        # Prepare and validate options for Telegram Poll API constraints
+        clean_opts = []
+        for opt in q.get("options", []):
+            s_opt = str(opt).strip()
+            if s_opt:
+                clean_opts.append(s_opt[:98])
+        if len(clean_opts) < 2:
+            logger.info(f"Skipping quiz with fewer than 2 valid options: {q.get('question', '')[:40]}")
+            continue
+        clean_opts = clean_opts[:10]
+        c_idx = q.get("correct_option_index", 0)
+        if not (0 <= c_idx < len(clean_opts)):
+            c_idx = 0
+
         try:
             await bot.send_poll(
                 chat_id=target_chat,
                 question=q["question"][:300],
-                options=q["options"][:4],
+                options=clean_opts,
                 type="quiz",
-                correct_option_id=q["correct_option_index"],
+                correct_option_id=c_idx,
                 explanation=q.get("explanation", "")[:195],
                 is_anonymous=True,
                 protect_content=True
@@ -520,9 +534,9 @@ async def send_quizzes_to_channel(
                     await bot.send_poll(
                         chat_id=target_chat,
                         question=q["question"][:300],
-                        options=q["options"][:4],
+                        options=clean_opts,
                         type="quiz",
-                        correct_option_id=q["correct_option_index"],
+                        correct_option_id=c_idx,
                         explanation=q.get("explanation", "")[:195],
                         is_anonymous=True,
                         protect_content=True

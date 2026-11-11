@@ -310,7 +310,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
     def init_products_db(self, db_path: str = "bot.db"):
         """Initializes tables for digital products, orders, and sample previews."""
         db_path = self.resolve_db_path(db_path)
-        with sqlite3.connect(db_path) as db:
+        with sqlite3.connect(db_path, timeout=30.0) as db:
             db.execute("""
                 CREATE TABLE IF NOT EXISTS digital_products (
                     id TEXT PRIMARY KEY,
@@ -392,7 +392,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         icon = data.get("icon", "📚").strip()
         is_active = int(data.get("is_active", 1))
 
-        with sqlite3.connect(db_path) as db:
+        with sqlite3.connect(db_path, timeout=30.0) as db:
             db.execute("""
                 INSERT OR REPLACE INTO digital_products (
                     id, title, subtitle, subject, tier, price_inr, original_price_inr,
@@ -426,7 +426,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             return False
 
         vals.append(product_id)
-        with sqlite3.connect(db_path) as db:
+        with sqlite3.connect(db_path, timeout=30.0) as db:
             query = f"UPDATE digital_products SET {', '.join(set_clauses)} WHERE id = ?"  # nosec B608
             db.execute(query, vals)
             db.commit()
@@ -436,7 +436,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
     def delete_product(self, product_id: str, db_path: str = "bot.db") -> bool:
         """Permanently deletes a product from the database."""
         db_path = self.resolve_db_path(db_path)
-        with sqlite3.connect(db_path) as db:
+        with sqlite3.connect(db_path, timeout=30.0) as db:
             cur = db.execute("DELETE FROM digital_products WHERE id = ?", (product_id,))
             db.commit()
             logger.info(f"🗑️ Deleted product {product_id} (rows: {cur.rowcount})")
@@ -445,7 +445,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
     def toggle_product_status(self, product_id: str, db_path: str = "bot.db") -> bool:
         """Toggles product between active (1) and inactive/hidden (0)."""
         db_path = self.resolve_db_path(db_path)
-        with sqlite3.connect(db_path) as db:
+        with sqlite3.connect(db_path, timeout=30.0) as db:
             cur = db.execute("UPDATE digital_products SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END WHERE id = ?", (product_id,))
             db.commit()
             logger.info(f"👁️ Toggled product status {product_id} (rows: {cur.rowcount})")
@@ -454,7 +454,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
     def purge_all_products(self, db_path: str = "bot.db") -> int:
         """Removes all products from the store so admin has a 100% clean slate for manual control."""
         db_path = self.resolve_db_path(db_path)
-        with sqlite3.connect(db_path) as db:
+        with sqlite3.connect(db_path, timeout=30.0) as db:
             cur = db.execute("DELETE FROM digital_products")
             db.commit()
             logger.info(f"🧹 Purged all {cur.rowcount} products from digital_products table.")
@@ -514,7 +514,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
 
         # Update question count in product database
         total_mcqs = max(1000, len(existing_data))
-        with sqlite3.connect(db_path) as db:
+        with sqlite3.connect(db_path, timeout=30.0) as db:
             db.execute("""
                 UPDATE digital_products
                 SET subtitle = ?,
@@ -668,7 +668,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
                 logger.warning(f"Could not copy {file_path} to products dir: {e}")
 
         # Insert or update in digital_products table
-        with sqlite3.connect(db_path) as db:
+        with sqlite3.connect(db_path, timeout=30.0) as db:
             db.execute("""
                 INSERT OR REPLACE INTO digital_products (
                     id, title, subtitle, subject, price_inr, original_price_inr, pages,
@@ -742,7 +742,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         """Returns digital products from SQLite database under 100% manual admin control."""
         db_path = self.resolve_db_path(db_path)
         self.init_products_db(db_path)
-        with sqlite3.connect(db_path) as db:
+        with sqlite3.connect(db_path, timeout=30.0) as db:
             db.row_factory = sqlite3.Row
             if include_inactive:
                 rows = db.execute("SELECT * FROM digital_products ORDER BY rowid DESC").fetchall()
@@ -758,7 +758,7 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
     def get_product_by_id(self, product_id: str, db_path: str = "bot.db") -> Optional[Dict[str, Any]]:
         db_path = self.resolve_db_path(db_path)
         self.init_products_db(db_path)
-        with sqlite3.connect(db_path) as db:
+        with sqlite3.connect(db_path, timeout=30.0) as db:
             db.row_factory = sqlite3.Row
             row = db.execute("SELECT * FROM digital_products WHERE id = ?", (product_id,)).fetchone()
             return dict(row) if row else None

@@ -57,7 +57,7 @@ class ChannelBrandingAgent(BaseSeniorAgent):
                 except Exception:
                     pass
 
-            with sqlite3.connect(db_path) as db:
+            with sqlite3.connect(db_path, timeout=30.0) as db:
                 row = db.execute("""
                     SELECT exam_key, post_name, COUNT(*) as cnt
                     FROM uploads

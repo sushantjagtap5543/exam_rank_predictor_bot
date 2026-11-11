@@ -50,7 +50,7 @@ class FulfillmentEmailAgent(BaseSeniorAgent):
     ) -> Dict[str, Any]:
         """Creates a pending digital product order with a unique secure token."""
         order_token = f"ORD_{uuid.uuid4().hex[:12].upper()}"
-        with sqlite3.connect(db_path) as db:
+        with sqlite3.connect(db_path, timeout=30.0) as db:
             cursor = db.execute("""
                 INSERT INTO product_orders (
                     order_token, product_id, customer_email, customer_telegram_id,
@@ -81,7 +81,7 @@ class FulfillmentEmailAgent(BaseSeniorAgent):
         Confirms payment, marks order as paid, and enables immediate digital download
         on the store (strictly without sending attachments to Gmail/email).
         """
-        with sqlite3.connect(db_path) as db:
+        with sqlite3.connect(db_path, timeout=30.0) as db:
             db.row_factory = sqlite3.Row
             order = db.execute("SELECT * FROM product_orders WHERE order_token = ?", (order_token,)).fetchone()
             if not order:

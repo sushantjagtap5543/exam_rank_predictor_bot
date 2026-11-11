@@ -281,6 +281,11 @@ CHECKOUT_RATE_LIMIT_LOCK = threading.Lock()
 def is_ip_rate_limited(ip: str, max_requests: int = 10, window_seconds: int = 60) -> bool:
     now = time.time()
     with CHECKOUT_RATE_LIMIT_LOCK:
+        # Periodic cleanup if dictionary grows large (prevents memory leak over long uptime)
+        if len(CHECKOUT_RATE_LIMITS) > 1000:
+            stale_keys = [k for k, ts in CHECKOUT_RATE_LIMITS.items() if not ts or (now - ts[-1] > window_seconds * 2)]
+            for k in stale_keys:
+                CHECKOUT_RATE_LIMITS.pop(k, None)
         timestamps = CHECKOUT_RATE_LIMITS.setdefault(ip, [])
         timestamps = [t for t in timestamps if now - t < window_seconds]
         CHECKOUT_RATE_LIMITS[ip] = timestamps
@@ -297,7 +302,7 @@ def backup_sqlite_database(db_path: str = DB_PATH, backup_dir: Optional[Path] = 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_file = backup_dir / f"bot_backup_{timestamp}.db"
     try:
-        with sqlite3.connect(db_path) as src, sqlite3.connect(str(backup_file)) as dst:
+        with sqlite3.connect(db_path, timeout=30.0) as src, sqlite3.connect(str(backup_file, timeout=30.0)) as dst:
             src.backup(dst, pages=100, sleep=0.01)
         logger.info(f"SQLite backup successfully created at {backup_file}")
         return backup_file
@@ -615,6 +620,9 @@ async def _send_single_msg(bot, chat_id, chunk: str, parse_mode, reply_markup, d
         )
     except Exception as e:
         err_str = str(e).lower()
+        if "forbidden" in err_str or "blocked" in err_str or "deactivated" in err_str:
+            logger.warning(f"Message not delivered to {chat_id} because bot was blocked/deactivated: {e}")
+            return None
         if any(k in err_str for k in ["parse entities", "entity", "start tag", "end tag", "badrequest"]):
             logger.warning(f"Telegram entity parse error, stripping HTML entities and retrying as plain text: {e}")
             clean_text = re.sub(r"<[^>]+>", "", chunk)
@@ -630,7 +638,8 @@ async def _send_single_msg(bot, chat_id, chunk: str, parse_mode, reply_markup, d
 async def safe_send_message(bot, chat_id, text: str, parse_mode="HTML", reply_markup=None, disable_web_page_preview=True):
     """
     Safely sends messages without exceeding Telegram's 4096-character limit.
-    Splits long messages at natural newlines and auto-falls back to plain text on entity errors.
+    Splits long messages at natural newlines (and slices unbroken lines >3800 chars)
+    and auto-falls back to plain text on entity errors.
     """
     if len(text) <= 3900:
         return await _send_single_msg(
@@ -645,14 +654,17 @@ async def safe_send_message(bot, chat_id, text: str, parse_mode="HTML", reply_ma
     chunks = []
     current = []
     current_len = 0
-    for line in text.split("\n"):
-        if current_len + len(line) + 1 > 3800:
-            chunks.append("\n".join(current))
-            current = [line]
-            current_len = len(line)
-        else:
-            current.append(line)
-            current_len += len(line) + 1
+    for raw_line in text.split("\n"):
+        line_parts = [raw_line[i:i+3800] for i in range(0, len(raw_line), 3800)] if len(raw_line) > 3800 else [raw_line]
+        for line in line_parts:
+            if current_len + len(line) + 1 > 3800:
+                if current:
+                    chunks.append("\n".join(current))
+                current = [line]
+                current_len = len(line)
+            else:
+                current.append(line)
+                current_len += len(line) + 1
     if current:
         chunks.append("\n".join(current))
 
@@ -2422,7 +2434,7 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
         order_res = fulfillment_agent.create_order(prod_id, customer_email, float(price), customer_telegram_id=user.id, db_path=DB_PATH)
         order_token = order_res["order_token"]
 
-        with sqlite3.connect(DB_PATH) as db:
+        with sqlite3.connect(DB_PATH, timeout=30.0) as db:
             db.execute(
                 "UPDATE product_orders SET utr = ?, status = 'pending', delivery_status = 'pending_verification' WHERE order_token = ?",
                 (utr_val, order_token)
@@ -2709,7 +2721,7 @@ async def delete_my_data_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     deleted_rows = 0
 
     try:
-        with sqlite3.connect(DB_PATH) as db:
+        with sqlite3.connect(DB_PATH, timeout=30.0) as db:
             cur = db.execute("SELECT storage_path FROM uploads WHERE telegram_user_id = ?", (tg_id,))
             file_paths = [r[0] for r in cur.fetchall() if r[0]]
 
@@ -4222,7 +4234,7 @@ async def continuous_autonomous_agency_orchestrator(application: Application):
 
             # 2. Research & Question Bank Autonomous Sync
             try:
-                with sqlite3.connect(DB_PATH) as db:
+                with sqlite3.connect(DB_PATH, timeout=30.0) as db:
                     recent_cnt = db.execute("SELECT COUNT(*) FROM uploads WHERE created_at >= datetime('now', '-24 hours')").fetchone()[0]
                 if recent_cnt > 0:
                     logger.info(f"📊 Exam Research Agent: Detected {recent_cnt} new response uploads in past 24h. Synchronizing question banks...")
@@ -4262,6 +4274,16 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
         try:
             import sentry_sdk
             sentry_sdk.capture_exception(context.error)
+        except Exception:
+            pass
+
+    # Polite feedback to student so chat does not hang in silence
+    if isinstance(update, Update) and update.effective_chat and not any(k in err_str.lower() for k in ["conflict", "forbidden", "blocked"]):
+        try:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="⚠️ विनंती प्रक्रिया करताना एक तात्पुरती अडचण आली. कृपया थोड्या वेळाने पुन्हा प्रयत्न करा किंवा /start दाबा."
+            )
         except Exception:
             pass
 
@@ -4366,12 +4388,18 @@ async def set_bot_commands(application: Application):
         logger.warning(f"Could not set bot commands or description: {e}")
 
 class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
+    def send_security_headers(self, is_admin: bool = False):
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY" if is_admin else "SAMEORIGIN")
+        self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+
     def do_OPTIONS(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/")
         if path.startswith("/api/admin") or path == "/admin":
             self.send_response(403)
             self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_security_headers(is_admin=True)
             self.end_headers()
             self.wfile.write(json.dumps({"error": "CORS preflight not permitted on admin endpoints"}).encode("utf-8"))
             return
@@ -4379,6 +4407,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
+        self.send_security_headers()
         self.end_headers()
 
     def do_GET(self):
@@ -4387,21 +4416,36 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
 
         # 0. API: Dynamic Local QR Code Image Generator
         if path == "/api/qrcode":
+            client_ip = (
+                self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                or self.headers.get("CF-Connecting-IP", "").strip()
+                or self.headers.get("X-Real-IP", "").strip()
+                or self.client_address[0]
+            )
+            if is_ip_rate_limited(client_ip, max_requests=30, window_seconds=60):
+                self.send_response(429)
+                self.send_security_headers()
+                self.end_headers()
+                return
+
             query_params = urllib.parse.parse_qs(parsed.query)
             qr_data = query_params.get("data", [""])[0]
-            if not qr_data:
+            if not qr_data or len(qr_data) > 512:
                 self.send_response(400)
+                self.send_security_headers()
                 self.end_headers()
                 return
             png_bytes = generate_qr_bytes(qr_data)
             if not png_bytes:
                 self.send_response(500)
+                self.send_security_headers()
                 self.end_headers()
                 return
             self.send_response(200)
             self.send_header("Content-Type", "image/png")
             self.send_header("Cache-Control", "public, max-age=3600")
             self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_security_headers()
             self.end_headers()
             self.wfile.write(png_bytes)
             return
@@ -4489,7 +4533,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "message": "Missing order 'token' parameter. Lookup by email or UTR is prohibited for security."}).encode("utf-8"))
                 return
 
-            with sqlite3.connect(DB_PATH) as db:
+            with sqlite3.connect(DB_PATH, timeout=30.0) as db:
                 db.row_factory = sqlite3.Row
                 order = db.execute("""
                     SELECT o.*, p.title as prod_title, p.download_file, p.pages
@@ -4558,7 +4602,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
 
             order_data = None
             try:
-                with sqlite3.connect(DB_PATH) as db:
+                with sqlite3.connect(DB_PATH, timeout=30.0) as db:
                     db.row_factory = sqlite3.Row
                     order = db.execute("SELECT * FROM product_orders WHERE order_token = ?", (token,)).fetchone()
                     if order:
@@ -4612,7 +4656,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         if path.startswith("/order/"):
             order_id = path.split("/order/")[-1].strip()
             order_info = None
-            with sqlite3.connect(DB_PATH) as db:
+            with sqlite3.connect(DB_PATH, timeout=30.0) as db:
                 db.row_factory = sqlite3.Row
                 r = db.execute("SELECT o.*, p.title as prod_title FROM product_orders o LEFT JOIN digital_products p ON o.product_id = p.id WHERE o.order_token = ? OR o.cf_order_id = ?", (order_id, order_id)).fetchone()
                 if r:
@@ -4627,7 +4671,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                         if cf_client.is_configured:
                             ok, cf_data = cf_client.get_order(cf_target_id)
                             if ok and isinstance(cf_data, dict) and (cf_data.get("order_status") or "").upper() == "PAID":
-                                with sqlite3.connect(DB_PATH) as db:
+                                with sqlite3.connect(DB_PATH, timeout=30.0) as db:
                                     db.execute("UPDATE product_orders SET status = 'paid', delivery_status = 'ready_for_download', delivered_at = CURRENT_TIMESTAMP WHERE id = ?", (order_info["id"],))
                                     db.execute("UPDATE digital_products SET sales_count = sales_count + 1 WHERE id = ?", (order_info["product_id"],))
                                     db.commit()
@@ -5013,7 +5057,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                     self.wfile.write(json.dumps({"success": False, "message": "Invalid product or price."}).encode("utf-8"))
                     return
 
-                with sqlite3.connect(DB_PATH) as db:
+                with sqlite3.connect(DB_PATH, timeout=30.0) as db:
                     db.execute("""
                         UPDATE digital_products
                         SET price_inr = ?, original_price_inr = ?
@@ -5199,7 +5243,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 order_token = data.get("order_token")
                 action = data.get("action", "approve")
                 
-                with sqlite3.connect(DB_PATH) as db:
+                with sqlite3.connect(DB_PATH, timeout=30.0) as db:
                     db.row_factory = sqlite3.Row
                     order = db.execute("SELECT * FROM product_orders WHERE order_token = ?", (order_token,)).fetchone()
                 
@@ -5241,7 +5285,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                         order_token=order_token,
                         attachment_path=pdf_path
                     )
-                    with sqlite3.connect(DB_PATH) as db:
+                    with sqlite3.connect(DB_PATH, timeout=30.0) as db:
                         db.execute(
                             "UPDATE product_orders SET delivery_status = ?, delivered_at = CURRENT_TIMESTAMP WHERE order_token = ?",
                             ("sent" if email_sent else "pending_email", order_token)
@@ -5258,7 +5302,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                     return
 
                 elif action == "reject":
-                    with sqlite3.connect(DB_PATH) as db:
+                    with sqlite3.connect(DB_PATH, timeout=30.0) as db:
                         db.execute(
                             "UPDATE product_orders SET status = 'rejected', delivery_status = 'rejected' WHERE order_token = ?",
                             (order_token,)
@@ -5419,7 +5463,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             payment_session_id = cf_res.get("payment_session_id", "")
             cf_order_id = cf_res.get("order_id", order_token)
 
-            with sqlite3.connect(DB_PATH) as db:
+            with sqlite3.connect(DB_PATH, timeout=30.0) as db:
                 db.execute(
                     "UPDATE product_orders SET cf_order_id = ?, payment_session_id = ? WHERE order_token = ?",
                     (cf_order_id, payment_session_id, order_token)
@@ -5489,7 +5533,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             # Re-fetch order from Cashfree API to ensure state validity
             ok, cf_verified = cf_client.get_order(order_id)
             if ok and isinstance(cf_verified, dict) and cf_verified.get("order_status") == "PAID":
-                with sqlite3.connect(DB_PATH) as db:
+                with sqlite3.connect(DB_PATH, timeout=30.0) as db:
                     db.row_factory = sqlite3.Row
                     local_order = db.execute("SELECT * FROM product_orders WHERE order_token = ? OR cf_order_id = ?", (order_id, order_id)).fetchone()
                     if local_order:
@@ -5510,6 +5554,14 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if path == "/api/verify":
+            if is_ip_rate_limited(client_ip, max_requests=10, window_seconds=60):
+                self.send_response(429)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": "Too many verification requests. Please wait a minute."}).encode("utf-8"))
+                return
+
             order_token = data.get("order_token", "").strip()
             utr = data.get("utr", "").strip()
 
@@ -5541,7 +5593,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
 
             # Student submitted UPI UTR: Save order as pending verification for Admin Approval & Email Delivery
             order_data = None
-            with sqlite3.connect(DB_PATH) as db:
+            with sqlite3.connect(DB_PATH, timeout=30.0) as db:
                 db.row_factory = sqlite3.Row
                 order = db.execute("SELECT * FROM product_orders WHERE order_token = ?", (order_token,)).fetchone()
                 if not order:
@@ -5583,20 +5635,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 f"http://localhost:8080/admin"
             )
             alert_admins_sync(alert_text)
-
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(json.dumps({
-                "success": True,
-                "status": "pending_verification",
-                "order_token": order_token,
-                "utr": utr,
-                "customer_email": order_data.get("customer_email", ""),
-                "message": "तुमचा १२-अंकी UTR पडताळणीसाठी (Verification) ॲडमिनकडे पाठवला आहे. ॲडमिनद्वारे UTR पडताळणी पूर्ण होताच तुमची PDF फाईल तुमच्या ईमेलवर पाठवली जाईल आणि डाऊनलोड उपलब्ध होईल!"
-            }).encode("utf-8"))
-            return
 
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -6008,7 +6046,7 @@ async def daily_current_affairs_updater_loop(application: Application):
             today_str = now.strftime("%d %B %Y")
             current_month_id = f"prod_ca_{now.year}_{now.month:02d}"
 
-            with sqlite3.connect(DB_PATH) as db:
+            with sqlite3.connect(DB_PATH, timeout=30.0) as db:
                 db.execute("""
                     UPDATE digital_products
                     SET subtitle = ?,
@@ -6091,7 +6129,7 @@ async def check_and_post_latest_youtube_videos(bot, channel_target: str, yt_url:
     """
     import xml.etree.ElementTree as ET
 
-    with sqlite3.connect(db_path) as db:
+    with sqlite3.connect(db_path, timeout=30.0) as db:
         db.execute("""
             CREATE TABLE IF NOT EXISTS posted_youtube_videos (
                 video_id TEXT PRIMARY KEY,
@@ -6140,7 +6178,7 @@ async def check_and_post_latest_youtube_videos(bot, channel_target: str, yt_url:
     if not entries:
         return
 
-    with sqlite3.connect(db_path) as db:
+    with sqlite3.connect(db_path, timeout=30.0) as db:
         posted_ids = {row[0] for row in db.execute("SELECT video_id FROM posted_youtube_videos").fetchall()}
 
         if not posted_ids:
@@ -6221,7 +6259,7 @@ async def check_and_post_latest_youtube_videos(bot, channel_target: str, yt_url:
             )
             logger.info(f"📢 Broadcasted new YouTube video '{video_title}' to channel {channel_target}")
 
-            with sqlite3.connect(db_path) as db:
+            with sqlite3.connect(db_path, timeout=30.0) as db:
                 db.execute(
                     "INSERT OR REPLACE INTO posted_youtube_videos (video_id, title, published_at) VALUES (?, ?, ?)",
                     (vid_id, video_title, pub_date)

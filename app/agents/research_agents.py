@@ -54,7 +54,7 @@ class ExamIntelligenceResearcher(BaseSeniorAgent):
             "recommendations": []
         }
         try:
-            with sqlite3.connect(db_path) as db:
+            with sqlite3.connect(db_path, timeout=30.0) as db:
                 db.row_factory = sqlite3.Row
                 total = db.execute("SELECT COUNT(*) FROM uploads").fetchone()[0]
                 stats["total_candidates"] = total

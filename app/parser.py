@@ -230,7 +230,8 @@ def recover_digialm_url_from_pdf(path: str) -> str:
             return ""
         total_pages = len(doc)
         # 1. Embedded annotations / URI links
-        for page in doc[:min(5, total_pages)]:
+        for i in range(min(5, total_pages)):
+            page = doc[i]
             for link in page.get_links():
                 uri = link.get("uri", "")
                 if is_allowed_response_url(uri):
@@ -238,7 +239,8 @@ def recover_digialm_url_from_pdf(path: str) -> str:
                     return uri
 
         # 2. Digital text layer
-        for page in doc[:min(3, total_pages)]:
+        for i in range(min(3, total_pages)):
+            page = doc[i]
             txt = page.get_text("text")
             m = re.search(r'(https://[^\s"\'<>]+(?:digialm|touchstone|ibpsonline)[^\s"\'<>]*)', txt)
             if m:
@@ -936,9 +938,14 @@ def score_answers(records: list, exam_config: dict):
         elif key_ans and chosen_num:
             # 3. External key comparison (letters A/B/C/D or numbers 1-4)
             sections_stat[sec]["attempted"] += 1
-            num_to_letter = {"1": "A", "2": "B", "3": "C", "4": "D"}
-            chosen_letter = num_to_letter.get(str(chosen_num), str(chosen_num)).upper()
-            if chosen_letter == str(key_ans).strip().upper() or str(chosen_num) == str(key_ans).strip():
+            num_to_letter = {
+                "1": "A", "2": "B", "3": "C", "4": "D",
+                "१": "A", "२": "B", "३": "C", "४": "D"
+            }
+            clean_chosen = str(chosen_num).strip()
+            chosen_letter = num_to_letter.get(clean_chosen, clean_chosen).upper()
+            target_key = str(key_ans).strip().upper()
+            if chosen_letter == target_key or clean_chosen == target_key:
                 row["evaluation"] = "correct"
                 total_score += positive_marks
                 correct_count += 1

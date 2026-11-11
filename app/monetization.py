@@ -72,7 +72,7 @@ def is_utr_already_used(utr: str, db_path: str = None) -> bool:
     clean_utr = utr.strip().lower()
     path = db_path or get_db_path()
     try:
-        with sqlite3.connect(path) as db:
+        with sqlite3.connect(path, timeout=30.0) as db:
             # Check VIP payments
             p_row = db.execute(
                 "SELECT id FROM payments WHERE LOWER(TRIM(utr)) = ? AND status IN ('approved', 'paid')",
@@ -94,7 +94,7 @@ def is_utr_already_used(utr: str, db_path: str = None) -> bool:
 def init_monetization_db(db_path: str = None):
     if not db_path:
         db_path = get_db_path()
-    with sqlite3.connect(db_path) as db:
+    with sqlite3.connect(db_path, timeout=30.0) as db:
         # Sponsored ads config
         db.execute("""
             CREATE TABLE IF NOT EXISTS ads_config (
@@ -168,7 +168,7 @@ def get_upi_payment_details(user_id: int) -> dict:
 def record_payment_request(user_id: int, username: str, first_name: str, utr: str = None, file_id: str = None) -> int:
     """Saves payment submission into database."""
     amount = float(os.getenv("CHANNEL_FEE_INR", "99"))
-    with sqlite3.connect(get_db_path()) as db:
+    with sqlite3.connect(get_db_path(), timeout=30.0) as db:
         cursor = db.execute(
             """INSERT INTO payments (telegram_user_id, username, first_name, amount, utr, screenshot_file_id, status)
                VALUES (?, ?, ?, ?, ?, ?, 'pending')""",
@@ -184,7 +184,7 @@ async def approve_and_generate_invite(bot: Bot, payment_id: int) -> tuple[bool, 
     channel_id = os.getenv("PAID_CHANNEL_ID", "").strip()
     default_link = get_paid_channel_link()
 
-    with sqlite3.connect(get_db_path()) as db:
+    with sqlite3.connect(get_db_path(), timeout=30.0) as db:
         row = db.execute(
             "SELECT telegram_user_id, first_name, status FROM payments WHERE id = ?", (payment_id,)
         ).fetchone()
@@ -213,7 +213,7 @@ async def approve_and_generate_invite(bot: Bot, payment_id: int) -> tuple[bool, 
             invite_link = default_link
 
     # Update database
-    with sqlite3.connect(get_db_path()) as db:
+    with sqlite3.connect(get_db_path(), timeout=30.0) as db:
         db.execute(
             "UPDATE payments SET status = 'approved', invite_link = ? WHERE id = ?",
             (invite_link, payment_id)
@@ -232,7 +232,7 @@ async def approve_and_generate_invite(bot: Bot, payment_id: int) -> tuple[bool, 
 
 async def reject_payment(bot: Bot, payment_id: int, reason: str = "") -> tuple[bool, str]:
     """Rejects payment submission and sends notification to user."""
-    with sqlite3.connect(get_db_path()) as db:
+    with sqlite3.connect(get_db_path(), timeout=30.0) as db:
         row = db.execute(
             "SELECT telegram_user_id, first_name, status FROM payments WHERE id = ?", (payment_id,)
         ).fetchone()
@@ -263,7 +263,7 @@ def get_active_ad() -> dict:
         return None
     db_path = get_db_path()
     try:
-        with sqlite3.connect(db_path) as db:
+        with sqlite3.connect(db_path, timeout=30.0) as db:
             row = db.execute(
                 "SELECT id, ad_text, button_text, button_url, impressions FROM ads_config WHERE is_active = 1 ORDER BY id DESC LIMIT 1"
             ).fetchone()
