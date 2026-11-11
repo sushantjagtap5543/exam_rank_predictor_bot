@@ -4518,8 +4518,8 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(json.dumps(prods).encode("utf-8"))
             return
 
-        # 2. API: Health Check for Render pinger
-        if path in ("/health", "/ping"):
+        # 2. API: Health Check for Render pinger, Kubernetes & Docker probes
+        if path in ("/health", "/ping", "/healthz", "/livez", "/readyz"):
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.end_headers()
@@ -6359,6 +6359,7 @@ def start_health_check_server():
     except ValueError:
         port = 8080
     try:
+        http.server.ThreadingHTTPServer.allow_reuse_address = True
         server = http.server.ThreadingHTTPServer(("0.0.0.0", port), HealthCheckHandler)
         t = threading.Thread(target=server.serve_forever, daemon=True)
         t.start()

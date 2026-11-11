@@ -26,9 +26,10 @@ class TestHTTPEndpoints(unittest.TestCase):
         cls.server.shutdown()
 
     def test_health(self):
-        req = urllib.request.urlopen(f"{self.base_url}/health")
-        self.assertEqual(req.status, 200)
-        self.assertEqual(req.read().decode("utf-8"), "OK")
+        for ep in ("/health", "/healthz", "/ping"):
+            req = urllib.request.urlopen(f"{self.base_url}{ep}")
+            self.assertEqual(req.status, 200)
+            self.assertEqual(req.read().decode("utf-8"), "OK")
 
     def test_admin_dashboard(self):
         # 1. Unauthenticated request without key must return 403 Forbidden
