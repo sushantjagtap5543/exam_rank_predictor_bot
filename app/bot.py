@@ -4647,9 +4647,10 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/pdf")
             self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
             self.send_header("Content-Length", str(file_size))
+            self.send_security_headers()
             self.end_headers()
             with open(pdf_path, "rb") as f:
-                self.wfile.write(f.read())
+                shutil.copyfileobj(f, self.wfile, length=64 * 1024)
             return
 
         # 3b. Order Return Page: /order/<order_id>
@@ -4862,14 +4863,15 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 return
 
             try:
-                with open(found_path, "rb") as f:
-                    pdf_bytes = f.read()
+                file_size = os.path.getsize(str(found_path))
                 self.send_response(200)
                 self.send_header("Content-Type", "application/pdf")
                 self.send_header("Content-Disposition", f'inline; filename="{safe_name}"')
-                self.send_header("Content-Length", str(len(pdf_bytes)))
+                self.send_header("Content-Length", str(file_size))
+                self.send_security_headers(is_admin=True)
                 self.end_headers()
-                self.wfile.write(pdf_bytes)
+                with open(found_path, "rb") as f:
+                    shutil.copyfileobj(f, self.wfile, length=64 * 1024)
                 return
             except Exception as e:
                 logger.error(f"Error serving admin PDF {safe_name}: {e}")
@@ -4907,9 +4909,10 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/zip")
             self.send_header("Content-Disposition", 'attachment; filename="ExamRankers_Full_Store_Content.zip"')
             self.send_header("Content-Length", str(file_size))
+            self.send_security_headers(is_admin=True)
             self.end_headers()
             with open(zip_path, "rb") as f:
-                self.wfile.write(f.read())
+                shutil.copyfileobj(f, self.wfile, length=64 * 1024)
             return
 
         # 6. Default Root / Store: Serve ExamRankers Digital Products Storefront!
