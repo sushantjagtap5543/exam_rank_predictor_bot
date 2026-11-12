@@ -172,6 +172,38 @@ class TestStartToEndFullPlatformLifecycle(unittest.TestCase):
         self.assertGreaterEqual(rank_info["exam_rank"], 1)
         self.assertGreaterEqual(rank_info["exam_percentile"], 0.0)
 
+        # 7. Comprehensive Bot Web Analytics Verification
+        status_code, web_res = process_sheet_payload(
+            file_bytes=sample_html.encode("utf-8"),
+            filename="response_sheet.html",
+            user_category="OBC",
+            exam_override="ZP_BHARTI"
+        )
+        self.assertEqual(status_code, 200)
+        self.assertTrue(web_res.get("success"))
+        # Verify Scorecard & 4-Tier ranks
+        self.assertEqual(web_res.get("raw_score"), 4.0)
+        self.assertEqual(web_res.get("correct"), 2)
+        self.assertEqual(web_res.get("incorrect"), 1)
+        self.assertGreater(web_res.get("accuracy", 0), 0)
+        self.assertIn("cutoff_zone", web_res)
+        self.assertIn("overall_rank", web_res)
+        self.assertIn("category_rank", web_res)
+        # Verify AI SWOT Audit
+        swot = web_res.get("swot", {})
+        self.assertIn("strengths", swot)
+        self.assertIn("weaknesses", swot)
+        self.assertIn("opportunities", swot)
+        self.assertIn("threats", swot)
+        # Verify Wrong Answers & Objections
+        wrong_qs = web_res.get("wrong_questions", [])
+        self.assertEqual(len(wrong_qs), 1)
+        self.assertIn("explanation", wrong_qs[0])
+        self.assertIn("objection_reason", wrong_qs[0])
+        # Verify All Questions Explorer
+        all_qs = web_res.get("all_questions", [])
+        self.assertEqual(len(all_qs), 3)
+
     def test_02_candidate_journey_web_portal_single_shot_upload(self):
         """Journey B: Candidate visits /upload and submits small file (<2MB) via single-shot API."""
         mock_pdf_content = b"%PDF-1.4\n1 0 obj\n<< /Title (ZP Peon Test) >>\nendobj\nQ.1 Chosen: 1 Right: 1\n%%EOF"

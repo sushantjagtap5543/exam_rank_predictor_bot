@@ -4515,15 +4515,20 @@ def render_upload_portal_html() -> str:
     <link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Mukta', sans-serif; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
         @media print {
             body { background: #fff !important; color: #000 !important; }
             .no-print { display: none !important; }
             #resultSection { display: block !important; border: none !important; }
+            #tabViewScorecard, #tabViewSwot, #tabViewObjections, #tabViewQuestions { display: block !important; }
         }
     </style>
 </head>
-<body class="min-h-full flex flex-col justify-between p-4 sm:p-6 md:p-8">
-    <div class="max-w-2xl mx-auto w-full">
+<body class="min-h-full flex flex-col justify-between p-3 sm:p-6 md:p-8">
+    <div id="portalContainer" class="max-w-2xl mx-auto w-full transition-all duration-300">
         <!-- Top Header -->
         <header class="text-center mb-6 no-print">
             <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/30 mb-3">
@@ -4634,89 +4639,260 @@ def render_upload_portal_html() -> str:
             <!-- Error Box -->
             <div id="errorBox" class="hidden mt-4 p-4 rounded-xl bg-red-950/80 border border-red-500/50 text-red-200 text-sm no-print"></div>
 
-            <!-- Result Scorecard Section -->
+            <!-- Comprehensive Analytical Result Section -->
             <div id="resultSection" class="hidden">
-                <!-- Result Header -->
-                <div class="border-b border-slate-700 pb-4 mb-4 flex items-center justify-between">
+                <!-- Result Top Banner -->
+                <div class="border-b border-slate-700/80 pb-4 mb-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
                     <div>
-                        <span class="text-xs uppercase tracking-wider text-indigo-400 font-bold">अधिकृत निकाल पत्रिका</span>
-                        <h2 id="resCandidate" class="text-2xl font-bold text-white">परीक्षार्थी</h2>
-                        <p id="resExam" class="text-sm text-slate-400">परीक्षा निकाल</p>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs uppercase tracking-wider text-indigo-400 font-extrabold bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">अधिकृत विश्लेषण अहवाल</span>
+                            <span id="resBadgePost" class="text-xs text-slate-300 bg-slate-900 px-2.5 py-0.5 rounded border border-slate-700 font-semibold">General</span>
+                        </div>
+                        <h2 id="resCandidate" class="text-2xl sm:text-3xl font-extrabold text-white mt-1">परीक्षार्थी</h2>
+                        <p id="resExam" class="text-xs sm:text-sm text-slate-400 font-medium">परीक्षा निकाल</p>
                     </div>
-                    <div class="text-right">
-                        <span class="text-xs text-slate-400">प्रवर्ग:</span>
-                        <span id="resCategory" class="block font-bold text-indigo-300 text-lg">Open</span>
-                    </div>
-                </div>
-
-                <!-- 4 Top Cards -->
-                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-5">
-                    <div class="bg-slate-900/90 border border-slate-700/60 p-3 rounded-xl text-center">
-                        <div class="text-xs text-slate-400 font-semibold mb-1">एकूण गुण (Score)</div>
-                        <div id="resScore" class="text-2xl sm:text-3xl font-extrabold text-amber-400">0</div>
-                    </div>
-                    <div class="bg-slate-900/90 border border-slate-700/60 p-3 rounded-xl text-center">
-                        <div class="text-xs text-slate-400 font-semibold mb-1">संभाव्य राज्य रँक</div>
-                        <div id="resRank" class="text-2xl sm:text-3xl font-extrabold text-indigo-400">#1</div>
-                    </div>
-                    <div class="bg-slate-900/90 border border-slate-700/60 p-3 rounded-xl text-center">
-                        <div class="text-xs text-slate-400 font-semibold mb-1">बरोबर उत्तरे</div>
-                        <div id="resCorrect" class="text-2xl sm:text-3xl font-extrabold text-emerald-400">0</div>
-                    </div>
-                    <div class="bg-slate-900/90 border border-slate-700/60 p-3 rounded-xl text-center">
-                        <div class="text-xs text-slate-400 font-semibold mb-1">चूक उत्तरे</div>
-                        <div id="resIncorrect" class="text-2xl sm:text-3xl font-extrabold text-rose-400">0</div>
+                    <div class="flex md:flex-col items-center md:items-end justify-between gap-1 bg-slate-900/80 px-4 py-2.5 rounded-xl border border-slate-700/60">
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-xs text-slate-400">प्रवर्ग:</span>
+                            <span id="resCategory" class="font-bold text-indigo-300 text-base">Open</span>
+                        </div>
+                        <div class="text-xs text-slate-400">
+                            अनुक्रमांक: <span id="resRoll" class="font-mono text-slate-200 font-bold">-</span>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Metadata Row -->
-                <div class="bg-slate-900/50 border border-slate-700/50 rounded-xl p-3.5 mb-5 text-xs sm:text-sm text-slate-300 space-y-1.5">
-                    <div class="flex justify-between">
-                        <span class="text-slate-400">अनुक्रमांक (Roll No):</span>
-                        <span id="resRoll" class="font-mono font-bold text-white">-</span>
+                <!-- Cutoff Prediction Zone Box -->
+                <div id="cutoffZoneCard" class="mb-5 p-4 rounded-xl bg-gradient-to-r from-slate-900 via-indigo-950/30 to-slate-900 border border-indigo-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+                    <div class="flex items-center gap-3">
+                        <span class="text-3xl" id="zoneIcon">🎯</span>
+                        <div>
+                            <div class="text-xs uppercase tracking-wider text-slate-400 font-bold">Cutoff Prediction Zone (निवड अंदाज)</div>
+                            <div id="resCutoffZone" class="text-base sm:text-lg font-bold text-emerald-300">गणना होत आहे...</div>
+                        </div>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-slate-400">सोडवलेले / एकूण प्रश्न:</span>
-                        <span id="resTotalQ" class="font-bold text-white">-</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-slate-400">पर्सेंटाईल (Percentile):</span>
-                        <span id="resPercentile" class="font-bold text-emerald-300">-</span>
-                    </div>
-                </div>
-
-                <!-- Subject-Wise Marks Breakdown Table -->
-                <div id="sectionTableContainer" class="mb-6 hidden">
-                    <h4 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                        <span>📚 विषयनिहाय गुण व अचूकता (Subject Breakdown):</span>
-                    </h4>
-                    <div class="overflow-x-auto rounded-xl border border-slate-700/60">
-                        <table class="w-full text-left text-xs sm:text-sm">
-                            <thead class="bg-slate-900/80 text-slate-300 uppercase text-[11px] font-bold border-b border-slate-700">
-                                <tr>
-                                    <th class="py-2.5 px-3">विषय / विभाग</th>
-                                    <th class="py-2.5 px-3 text-center">बरोबर</th>
-                                    <th class="py-2.5 px-3 text-center">चूक</th>
-                                    <th class="py-2.5 px-3 text-right">मिळालेले गुण</th>
-                                </tr>
-                            </thead>
-                            <tbody id="sectionTableBody" class="divide-y divide-slate-800 bg-slate-900/40"></tbody>
-                        </table>
+                    <div class="flex items-center gap-4 text-xs sm:text-sm text-slate-300">
+                        <div>
+                            <span class="text-slate-400 block text-[11px]">सरासरी गुण (Avg)</span>
+                            <span id="resAvgScore" class="font-bold text-white">0</span>
+                        </div>
+                        <div class="border-l border-slate-700 pl-4">
+                            <span class="text-slate-400 block text-[11px]">सर्वोच्च गुण (Top)</span>
+                            <span id="resTopScore" class="font-bold text-amber-400">0</span>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Action Buttons -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 no-print">
-                    <button onclick="shareWhatsApp()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl text-center text-sm transition-all flex items-center justify-center gap-1.5 shadow-md shadow-emerald-900/30">
-                        <span>💬 WhatsApp वर शेअर करा</span>
+                <!-- Navigation Tabs -->
+                <div class="flex flex-wrap border-b border-slate-700 gap-1 mb-5 no-print">
+                    <button id="rtabBtnScorecard" onclick="switchResultTab('scorecard')" class="px-3.5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-indigo-500 text-indigo-400 transition-all flex items-center gap-1.5">
+                        <span>📊 निकाल व ४-टियर रँक</span>
                     </button>
-                    <button onclick="window.print()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2.5 px-4 rounded-xl text-center text-sm transition-all flex items-center justify-center gap-1.5">
-                        <span>📥 निकाल सेव्ह करा (PDF / Print)</span>
+                    <button id="rtabBtnSwot" onclick="switchResultTab('swot')" class="px-3.5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition-all flex items-center gap-1.5">
+                        <span>🧠 AI SWOT ऑडिट</span>
                     </button>
-                    <button onclick="location.reload()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-2.5 px-4 rounded-xl text-center text-sm transition-all">
+                    <button id="rtabBtnObjections" onclick="switchResultTab('objections')" class="px-3.5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition-all flex items-center gap-1.5">
+                        <span>⚖️ चुकांचे पोस्टमार्टम व आक्षेप</span>
+                        <span id="wrongCountBadge" class="bg-rose-500/80 text-white text-[11px] px-2 py-0.2 rounded-full font-bold ml-1">0</span>
+                    </button>
+                    <button id="rtabBtnQuestions" onclick="switchResultTab('questions')" class="px-3.5 py-2.5 text-xs sm:text-sm font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition-all flex items-center gap-1.5">
+                        <span>🔍 प्रश्नपत्रिका (All Qs)</span>
+                        <span id="totalQBadge" class="bg-indigo-500/40 text-indigo-200 text-[11px] px-2 py-0.2 rounded-full font-bold ml-1">0</span>
+                    </button>
+                </div>
+
+                <!-- TAB 1: SCORECARD & 4-TIER RANK -->
+                <div id="tabViewScorecard">
+                    <!-- 4 Top Cards -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-5">
+                        <div class="bg-slate-900/90 border border-slate-700/60 p-3.5 rounded-xl text-center">
+                            <div class="text-xs text-slate-400 font-semibold mb-1">एकूण गुण (Score)</div>
+                            <div id="resScore" class="text-2xl sm:text-3xl font-extrabold text-amber-400">0</div>
+                            <div class="text-[11px] text-slate-500 mt-0.5">कमाल: <span id="resMaxMarks">200</span></div>
+                        </div>
+                        <div class="bg-slate-900/90 border border-slate-700/60 p-3.5 rounded-xl text-center">
+                            <div class="text-xs text-slate-400 font-semibold mb-1">अचूकता (Accuracy)</div>
+                            <div id="resAccuracy" class="text-2xl sm:text-3xl font-extrabold text-cyan-400">0%</div>
+                            <div class="text-[11px] text-slate-500 mt-0.5">कार्यक्षमता प्रमाण</div>
+                        </div>
+                        <div class="bg-slate-900/90 border border-slate-700/60 p-3.5 rounded-xl text-center">
+                            <div class="text-xs text-slate-400 font-semibold mb-1">बरोबर उत्तरे</div>
+                            <div id="resCorrect" class="text-2xl sm:text-3xl font-extrabold text-emerald-400">0</div>
+                            <div class="text-[11px] text-slate-500 mt-0.5">अचूक प्रश्न</div>
+                        </div>
+                        <div class="bg-slate-900/90 border border-slate-700/60 p-3.5 rounded-xl text-center">
+                            <div class="text-xs text-slate-400 font-semibold mb-1">चूक उत्तरे</div>
+                            <div id="resIncorrect" class="text-2xl sm:text-3xl font-extrabold text-rose-400">0</div>
+                            <div class="text-[11px] text-slate-500 mt-0.5">निगेटिव्ह / चुकलेले</div>
+                        </div>
+                    </div>
+
+                    <!-- 4-Tier Rank Grid -->
+                    <div class="mb-5">
+                        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
+                            <span>🏆 Live 4-Tier Rank & Percentile Standing</span>
+                        </h4>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            <div class="bg-slate-900/80 border border-slate-700/70 p-3.5 rounded-xl flex items-center justify-between">
+                                <div>
+                                    <span class="text-xs text-slate-400 block font-medium">🌐 १. राज्यस्तरीय रँक (State Rank):</span>
+                                    <span id="resStateRank" class="text-lg font-extrabold text-indigo-400">#1 / 1</span>
+                                </div>
+                                <div class="text-right">
+                                    <span class="text-[11px] text-slate-400 block">पर्सेंटाईल:</span>
+                                    <span id="resStatePercentile" class="font-mono font-bold text-emerald-300 text-sm">100%</span>
+                                </div>
+                            </div>
+                            <div class="bg-slate-900/80 border border-slate-700/70 p-3.5 rounded-xl flex items-center justify-between">
+                                <div>
+                                    <span class="text-xs text-slate-400 block font-medium">📋 २. परीक्षा रँक (Exam Cohort):</span>
+                                    <span id="resExamRank" class="text-lg font-extrabold text-purple-400">#1 / 1</span>
+                                </div>
+                                <div class="text-right">
+                                    <span class="text-[11px] text-slate-400 block">पर्सेंटाईल:</span>
+                                    <span id="resExamPercentile" class="font-mono font-bold text-emerald-300 text-sm">100%</span>
+                                </div>
+                            </div>
+                            <div class="bg-slate-900/80 border border-slate-700/70 p-3.5 rounded-xl flex items-center justify-between">
+                                <div>
+                                    <span class="text-xs text-slate-400 block font-medium">👤 ३. प्रवर्ग रँक (Category Rank):</span>
+                                    <span id="resCatRank" class="text-lg font-extrabold text-amber-400">#1 / 1</span>
+                                </div>
+                                <div class="text-right">
+                                    <span class="text-[11px] text-slate-400 block">पर्सेंटाईल:</span>
+                                    <span id="resCatPercentile" class="font-mono font-bold text-emerald-300 text-sm">100%</span>
+                                </div>
+                            </div>
+                            <div class="bg-slate-900/80 border border-slate-700/70 p-3.5 rounded-xl flex items-center justify-between">
+                                <div>
+                                    <span class="text-xs text-slate-400 block font-medium">🎖️ ४. पदनिहाय रँक (Post Rank):</span>
+                                    <span id="resPostRank" class="text-lg font-extrabold text-cyan-400">#1 / 1</span>
+                                </div>
+                                <div class="text-right">
+                                    <span class="text-[11px] text-slate-400 block">अनुत्तरित:</span>
+                                    <span id="resUnanswered" class="font-mono font-bold text-slate-300 text-sm">0</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Subject-Wise Marks Breakdown Table -->
+                    <div id="sectionTableContainer" class="mb-5 hidden">
+                        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2.5">
+                            📚 विषयनिहाय अचूकता व गुण (Subject-Wise Breakdown)
+                        </h4>
+                        <div class="overflow-x-auto rounded-xl border border-slate-700 bg-slate-900/60">
+                            <table class="w-full text-left text-xs sm:text-sm">
+                                <thead class="bg-slate-800/80 text-slate-400 uppercase font-semibold text-[11px] tracking-wider border-b border-slate-700">
+                                    <tr>
+                                        <th class="py-2.5 px-3">विषय / विभाग</th>
+                                        <th class="py-2.5 px-3 text-center">सोडवलेले</th>
+                                        <th class="py-2.5 px-3 text-center">बरोबर</th>
+                                        <th class="py-2.5 px-3 text-center">चूक</th>
+                                        <th class="py-2.5 px-3 text-center">अचूकता</th>
+                                        <th class="py-2.5 px-3 text-right">गुण (Marks)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sectionTableBody" class="divide-y divide-slate-800 text-slate-300"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: AI SWOT PERFORMANCE AUDIT -->
+                <div id="tabViewSwot" class="hidden">
+                    <div class="mb-4 p-3.5 rounded-xl bg-slate-900/80 border border-slate-700 flex items-center justify-between">
+                        <div>
+                            <h3 class="font-bold text-white text-base">🧠 AI SWOT कार्यक्षमता ऑडिट (Performance Audit)</h3>
+                            <p class="text-xs text-slate-400 mt-0.5">TCS/IBPS परीक्षा पॅटर्ननुसार तुमच्या ताकदी व त्रुटींचे सखोल विश्लेषण</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xs text-slate-400 block">एकूण अचूकता</span>
+                            <span id="swotAccBadge" class="font-bold text-emerald-400 text-base">0%</span>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5 mb-5">
+                        <!-- Strengths -->
+                        <div class="bg-emerald-950/20 border border-emerald-500/30 p-4 rounded-xl">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-xl">💪</span>
+                                <h4 class="font-bold text-emerald-300 text-sm">बळकट बाजू (Strengths)</h4>
+                            </div>
+                            <ul id="swotStrengths" class="space-y-1.5 text-xs text-emerald-100/90 list-disc pl-4"></ul>
+                        </div>
+                        <!-- Weaknesses -->
+                        <div class="bg-amber-950/20 border border-amber-500/30 p-4 rounded-xl">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-xl">⚠️</span>
+                                <h4 class="font-bold text-amber-300 text-sm">कमजोर बाजू (Weaknesses)</h4>
+                            </div>
+                            <ul id="swotWeaknesses" class="space-y-1.5 text-xs text-amber-100/90 list-disc pl-4"></ul>
+                        </div>
+                        <!-- Opportunities -->
+                        <div class="bg-cyan-950/20 border border-cyan-500/30 p-4 rounded-xl">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-xl">💡</span>
+                                <h4 class="font-bold text-cyan-300 text-sm">सुधारणा व संधी (Opportunities)</h4>
+                            </div>
+                            <ul id="swotOpportunities" class="space-y-1.5 text-xs text-cyan-100/90 list-disc pl-4"></ul>
+                        </div>
+                        <!-- Threats -->
+                        <div class="bg-rose-950/20 border border-rose-500/30 p-4 rounded-xl">
+                            <div class="flex items-center gap-2 mb-2">
+                                <span class="text-xl">⛔</span>
+                                <h4 class="font-bold text-rose-300 text-sm">धोका व निगेटिव्ह रिस्क (Threats)</h4>
+                            </div>
+                            <ul id="swotThreats" class="space-y-1.5 text-xs text-rose-100/90 list-disc pl-4"></ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 3: OBJECTIONS & WRONG ANSWERS -->
+                <div id="tabViewObjections" class="hidden">
+                    <div class="mb-4 p-3.5 rounded-xl bg-slate-900/80 border border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div>
+                            <h3 class="font-bold text-white text-base">⚖️ चुकीच्या प्रश्नांचे पोस्टमार्टम व आक्षेप सल्ला (Objections)</h3>
+                            <p class="text-xs text-slate-400 mt-0.5">तुमचे उत्तर का चुकले आणि अधिकृत उत्तर कसे योग्य आहे याचे स्टेप-बाय-स्टेप स्पष्टीकरण</p>
+                        </div>
+                        <div id="objectionCountNote" class="text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 px-3 py-1 rounded-lg text-center self-start sm:self-auto">
+                            0 प्रश्न चुकले
+                        </div>
+                    </div>
+                    <div id="wrongAnswersList" class="space-y-3.5 mb-5 max-h-[600px] overflow-y-auto pr-1"></div>
+                </div>
+
+                <!-- TAB 4: ALL QUESTIONS EXPLORER -->
+                <div id="tabViewQuestions" class="hidden">
+                    <!-- Filter Controls -->
+                    <div class="mb-4 p-3.5 rounded-xl bg-slate-900/80 border border-slate-700 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div class="flex flex-wrap gap-1.5">
+                            <button id="qfAll" onclick="filterQuestions('all')" class="px-3 py-1 text-xs font-bold rounded-lg bg-indigo-600 text-white transition-all">सर्व (All)</button>
+                            <button id="qfCorrect" onclick="filterQuestions('correct')" class="px-3 py-1 text-xs font-bold rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-all">✅ बरोबर</button>
+                            <button id="qfIncorrect" onclick="filterQuestions('incorrect')" class="px-3 py-1 text-xs font-bold rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-all">❌ चूक</button>
+                            <button id="qfUnanswered" onclick="filterQuestions('unanswered')" class="px-3 py-1 text-xs font-bold rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-all">⚪ अनुत्तरित</button>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <select id="sectionFilterSelect" onchange="filterQuestions(currentQFilter)" class="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200 focus:outline-none">
+                                <option value="all">सर्व विभाग (All Sections)</option>
+                            </select>
+                            <input type="text" id="questionSearchInput" oninput="filterQuestions(currentQFilter)" placeholder="प्रश्न शोधा..." class="bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none w-36 sm:w-48" />
+                        </div>
+                    </div>
+                    <div id="allQuestionsList" class="space-y-3 mb-5 max-h-[600px] overflow-y-auto pr-1"></div>
+                </div>
+
+                <!-- Bottom Action Buttons Toolbar -->
+                <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5 pt-4 border-t border-slate-700 no-print">
+                    <button onclick="shareWhatsApp()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-3 rounded-xl text-center text-xs sm:text-sm transition-all flex items-center justify-center gap-1.5 shadow-md shadow-emerald-900/30">
+                        <span>📲 WhatsApp शेअर</span>
+                    </button>
+                    <button onclick="window.print()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-2.5 px-3 rounded-xl text-center text-xs sm:text-sm transition-all flex items-center justify-center gap-1.5">
+                        <span>🖨️ सेव्ह करा (PDF / Print)</span>
+                    </button>
+                    <button onclick="location.reload()" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-2.5 px-3 rounded-xl text-center text-xs sm:text-sm transition-all">
                         🔄 दुसरी फाईल तपासा
                     </button>
-                    <a href="https://t.me/ExamRankersIndiaBot" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-4 rounded-xl text-center text-sm transition-all flex items-center justify-center gap-1.5 shadow-md shadow-indigo-900/30">
+                    <a href="https://t.me/ExamRankersIndiaBot" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2.5 px-3 rounded-xl text-center text-xs sm:text-sm transition-all flex items-center justify-center gap-1.5 shadow-md shadow-indigo-900/30">
                         <span>🤖 टेलिग्राम बॉट उघडा</span>
                     </a>
                 </div>
@@ -4730,6 +4906,9 @@ def render_upload_portal_html() -> str:
 
     <script>
         let currentTab = 'file';
+        let currentInputTab = 'file';
+        let currentResultTab = 'scorecard';
+        let currentQFilter = 'all';
         let selectedFile = null;
         let lastResultData = null;
 
@@ -4745,8 +4924,10 @@ def render_upload_portal_html() -> str:
         }
         const telegramUid = urlParams.get('uid') || '';
 
-        function switchTab(tab) {
+        function switchTab(tab) { switchInputTab(tab); }
+        function switchInputTab(tab) {
             currentTab = tab;
+            currentInputTab = tab;
             const tabFile = document.getElementById('tabFileBtn');
             const tabUrl = document.getElementById('tabUrlBtn');
             const fileContent = document.getElementById('fileTabContent');
@@ -5007,19 +5188,323 @@ def render_upload_portal_html() -> str:
             errorBox.classList.remove('hidden');
         }
 
+        function switchResultTab(tab) {
+            currentResultTab = tab;
+            const tabs = ['scorecard', 'swot', 'objections', 'questions'];
+            tabs.forEach(t => {
+                const btnId = 'rtabBtn' + t.charAt(0).toUpperCase() + t.slice(1);
+                const viewId = 'tabView' + t.charAt(0).toUpperCase() + t.slice(1);
+                const btn = document.getElementById(btnId);
+                const view = document.getElementById(viewId);
+                if (!btn || !view) return;
+
+                if (t === tab) {
+                    btn.classList.add('border-indigo-500', 'text-indigo-400');
+                    btn.classList.remove('border-transparent', 'text-slate-400');
+                    view.classList.remove('hidden');
+                } else {
+                    btn.classList.remove('border-indigo-500', 'text-indigo-400');
+                    btn.classList.add('border-transparent', 'text-slate-400');
+                    view.classList.add('hidden');
+                }
+            });
+        }
+
+        function renderSwot(swot) {
+            if (!swot) return;
+            const popList = (elId, items) => {
+                const el = document.getElementById(elId);
+                if (!el) return;
+                el.innerHTML = '';
+                if (!items || items.length === 0) {
+                    el.innerHTML = '<li>डेटा उपलब्ध नाही.</li>';
+                    return;
+                }
+                items.forEach(it => {
+                    const li = document.createElement('li');
+                    li.textContent = it;
+                    el.appendChild(li);
+                });
+            };
+            popList('swotStrengths', swot.strengths);
+            popList('swotWeaknesses', swot.weaknesses);
+            popList('swotOpportunities', swot.opportunities);
+            popList('swotThreats', swot.threats);
+            const accEl = document.getElementById('swotAccBadge');
+            if (accEl) accEl.textContent = (swot.overall_accuracy !== undefined ? swot.overall_accuracy : '0') + '%';
+        }
+
+        function renderObjections(wrongQuestions) {
+            const container = document.getElementById('wrongAnswersList');
+            const badge = document.getElementById('wrongCountBadge');
+            const note = document.getElementById('objectionCountNote');
+            if (!container) return;
+            container.innerHTML = '';
+
+            const count = wrongQuestions ? wrongQuestions.length : 0;
+            if (badge) badge.textContent = count;
+            if (note) note.textContent = count + ' प्रश्न चुकले (Post-Mortem & Objections)';
+
+            if (!wrongQuestions || wrongQuestions.length === 0) {
+                container.innerHTML = `
+                    <div class="bg-emerald-950/40 border border-emerald-500/40 p-6 rounded-xl text-center text-emerald-200">
+                        <span class="text-3xl block mb-2">🎉</span>
+                        <h4 class="font-bold text-base">अभिनंदन! एकही प्रश्न चुकलेला नाही.</h4>
+                        <p class="text-xs text-emerald-300/80 mt-1">सर्व सोडवलेले प्रश्न बरोबर आहेत किंवा कोणतीही चूक आढळली नाही.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            wrongQuestions.forEach((q, idx) => {
+                const card = document.createElement('div');
+                card.className = 'bg-slate-900/90 border border-slate-700/80 rounded-xl p-4 transition-all hover:border-slate-600';
+
+                const chosenLabel = q.chosen_num ? ('पर्याय ' + q.chosen_num + (q.chosen_text ? ' (' + q.chosen_text + ')' : '')) : 'अनुत्तरित';
+                const correctLabel = q.correct_num ? ('पर्याय ' + q.correct_num + (q.correct_text ? ' (' + q.correct_text + ')' : '')) : 'अधिकृत उत्तर';
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between gap-2 border-b border-slate-800 pb-2 mb-2.5">
+                        <div class="flex items-center gap-2">
+                            <span class="bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs px-2 py-0.5 rounded font-bold">प्रश्न #${q.question_number || (idx + 1)}</span>
+                            <span class="text-xs text-slate-400 font-semibold">${q.section || 'General'}</span>
+                        </div>
+                        <span class="text-[11px] font-mono text-slate-500">ID: ${q.question_id || '-'}</span>
+                    </div>
+
+                    <div class="text-sm font-semibold text-slate-100 mb-3 leading-snug">
+                        ${q.question_text || 'प्रश्न मजकूर उपलब्ध नाही'}
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3 text-xs">
+                        <div class="bg-rose-950/30 border border-rose-500/30 p-2.5 rounded-lg">
+                            <span class="text-rose-400 font-bold block mb-0.5">❌ तुमचा निवडलेला पर्याय:</span>
+                            <span class="text-rose-200 font-medium">${chosenLabel}</span>
+                        </div>
+                        <div class="bg-emerald-950/30 border border-emerald-500/30 p-2.5 rounded-lg">
+                            <span class="text-emerald-400 font-bold block mb-0.5">✅ अधिकृत अचूक उत्तर:</span>
+                            <span class="text-emerald-200 font-medium">${correctLabel}</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-800/80 border border-slate-700/60 p-3 rounded-lg text-xs text-slate-200 space-y-1.5 mb-2 leading-relaxed">
+                        <div class="font-bold text-indigo-300 flex items-center gap-1">
+                            <span>🧠 AI सविस्तर स्पष्टीकरण:</span>
+                        </div>
+                        <div class="text-slate-300 font-normal">
+                            ${q.explanation || 'स्पष्टीकरण तयार होत आहे.'}
+                        </div>
+                    </div>
+
+                    <div class="bg-indigo-950/40 border border-indigo-500/30 p-2.5 rounded-lg text-[11px] text-indigo-200 flex items-start gap-1.5">
+                        <span>⚖️</span>
+                        <div>
+                            <span class="font-bold text-indigo-300">आक्षेप सल्ला:</span>
+                            <span class="text-indigo-200/90 ml-1">${q.objection_reason || 'अधिकृत संदर्भानुसार उत्तर प्रमाणित आहे.'}</span>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function populateSectionFilter(questions) {
+            const sel = document.getElementById('sectionFilterSelect');
+            if (!sel || !questions) return;
+            sel.innerHTML = '<option value="all">सर्व विभाग (All Sections)</option>';
+            const sections = new Set();
+            questions.forEach(q => { if (q.section) sections.add(q.section); });
+            sections.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s;
+                opt.textContent = s;
+                sel.appendChild(opt);
+            });
+        }
+
+        function filterQuestions(filterType) {
+            currentQFilter = filterType || 'all';
+            const allBtn = document.getElementById('qfAll');
+            const corBtn = document.getElementById('qfCorrect');
+            const incBtn = document.getElementById('qfIncorrect');
+            const unaBtn = document.getElementById('qfUnanswered');
+
+            [allBtn, corBtn, incBtn, unaBtn].forEach(b => {
+                if (b) {
+                    b.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-slate-800 text-slate-300 hover:text-white transition-all';
+                }
+            });
+
+            if (currentQFilter === 'all' && allBtn) allBtn.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-indigo-600 text-white transition-all';
+            if (currentQFilter === 'correct' && corBtn) corBtn.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-emerald-600 text-white transition-all';
+            if (currentQFilter === 'incorrect' && incBtn) incBtn.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-rose-600 text-white transition-all';
+            if (currentQFilter === 'unanswered' && unaBtn) unaBtn.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-amber-600 text-white transition-all';
+
+            if (!lastResultData || !lastResultData.all_questions) return;
+
+            const secVal = document.getElementById('sectionFilterSelect') ? document.getElementById('sectionFilterSelect').value : 'all';
+            const searchVal = document.getElementById('questionSearchInput') ? document.getElementById('questionSearchInput').value.trim().toLowerCase() : '';
+
+            let filtered = lastResultData.all_questions.filter(q => {
+                if (currentQFilter === 'correct' && q.evaluation !== 'correct') return false;
+                if (currentQFilter === 'incorrect' && q.evaluation !== 'incorrect') return false;
+                if (currentQFilter === 'unanswered' && q.evaluation !== 'unanswered') return false;
+                if (secVal !== 'all' && q.section !== secVal) return false;
+                if (searchVal) {
+                    const qTxt = (q.question_text || '').toLowerCase();
+                    const secTxt = (q.section || '').toLowerCase();
+                    if (!qTxt.includes(searchVal) && !secTxt.includes(searchVal)) return false;
+                }
+                return true;
+            });
+
+            renderQuestionsList(filtered);
+        }
+
+        function renderQuestionsList(questions) {
+            const container = document.getElementById('allQuestionsList');
+            const badge = document.getElementById('totalQBadge');
+            if (!container) return;
+            container.innerHTML = '';
+
+            if (badge && lastResultData && lastResultData.all_questions) {
+                badge.textContent = lastResultData.all_questions.length;
+            }
+
+            if (!questions || questions.length === 0) {
+                container.innerHTML = `
+                    <div class="bg-slate-900/60 border border-slate-700/60 p-6 rounded-xl text-center text-slate-400">
+                        निवडलेल्या निकषानुसार प्रश्न सापडले नाहीत.
+                    </div>
+                `;
+                return;
+            }
+
+            questions.forEach((q, idx) => {
+                const card = document.createElement('div');
+                card.className = 'bg-slate-900/80 border border-slate-700/70 rounded-xl p-3.5 transition-all';
+
+                let statusBadge = '<span class="bg-slate-700/60 text-slate-300 text-[11px] px-2 py-0.5 rounded font-bold">⚪ अनुत्तरित</span>';
+                if (q.evaluation === 'correct') {
+                    statusBadge = '<span class="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] px-2 py-0.5 rounded font-bold">✅ अचूक</span>';
+                } else if (q.evaluation === 'incorrect') {
+                    statusBadge = '<span class="bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[11px] px-2 py-0.5 rounded font-bold">❌ चूक</span>';
+                }
+
+                let optionsHtml = '';
+                if (q.options && Object.keys(q.options).length > 0) {
+                    optionsHtml = '<div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2.5">';
+                    for (const [optKey, optVal] of Object.entries(q.options)) {
+                        const optNumStr = String(optKey).replace(/[^0-9]/g, '');
+                        const isChosen = String(q.chosen_num) === optNumStr;
+                        const isCorrect = String(q.correct_num) === optNumStr;
+
+                        let optClass = 'bg-slate-800/60 border-slate-700/60 text-slate-300';
+                        let optIcon = '';
+                        if (isCorrect) {
+                            optClass = 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200 font-semibold';
+                            optIcon = ' <span class="text-emerald-400 font-bold ml-1">(अधिकृत उत्तर)</span>';
+                        }
+                        if (isChosen && !isCorrect) {
+                            optClass = 'bg-rose-950/40 border-rose-500/50 text-rose-200 font-semibold';
+                            optIcon = ' <span class="text-rose-400 font-bold ml-1">(तुमची निवड)</span>';
+                        } else if (isChosen && isCorrect) {
+                            optIcon = ' <span class="text-emerald-400 font-bold ml-1">(तुमची अचूक निवड ✓)</span>';
+                        }
+
+                        optionsHtml += `
+                            <div class="border rounded-lg p-2 text-xs flex items-center justify-between ${optClass}">
+                                <span><b>${optKey}.</b> ${optVal}</span>
+                                ${optIcon}
+                            </div>
+                        `;
+                    }
+                    optionsHtml += '</div>';
+                }
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between gap-2 border-b border-slate-800 pb-2 mb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold text-white">प्रश्न #${q.question_number || (idx + 1)}</span>
+                            <span class="text-[11px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded">${q.section || 'General'}</span>
+                        </div>
+                        <div>${statusBadge}</div>
+                    </div>
+                    <div class="text-xs sm:text-sm text-slate-100 font-medium leading-relaxed">
+                        ${q.question_text || 'प्रश्न उपलब्ध नाही'}
+                    </div>
+                    ${optionsHtml}
+                `;
+                container.appendChild(card);
+            });
+        }
+
         function showResults(data) {
+            // Expand container for rich dashboard layout
+            const portalCont = document.getElementById('portalContainer');
+            if (portalCont) {
+                portalCont.className = 'max-w-4xl mx-auto w-full transition-all duration-300';
+            }
+
+            // Top Banner & Metadata
             document.getElementById('resCandidate').textContent = data.candidate_name || 'परीक्षार्थी';
             document.getElementById('resExam').textContent = data.exam_title || 'परीक्षा निकाल';
             document.getElementById('resCategory').textContent = data.category || 'Open';
+            document.getElementById('resRoll').textContent = data.roll_number || 'उपलब्ध नाही';
+            const postEl = document.getElementById('resBadgePost');
+            if (postEl) postEl.textContent = data.post_name || 'General';
+
+            // Cutoff Prediction Zone
+            const zoneEl = document.getElementById('resCutoffZone');
+            const zoneIconEl = document.getElementById('zoneIcon');
+            const zoneStr = data.cutoff_zone || 'N/A';
+            if (zoneEl) zoneEl.textContent = zoneStr;
+            if (zoneIconEl) {
+                if (zoneStr.includes('Strong') || zoneStr.includes('सुरक्षित')) zoneIconEl.textContent = '🟢';
+                else if (zoneStr.includes('Border') || zoneStr.includes('सीमावर्ती')) zoneIconEl.textContent = '🟡';
+                else if (zoneStr.includes('Push') || zoneStr.includes('सरावाची')) zoneIconEl.textContent = '🔴';
+                else zoneIconEl.textContent = '🎯';
+            }
+            const avgEl = document.getElementById('resAvgScore');
+            const topEl = document.getElementById('resTopScore');
+            if (avgEl) avgEl.textContent = (data.avg_score !== undefined ? data.avg_score : '-');
+            if (topEl) topEl.textContent = (data.top_score !== undefined ? data.top_score : '-');
+
+            // 4 Top Cards
             document.getElementById('resScore').textContent = data.raw_score + ' / ' + data.max_marks;
-            document.getElementById('resRank').textContent = '#' + data.rank + ' / ' + data.total_candidates;
+            const maxEl = document.getElementById('resMaxMarks');
+            if (maxEl) maxEl.textContent = data.max_marks;
+            const accEl = document.getElementById('resAccuracy');
+            if (accEl) accEl.textContent = (data.accuracy !== undefined ? data.accuracy : '0') + '%';
             document.getElementById('resCorrect').textContent = data.correct;
             document.getElementById('resIncorrect').textContent = data.incorrect;
-            document.getElementById('resRoll').textContent = data.roll_number || 'उपलब्ध नाही';
-            document.getElementById('resTotalQ').textContent = data.total_questions;
-            document.getElementById('resPercentile').textContent = (data.percentile ? data.percentile.toFixed(2) + '%' : 'N/A');
+            const unansEl = document.getElementById('resUnanswered');
+            if (unansEl) unansEl.textContent = data.unanswered;
 
-            // Render subject-wise breakdown table if available
+            // 4-Tier Ranks
+            const sRank = data.overall_rank || data.rank || 1;
+            const sTotal = data.overall_total || data.total_candidates || 1;
+            const sPct = data.overall_percentile || data.percentile || 100.0;
+            document.getElementById('resStateRank').textContent = '#' + sRank + ' / ' + sTotal;
+            document.getElementById('resStatePercentile').textContent = sPct.toFixed(1) + '%';
+
+            const eRank = data.rank || 1;
+            const eTotal = data.total_candidates || 1;
+            const ePct = data.percentile || 100.0;
+            document.getElementById('resExamRank').textContent = '#' + eRank + ' / ' + eTotal;
+            document.getElementById('resExamPercentile').textContent = ePct.toFixed(1) + '%';
+
+            const cRank = data.category_rank || data.rank || 1;
+            const cTotal = data.category_total || data.total_candidates || 1;
+            const cPct = data.category_percentile || data.percentile || 100.0;
+            document.getElementById('resCatRank').textContent = '#' + cRank + ' / ' + cTotal;
+            document.getElementById('resCatPercentile').textContent = cPct.toFixed(1) + '%';
+
+            const pRank = data.post_rank || data.rank || 1;
+            const pTotal = data.post_total || data.total_candidates || 1;
+            document.getElementById('resPostRank').textContent = '#' + pRank + ' / ' + pTotal;
+
+            // Subject-wise breakdown table
             const tableContainer = document.getElementById('sectionTableContainer');
             const tbody = document.getElementById('sectionTableBody');
             tbody.innerHTML = '';
@@ -5030,11 +5515,18 @@ def render_upload_portal_html() -> str:
                     const marks = (typeof secData === 'object' && secData.score !== undefined) ? secData.score : secData;
                     const cCount = (typeof secData === 'object' && secData.correct !== undefined) ? secData.correct : '-';
                     const iCount = (typeof secData === 'object' && secData.incorrect !== undefined) ? secData.incorrect : '-';
+                    const att = (typeof secData === 'object' && secData.attempted !== undefined) ? secData.attempted : (cCount !== '-' && iCount !== '-' ? (Number(cCount) + Number(iCount)) : '-');
+                    let secAcc = '-';
+                    if (att && Number(att) > 0 && cCount !== '-') {
+                        secAcc = Math.round((Number(cCount) / Number(att)) * 100) + '%';
+                    }
 
                     tr.innerHTML = `
                         <td class="py-2.5 px-3 font-semibold text-slate-200">${secName}</td>
+                        <td class="py-2.5 px-3 text-center text-slate-300">${att}</td>
                         <td class="py-2.5 px-3 text-center text-emerald-400 font-bold">${cCount}</td>
                         <td class="py-2.5 px-3 text-center text-rose-400 font-bold">${iCount}</td>
+                        <td class="py-2.5 px-3 text-center text-cyan-300 font-semibold">${secAcc}</td>
                         <td class="py-2.5 px-3 text-right font-extrabold text-amber-400">${marks}</td>
                     `;
                     tbody.appendChild(tr);
@@ -5044,17 +5536,37 @@ def render_upload_portal_html() -> str:
                 tableContainer.classList.add('hidden');
             }
 
+            // Render Tab 2: AI SWOT
+            renderSwot(data.swot);
+
+            // Render Tab 3: Objections & Wrong Answers
+            renderObjections(data.wrong_questions);
+
+            // Populate Tab 4: Section filter & Question list
+            populateSectionFilter(data.all_questions);
+            filterQuestions('all');
+
+            // Default to Scorecard tab
+            switchResultTab('scorecard');
+
+            // Show Result Section
             document.getElementById('resultSection').classList.remove('hidden');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function shareWhatsApp() {
             if (!lastResultData) return;
-            const text = `🎯 *माझा परीक्षा निकाल (ExamRankers):*\\n` +
-                         `📋 परीक्षा: ${lastResultData.exam_title}\\n` +
-                         `📊 एकूण गुण: ${lastResultData.raw_score} / ${lastResultData.max_marks}\\n` +
-                         `🏆 संभाव्य राज्य रँक: #${lastResultData.rank} / ${lastResultData.total_candidates}\\n` +
-                         `📈 पर्सेंटाईल: ${lastResultData.percentile ? lastResultData.percentile.toFixed(2) + '%' : ''}\\n` +
-                         `🔗 तुमची रिस्पॉन्स शीट तपासा: https://exam-rank-predictor-bot.onrender.com/upload`;
+            const z = lastResultData.cutoff_zone || 'N/A';
+            const text = `🎯 *माझा परीक्षा निकाल व संभाव्य रँक (ExamRankers):*\n` +
+                         `👤 नाव: ${lastResultData.candidate_name || 'परीक्षार्थी'}\n` +
+                         `📋 परीक्षा: ${lastResultData.exam_title}\n` +
+                         `🏷️ प्रवर्ग: ${lastResultData.category || 'Open'}\n` +
+                         `📊 एकूण गुण: ${lastResultData.raw_score} / ${lastResultData.max_marks}\n` +
+                         `🎯 अचूकता (Accuracy): ${lastResultData.accuracy || 0}%\n` +
+                         `🏆 संभाव्य राज्य रँक: #${lastResultData.rank} / ${lastResultData.total_candidates}\n` +
+                         `📈 पर्सेंटाईल: ${lastResultData.percentile ? lastResultData.percentile.toFixed(1) + '%' : '100%'}\n` +
+                         `🟢 निवड अंदाज (Cutoff Zone): ${z}\n\n` +
+                         `🔗 तुमची रिस्पॉन्स शीट थेट तपासा: https://exam-rank-predictor-bot.onrender.com/upload`;
             window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(text), '_blank');
         }
     </script>
@@ -5107,25 +5619,33 @@ def process_sheet_payload(
 
         # Mode B: Uploaded PDF / HTML File
         elif file_bytes:
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                tmp_file = Path(tmp_dir) / safe_fn
-                tmp_file.write_bytes(file_bytes)
-
-                # Check if PDF contains embedded DigiALM live web URL
+            # Check if uploaded file is HTML / HTM format
+            if safe_fn.lower().endswith((".html", ".htm")) or b"<html" in file_bytes[:2048].lower():
                 try:
-                    rec_url = recover_digialm_url_from_pdf(str(tmp_file))
-                    if rec_url:
-                        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-                        with httpx.Client(timeout=30.0, follow_redirects=True, headers=headers) as client:
-                            resp = client.get(rec_url)
-                            if resp.status_code == 200 and len(resp.content) > 1000:
-                                text = parse_html_response_sheet(resp.text)
-                except Exception as rec_err:
-                    logger.warning(f"Error fetching live DigiALM URL from web upload: {rec_err}")
+                    text = parse_html_response_sheet(file_bytes.decode("utf-8", errors="replace"))
+                except Exception as html_err:
+                    logger.warning(f"Error parsing uploaded HTML: {html_err}")
 
-                # Fallback to direct PDF text / RapidOCR extraction
-                if not text.strip():
-                    text, err_code = extract_pdf_text_with_status(str(tmp_file))
+            if not text.strip():
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    tmp_file = Path(tmp_dir) / safe_fn
+                    tmp_file.write_bytes(file_bytes)
+
+                    # Check if PDF contains embedded DigiALM live web URL
+                    try:
+                        rec_url = recover_digialm_url_from_pdf(str(tmp_file))
+                        if rec_url:
+                            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+                            with httpx.Client(timeout=30.0, follow_redirects=True, headers=headers) as client:
+                                resp = client.get(rec_url)
+                                if resp.status_code == 200 and len(resp.content) > 1000:
+                                    text = parse_html_response_sheet(resp.text)
+                    except Exception as rec_err:
+                        logger.warning(f"Error fetching live DigiALM URL from web upload: {rec_err}")
+
+                    # Fallback to direct PDF text / RapidOCR extraction
+                    if not text.strip():
+                        text, err_code = extract_pdf_text_with_status(str(tmp_file))
 
         if not text.strip():
             return 200, {
@@ -5160,13 +5680,65 @@ def process_sheet_payload(
 
         res = score_answers(records, exam_config)
         meta = extract_post_and_metadata(text)
+        post_name = meta.get("post_name") or "General"
         score_val = res.get("score", 0)
         overall_scores, exam_scores, post_scores, cat_scores, post_cat_scores = get_candidate_scores(
-            detected_key, user_category, meta.get("post_name")
+            detected_key, user_category, post_name
         )
         rank_info = estimate_cohort_rank(
-            score_val, exam_scores, user_category, cat_scores, overall_scores=overall_scores
+            score_val,
+            exam_scores,
+            user_category,
+            cat_scores,
+            overall_scores=overall_scores,
+            post_name=post_name,
+            post_scores=post_scores,
+            post_category_scores=post_cat_scores,
+            max_marks=exam_config.get("total_marks", 200)
         )
+
+        # Accuracy and Analytical Calculations
+        attempted = res.get("correct", 0) + res.get("incorrect", 0)
+        accuracy_pct = round((res.get("correct", 0) / attempted * 100), 1) if attempted > 0 else 0.0
+
+        # AI SWOT Analysis Engine
+        swot_data = generate_swot_analysis(records, res, exam_config)
+
+        # Pedagogical AI Explanations & Objections for Incorrect Answers
+        wrong_records = [r for r in records if r.get("evaluation") == "incorrect"]
+        wrong_questions = []
+        for wr in wrong_records[:30]:
+            exp = generate_smart_explanation(wr)
+            wrong_questions.append({
+                "question_number": wr.get("question_number", "?"),
+                "question_id": str(wr.get("question_id") or ""),
+                "section": wr.get("section", "General"),
+                "question_text": wr.get("question_text", ""),
+                "chosen_num": wr.get("chosen_option_number") or wr.get("selected_option_id") or "-",
+                "chosen_text": wr.get("chosen_option_text", ""),
+                "correct_num": wr.get("correct_option_number") or wr.get("correct_option_id") or "-",
+                "correct_text": wr.get("correct_option_text", ""),
+                "options": wr.get("options", {}),
+                "explanation": exp,
+                "objection_recommended": False,
+                "objection_reason": "अधिकृत संदर्भानुसार उत्तर प्रमाणित आहे. आक्षेप नोंदवण्यापूर्वी अधिकृत पाठ्यपुस्तकातील संदर्भ (बालभारती/शासकीय गॅझेट) तपासावा."
+            })
+
+        # All Questions Summary for Complete Review & Search
+        all_questions = []
+        for r in records:
+            all_questions.append({
+                "question_number": r.get("question_number", "?"),
+                "question_id": str(r.get("question_id") or ""),
+                "section": r.get("section", "General"),
+                "question_text": r.get("question_text", ""),
+                "evaluation": r.get("evaluation", "unanswered"),
+                "chosen_num": r.get("chosen_option_number") or r.get("selected_option_id") or "-",
+                "chosen_text": r.get("chosen_option_text", ""),
+                "correct_num": r.get("correct_option_number") or r.get("correct_option_id") or "-",
+                "correct_text": r.get("correct_option_text", ""),
+                "options": r.get("options", {})
+            })
 
         # Persist to database uploads table
         try:
@@ -5179,7 +5751,7 @@ def process_sheet_payload(
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         tg_user_id, safe_fn, "web_upload", detected_key, user_category,
-                        meta.get("post_name") or "General", meta.get("roll_number") or "",
+                        post_name, meta.get("roll_number") or "",
                         meta.get("candidate_name") or "परीक्षार्थी", score_val,
                         res.get("correct", 0), res.get("incorrect", 0), res.get("unattempted", 0),
                         rank_info.get("exam_rank", 1), rank_info.get("exam_percentile", 100.0), "web_upload"
@@ -5218,16 +5790,34 @@ def process_sheet_payload(
             "exam_title": exam_config.get("display_name") or exam_config.get("name") or detected_key,
             "exam_key": detected_key,
             "category": user_category,
+            "post_name": post_name,
             "total_questions": res.get("total_parsed", len(records)),
+            "attempted": attempted,
             "correct": res.get("correct", 0),
             "incorrect": res.get("incorrect", 0),
             "unanswered": res.get("unanswered", res.get("unattempted", 0)),
+            "accuracy": accuracy_pct,
             "raw_score": score_val,
             "max_marks": exam_config.get("total_marks", 200),
             "rank": rank_info.get("exam_rank", 1),
             "total_candidates": rank_info.get("exam_total", 1),
             "percentile": rank_info.get("exam_percentile", 100.0),
-            "section_scores": res.get("section_scores") or res.get("sections") or {}
+            "overall_rank": rank_info.get("overall_rank", rank_info.get("exam_rank", 1)),
+            "overall_total": rank_info.get("overall_total", rank_info.get("exam_total", 1)),
+            "overall_percentile": rank_info.get("overall_percentile", rank_info.get("exam_percentile", 100.0)),
+            "category_rank": rank_info.get("category_rank", rank_info.get("exam_rank", 1)),
+            "category_total": rank_info.get("category_total", rank_info.get("exam_total", 1)),
+            "category_percentile": rank_info.get("category_percentile", rank_info.get("exam_percentile", 100.0)),
+            "post_rank": rank_info.get("post_rank", rank_info.get("exam_rank", 1)),
+            "post_total": rank_info.get("post_total", rank_info.get("exam_total", 1)),
+            "post_percentile": rank_info.get("post_percentile", rank_info.get("exam_percentile", 100.0)),
+            "cutoff_zone": rank_info.get("zone", "N/A"),
+            "avg_score": rank_info.get("avg_score", score_val),
+            "top_score": rank_info.get("top_score", score_val),
+            "section_scores": res.get("section_scores") or res.get("sections") or {},
+            "swot": swot_data,
+            "wrong_questions": wrong_questions,
+            "all_questions": all_questions
         }
     except Exception as proc_err:
         logger.error(f"Error processing web uploaded sheet: {proc_err}", exc_info=True)
