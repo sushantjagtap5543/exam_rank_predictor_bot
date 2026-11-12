@@ -4613,11 +4613,22 @@ def render_upload_portal_html() -> str:
                 </button>
             </div>
 
-            <!-- Loader Screen -->
-            <div id="loadingSection" class="hidden py-12 text-center no-print">
+            <!-- Loader Screen with Progress -->
+            <div id="loadingSection" class="hidden py-8 text-center no-print">
                 <div class="inline-block animate-spin w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full mb-4"></div>
-                <h3 class="text-xl font-bold text-slate-100">AI रिस्पॉन्स शीट विश्लेषण सुरू आहे... ⏳</h3>
-                <p class="text-slate-400 text-sm mt-1">सर्व १०० प्रश्न, अधिकृत की, नेगेटिव्ह मार्किंग आणि राज्य रँक मोजली जात आहे...</p>
+                <h3 id="loadingTitle" class="text-xl font-bold text-slate-100">AI रिस्पॉन्स शीट विश्लेषण सुरू आहे... ⏳</h3>
+                <p id="loadingSubtitle" class="text-slate-400 text-sm mt-1">सर्व १०० प्रश्न, अधिकृत की, नेगेटिव्ह मार्किंग आणि राज्य रँक मोजली जात आहे...</p>
+
+                <!-- High-Speed Chunk Upload Progress Bar -->
+                <div id="uploadProgressBarContainer" class="hidden mt-6 max-w-md mx-auto text-left">
+                    <div class="flex justify-between text-xs text-slate-300 mb-1.5 font-semibold">
+                        <span id="uploadProgressText">अपलोड होत आहे: ०%</span>
+                        <span id="uploadChunkText">तुकडा ०/०</span>
+                    </div>
+                    <div class="w-full bg-slate-900 border border-slate-700 rounded-full h-3 overflow-hidden p-0.5">
+                        <div id="uploadProgressBar" class="bg-gradient-to-r from-indigo-500 to-purple-500 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
             </div>
 
             <!-- Error Box -->
@@ -4783,6 +4794,35 @@ def render_upload_portal_html() -> str:
             errorBox.classList.add('hidden');
         }
 
+        function readBlobAsBase64(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const res = reader.result;
+                    resolve(res.indexOf(',') !== -1 ? res.split(',')[1] : res);
+                };
+                reader.onerror = (err) => reject(err);
+                reader.readAsDataURL(blob);
+            });
+        }
+
+        async function tryExtractUrlFromPdf(file) {
+            try {
+                const slice1 = file.slice(0, 500000);
+                const text1 = await slice1.text();
+                const m1 = text1.match(/https?:\/\/[a-zA-Z0-9.\-_]*digialm\.com[^\s"'<>\)\\]+/i);
+                if (m1) return m1[0];
+
+                if (file.size > 500000) {
+                    const slice2 = file.slice(Math.max(0, file.size - 500000));
+                    const text2 = await slice2.text();
+                    const m2 = text2.match(/https?:\/\/[a-zA-Z0-9.\-_]*digialm\.com[^\s"'<>\)\\]+/i);
+                    if (m2) return m2[0];
+                }
+            } catch(e) {}
+            return null;
+        }
+
         submitBtn.onclick = async () => {
             errorBox.classList.add('hidden');
             const cat = document.getElementById('userCategory').value;
@@ -4793,31 +4833,102 @@ def render_upload_portal_html() -> str:
                     showError('कृपया तुमची रिस्पॉन्स शीट (PDF/HTML) निवडा.');
                     return;
                 }
-                startLoading();
-                const reader = new FileReader();
-                reader.onload = async () => {
+
+                startLoading('विश्लेषण सुरू आहे...', 'PDF मधील तपशील तपासत आहे...');
+
+                // Check if PDF contains embedded DigiALM URL for instant 1-sec scoring
+                const embeddedUrl = await tryExtractUrlFromPdf(selectedFile);
+                if (embeddedUrl) {
+                    setLoadingText('अधिकृत DigiALM लिंक सापडली! ⚡', 'थेट पोर्टलवरून निकाल व रँक तयार करत आहे...');
+                    await postSheetData({
+                        digialm_url: embeddedUrl,
+                        category: cat,
+                        exam: exam,
+                        telegram_user_id: telegramUid
+                    });
+                    return;
+                }
+
+                // If file is > 2 MB, use chunked upload (1.5 MB per chunk) to avoid reverse-proxy timeouts
+                const CHUNK_SIZE = 1.5 * 1024 * 1024;
+                if (selectedFile.size > 2 * 1024 * 1024) {
+                    const totalChunks = Math.ceil(selectedFile.size / CHUNK_SIZE);
+                    const uploadId = 'up_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+                    showProgressBar(true);
+
                     try {
-                        const b64 = reader.result.split(',')[1];
-                        await postSheetData({
-                            file_b64: b64,
-                            filename: selectedFile.name,
-                            category: cat,
-                            exam: exam,
-                            telegram_user_id: telegramUid
-                        });
+                        for (let i = 0; i < totalChunks; i++) {
+                            const start = i * CHUNK_SIZE;
+                            const end = Math.min(selectedFile.size, start + CHUNK_SIZE);
+                            const chunkBlob = selectedFile.slice(start, end);
+                            const chunkB64 = await readBlobAsBase64(chunkBlob);
+
+                            updateProgress(i + 1, totalChunks);
+
+                            const chunkPayload = {
+                                upload_id: uploadId,
+                                chunk_index: i,
+                                total_chunks: totalChunks,
+                                filename: selectedFile.name,
+                                category: cat,
+                                exam: exam,
+                                telegram_user_id: telegramUid,
+                                data: chunkB64
+                            };
+
+                            const res = await fetch('/api/upload_chunk', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(chunkPayload)
+                            });
+
+                            if (!res.ok) {
+                                throw new Error('तुकडा ' + (i+1) + '/' + totalChunks + ' अपलोड अयशस्वी (Status: ' + res.status + ')');
+                            }
+
+                            const data = await res.json();
+                            if (i === totalChunks - 1) {
+                                stopLoading();
+                                if (data.success) {
+                                    lastResultData = data;
+                                    showResults(data);
+                                } else {
+                                    document.getElementById('uploadSection').classList.remove('hidden');
+                                    showError(data.error || 'विश्लेषण करताना अडचण आली.');
+                                }
+                                return;
+                            }
+                        }
                     } catch (err) {
                         stopLoading();
-                        showError('ब्राउझरमध्ये फाईल वाचताना त्रुटी: ' + err.message);
+                        document.getElementById('uploadSection').classList.remove('hidden');
+                        showError('अपलोड त्रुटी: ' + err.message + '. कृपया फाईल पुन्हा निवडा किंवा DigiALM वेब लिंक वापरा.');
                     }
-                };
-                reader.readAsDataURL(selectedFile);
+                    return;
+                }
+
+                // Small file (<= 2 MB): Single shot upload
+                try {
+                    const b64 = await readBlobAsBase64(selectedFile);
+                    await postSheetData({
+                        file_b64: b64,
+                        filename: selectedFile.name,
+                        category: cat,
+                        exam: exam,
+                        telegram_user_id: telegramUid
+                    });
+                } catch (err) {
+                    stopLoading();
+                    document.getElementById('uploadSection').classList.remove('hidden');
+                    showError('ब्राउझरमध्ये फाईल वाचताना त्रुटी: ' + err.message);
+                }
             } else {
                 const url = document.getElementById('urlInput').value.trim();
                 if (!url || !url.startsWith('http')) {
                     showError('कृपया वैध DigiALM वेब लिंक टाका (उदा. https://cdn.digialm.com/...).');
                     return;
                 }
-                startLoading();
+                startLoading('थेट DigiALM निकाल तपासत आहे...', 'प्रश्नोत्तरे आणि अधिकृत की डाऊनलोड होत आहे...');
                 await postSheetData({
                     digialm_url: url,
                     category: cat,
@@ -4834,6 +4945,9 @@ def render_upload_portal_html() -> str:
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
+                if (!res.ok && res.status >= 500) {
+                    throw new Error('सर्व्हर तात्पुरता व्यस्त आहे (Status: ' + res.status + ')');
+                }
                 const data = await res.json();
                 stopLoading();
                 if (data.success) {
@@ -4846,17 +4960,46 @@ def render_upload_portal_html() -> str:
             } catch (err) {
                 stopLoading();
                 document.getElementById('uploadSection').classList.remove('hidden');
-                showError('सर्व्हरशी संपर्क होऊ शकला नाही: ' + err.message);
+                showError('सर्व्हरशी संपर्क होऊ शकला नाही: ' + err.message + ' (कृपया इंटरनेट किंवा DigiALM लिंक तपासा).');
             }
         }
 
-        function startLoading() {
+        function startLoading(title, sub) {
             document.getElementById('uploadSection').classList.add('hidden');
             document.getElementById('loadingSection').classList.remove('hidden');
+            if (title) document.getElementById('loadingTitle').textContent = title;
+            if (sub) document.getElementById('loadingSubtitle').textContent = sub;
+            showProgressBar(false);
+        }
+
+        function setLoadingText(title, sub) {
+            if (title) document.getElementById('loadingTitle').textContent = title;
+            if (sub) document.getElementById('loadingSubtitle').textContent = sub;
+        }
+
+        function showProgressBar(show) {
+            const barBox = document.getElementById('uploadProgressBarContainer');
+            if (show) {
+                barBox.classList.remove('hidden');
+                setLoadingText('मोठी फाईल तुकड्यांमध्ये सुरक्षित अपलोड होत आहे... 🚀', 'कृपया हे पेज बंद करू नका, काही सेकंदात अपलोड पूर्ण होईल.');
+            } else {
+                barBox.classList.add('hidden');
+            }
+        }
+
+        function updateProgress(current, total) {
+            const pct = Math.round((current / total) * 100);
+            document.getElementById('uploadProgressBar').style.width = pct + '%';
+            document.getElementById('uploadProgressText').textContent = 'अपलोड होत आहे: ' + pct + '%';
+            document.getElementById('uploadChunkText').textContent = 'तुकडा ' + current + '/' + total;
+            if (current === total) {
+                setLoadingText('AI रिस्पॉन्स शीट विश्लेषण सुरू आहे... ⏳', 'सर्व १०० प्रश्न, अधिकृत की आणि राज्य रँक मोजली जात आहे...');
+            }
         }
 
         function stopLoading() {
             document.getElementById('loadingSection').classList.add('hidden');
+            showProgressBar(false);
         }
 
         function showError(msg) {
@@ -4918,8 +5061,168 @@ def render_upload_portal_html() -> str:
 </body>
 </html>"""
 
+CHUNK_UPLOADS: Dict[str, dict] = {}
+CHUNK_UPLOADS_LOCK = threading.Lock()
+
+def cleanup_stale_chunk_uploads():
+    now = time.time()
+    with CHUNK_UPLOADS_LOCK:
+        stale_ids = [uid for uid, info in CHUNK_UPLOADS.items() if now - info.get("timestamp", 0) > 600]
+        for uid in stale_ids:
+            CHUNK_UPLOADS.pop(uid, None)
+
+def process_sheet_payload(
+    file_bytes: Optional[bytes] = None,
+    digialm_url: Optional[str] = None,
+    filename: str = "response_sheet.pdf",
+    user_category: str = "Open",
+    exam_override: str = "auto",
+    tg_user_id: int = 0
+) -> Tuple[int, dict]:
+    text = ""
+    safe_fn = re.sub(r"[^A-Za-z0-9._-]+", "_", filename) or "sheet.pdf"
+
+    try:
+        # Mode A: Direct DigiALM / TCS Web Link
+        if digialm_url:
+            is_safe, sec_err = validate_safe_url(digialm_url)
+            if not is_safe:
+                return 400, {"success": False, "error": f"असुरक्षित लिंक: {sec_err}"}
+
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            }
+            with httpx.Client(timeout=30.0, follow_redirects=True, headers=headers) as client:
+                resp = client.get(digialm_url)
+                if resp.status_code == 200 and len(resp.content) > 1000:
+                    text = parse_html_response_sheet(resp.text)
+                elif resp.status_code in (400, 403):
+                    m_headers = {
+                        "User-Agent": "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+                    }
+                    resp_m = client.get(digialm_url, headers=m_headers)
+                    if resp_m.status_code == 200 and len(resp_m.content) > 1000:
+                        text = parse_html_response_sheet(resp_m.text)
+
+        # Mode B: Uploaded PDF / HTML File
+        elif file_bytes:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_file = Path(tmp_dir) / safe_fn
+                tmp_file.write_bytes(file_bytes)
+
+                # Check if PDF contains embedded DigiALM live web URL
+                try:
+                    rec_url = recover_digialm_url_from_pdf(str(tmp_file))
+                    if rec_url:
+                        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+                        with httpx.Client(timeout=30.0, follow_redirects=True, headers=headers) as client:
+                            resp = client.get(rec_url)
+                            if resp.status_code == 200 and len(resp.content) > 1000:
+                                text = parse_html_response_sheet(resp.text)
+                except Exception as rec_err:
+                    logger.warning(f"Error fetching live DigiALM URL from web upload: {rec_err}")
+
+                # Fallback to direct PDF text / RapidOCR extraction
+                if not text.strip():
+                    text, err_code = extract_pdf_text_with_status(str(tmp_file))
+
+        if not text.strip():
+            return 200, {
+                "success": False,
+                "error": "या फाईल मधून मजकूर किंवा प्रश्न सापडले नाहीत. (स्कॅन अस्पष्ट असू शकते किंवा प्रश्नपत्रिका नसलेली फाईल असू शकते.)"
+            }
+
+        detected_key = detect_exam(text, EXAMS) if exam_override in ("auto", "", None) else exam_override
+        exam_config = EXAMS.get(detected_key, list(EXAMS.values())[0]) if EXAMS else {}
+        records = parse_answers(text)
+
+        if not records:
+            return 200, {
+                "success": False,
+                "error": "या रिस्पॉन्स शीटमध्ये उत्तरे (Answer Key / Chosen Options) सापडली नाहीत."
+            }
+
+        res = score_answers(records, exam_config)
+        meta = extract_post_and_metadata(text)
+        score_val = res.get("score", 0)
+        overall_scores, exam_scores, post_scores, cat_scores, post_cat_scores = get_candidate_scores(
+            detected_key, user_category, meta.get("post_name")
+        )
+        rank_info = estimate_cohort_rank(
+            score_val, exam_scores, user_category, cat_scores, overall_scores=overall_scores
+        )
+
+        # Persist to database uploads table
+        try:
+            with get_connection() as db:
+                db.execute(
+                    """INSERT INTO uploads(
+                        telegram_user_id, filename, storage_path, exam_key, category, post_name,
+                        roll_number, candidate_name, score, correct_count, incorrect_count, unanswered_count,
+                        rank, percentile, status
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        tg_user_id, safe_fn, "web_upload", detected_key, user_category,
+                        meta.get("post_name") or "General", meta.get("roll_number") or "",
+                        meta.get("candidate_name") or "परीक्षार्थी", score_val,
+                        res.get("correct", 0), res.get("incorrect", 0), res.get("unattempted", 0),
+                        rank_info.get("exam_rank", 1), rank_info.get("exam_percentile", 100.0), "web_upload"
+                    )
+                )
+        except Exception as db_e:
+            logger.warning(f"Could not record web upload to db: {db_e}")
+
+        # Optional: Send instant Telegram notification if telegram_user_id was passed
+        if tg_user_id and TOKEN:
+            try:
+                def _notify_tg():
+                    tg_text = (
+                        f"✅ <b>वेब पोर्टल निकाल तयार आहे!</b>\n\n"
+                        f"👤 <b>नाव:</b> {html.escape(meta.get('candidate_name') or 'परीक्षार्थी')}\n"
+                        f"🎯 <b>परीक्षा:</b> {html.escape(exam_config.get('name', detected_key))}\n"
+                        f"🏷️ <b>प्रवर्ग:</b> {html.escape(user_category)}\n"
+                        f"📊 <b>एकूण गुण:</b> <b>{score_val}</b> / {exam_config.get('total_marks', 200)}\n"
+                        f"🏆 <b>संभाव्य राज्य रँक:</b> <b>#{rank_info.get('exam_rank', 1)}</b> / {rank_info.get('exam_total', 1)}\n"
+                        f"📈 <b>पर्सेंटाईल:</b> <b>{rank_info.get('exam_percentile', 100.0)}%</b>\n"
+                        f"✅ बरोबर: {res.get('correct', 0)} | ❌ चूक: {res.get('incorrect', 0)}"
+                    )
+                    httpx.post(
+                        f"https://api.telegram.org/bot{TOKEN}/sendMessage",
+                        json={"chat_id": tg_user_id, "text": tg_text, "parse_mode": "HTML"},
+                        timeout=5.0
+                    )
+                threading.Thread(target=_notify_tg, daemon=True).start()
+            except Exception:
+                pass
+
+        return 200, {
+            "success": True,
+            "candidate_name": meta.get("candidate_name") or "परीक्षार्थी",
+            "roll_number": meta.get("roll_number") or "उपलब्ध नाही",
+            "exam_title": exam_config.get("name", detected_key),
+            "exam_key": detected_key,
+            "category": user_category,
+            "total_questions": res.get("total_parsed", len(records)),
+            "correct": res.get("correct", 0),
+            "incorrect": res.get("incorrect", 0),
+            "unanswered": res.get("unattempted", 0),
+            "raw_score": score_val,
+            "max_marks": exam_config.get("total_marks", 200),
+            "rank": rank_info.get("exam_rank", 1),
+            "total_candidates": rank_info.get("exam_total", 1),
+            "percentile": rank_info.get("exam_percentile", 100.0),
+            "section_scores": res.get("section_scores", {})
+        }
+    except Exception as proc_err:
+        logger.error(f"Error processing web uploaded sheet: {proc_err}", exc_info=True)
+        return 500, {"success": False, "error": f"सर्व्हर त्रुटी: {proc_err}"}
+
 class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
     def send_security_headers(self, is_admin: bool = False):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY" if is_admin else "SAMEORIGIN")
         self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
@@ -5538,10 +5841,11 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 max_admin_upload = 524_288_000
 
         # Non-admin endpoints strictly capped at 1 MB except public response sheet upload (up to max_admin_upload e.g. 500 MB)
-        max_allowed_len = max_admin_upload if path in ("/api/admin/upload_pdf", "/api/upload_sheet") else 1_048_576
+        max_allowed_len = max_admin_upload if path in ("/api/admin/upload_pdf", "/api/upload_sheet", "/api/upload_chunk") else 1_048_576
         if content_len > max_allowed_len:
             self.send_response(413)
             self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_security_headers()
             self.end_headers()
             err_limit_mb = max_allowed_len // (1024 * 1024)
             self.wfile.write(json.dumps({"error": f"Payload Too Large: Maximum allowed size is {err_limit_mb} MB"}).encode())
@@ -5556,6 +5860,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             except Exception:
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_security_headers()
                 self.end_headers()
                 self.wfile.write(json.dumps({"error": "Bad Request: Malformed JSON payload"}).encode("utf-8"))
                 return
@@ -5578,7 +5883,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         ua = self.headers.get("User-Agent", "Unknown")
         ref = self.headers.get("Referer", "")
 
-        # Public API: High-speed Response Sheet Processing (No 20 MB Telegram limit!)
+        # Public API: High-speed Response Sheet Processing (Single Shot)
         if path == "/api/upload_sheet":
             if is_ip_rate_limited(client_ip, max_requests=30, window_seconds=60):
                 self.send_response(429)
@@ -5602,173 +5907,126 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             if not digialm_url and not file_b64:
                 self.send_response(400)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_security_headers()
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "error": "कृपया PDF फाईल निवडा किंवा DigiALM वेब लिंक टाका."}).encode("utf-8"))
                 return
 
-            text = ""
-            safe_fn = re.sub(r"[^A-Za-z0-9._-]+", "_", filename) or "sheet.pdf"
+            pdf_bytes = None
+            if file_b64:
+                if "," in file_b64:
+                    file_b64 = file_b64.split(",", 1)[1]
+                pdf_bytes = base64.b64decode(file_b64)
+                del file_b64
 
+            status_code, resp_dict = process_sheet_payload(
+                file_bytes=pdf_bytes,
+                digialm_url=digialm_url or None,
+                filename=filename,
+                user_category=user_category,
+                exam_override=exam_override,
+                tg_user_id=tg_user_id
+            )
+            self.send_response(status_code)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_security_headers()
+            self.end_headers()
+            self.wfile.write(json.dumps(resp_dict, ensure_ascii=False).encode("utf-8"))
+            return
+
+        # Public API: Chunked Response Sheet Processing (Resilient to reverse-proxy timeouts & size limits)
+        if path == "/api/upload_chunk":
+            if is_ip_rate_limited(client_ip, max_requests=120, window_seconds=60):
+                self.send_response(429)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_security_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "error": "वेळ मर्यादा: कृपया १ मिनिटानंतर पुन्हा प्रयत्न करा."}).encode("utf-8"))
+                return
+
+            upload_id = str(data.get("upload_id") or "").strip()
+            chunk_data_b64 = data.get("data", "")
+            filename = data.get("filename", "response_sheet.pdf")
+            user_category = data.get("category", "Open")
+            exam_override = data.get("exam", "auto")
+            tg_user_id = data.get("telegram_user_id")
             try:
-                # Mode A: Direct DigiALM / TCS Web Link
-                if digialm_url:
-                    is_safe, sec_err = validate_safe_url(digialm_url)
-                    if not is_safe:
-                        self.send_response(400)
-                        self.send_header("Content-Type", "application/json; charset=utf-8")
-                        self.end_headers()
-                        self.wfile.write(json.dumps({"success": False, "error": f"असुरक्षित लिंक: {sec_err}"}).encode("utf-8"))
-                        return
+                chunk_index = int(data.get("chunk_index", 0))
+                total_chunks = int(data.get("total_chunks", 1))
+                tg_user_id = int(tg_user_id) if tg_user_id else 0
+            except (ValueError, TypeError):
+                chunk_index, total_chunks, tg_user_id = 0, 1, 0
 
-                    headers = {
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+            if not upload_id or not chunk_data_b64 or total_chunks < 1:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_security_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "error": "अवैध चंक डेटा (Invalid chunk payload)"}).encode("utf-8"))
+                return
+
+            cleanup_stale_chunk_uploads()
+
+            if "," in chunk_data_b64:
+                chunk_data_b64 = chunk_data_b64.split(",", 1)[1]
+            chunk_bytes = base64.b64decode(chunk_data_b64)
+            del chunk_data_b64
+
+            is_complete = False
+            all_bytes = None
+            entry_meta = {}
+
+            with CHUNK_UPLOADS_LOCK:
+                if upload_id not in CHUNK_UPLOADS:
+                    CHUNK_UPLOADS[upload_id] = {
+                        "chunks": {},
+                        "total_chunks": total_chunks,
+                        "filename": filename,
+                        "category": user_category,
+                        "exam": exam_override,
+                        "telegram_user_id": tg_user_id,
+                        "timestamp": time.time()
                     }
-                    with httpx.Client(timeout=30.0, follow_redirects=True, headers=headers) as client:
-                        resp = client.get(digialm_url)
-                        if resp.status_code == 200 and len(resp.content) > 1000:
-                            text = parse_html_response_sheet(resp.text)
-                        elif resp.status_code in (400, 403):
-                            # Mobile fallback
-                            m_headers = {
-                                "User-Agent": "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
-                            }
-                            resp_m = client.get(digialm_url, headers=m_headers)
-                            if resp_m.status_code == 200 and len(resp_m.content) > 1000:
-                                text = parse_html_response_sheet(resp_m.text)
+                entry = CHUNK_UPLOADS[upload_id]
+                entry["timestamp"] = time.time()
+                entry["chunks"][chunk_index] = chunk_bytes
 
-                # Mode B: Uploaded PDF / HTML File
-                elif file_b64:
-                    if "," in file_b64:
-                        file_b64 = file_b64.split(",", 1)[1]
+                if len(entry["chunks"]) == total_chunks:
+                    is_complete = True
+                    all_bytes = b"".join(entry["chunks"][i] for i in range(total_chunks))
+                    entry_meta = {
+                        "filename": entry["filename"],
+                        "category": entry["category"],
+                        "exam": entry["exam"],
+                        "telegram_user_id": entry["telegram_user_id"]
+                    }
+                    del CHUNK_UPLOADS[upload_id]
 
-                    pdf_bytes = base64.b64decode(file_b64)
-
-                    with tempfile.TemporaryDirectory() as tmp_dir:
-                        tmp_file = Path(tmp_dir) / safe_fn
-                        tmp_file.write_bytes(pdf_bytes)
-
-                        # Check if PDF contains embedded DigiALM live web URL
-                        try:
-                            rec_url = recover_digialm_url_from_pdf(str(tmp_file))
-                            if rec_url:
-                                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-                                with httpx.Client(timeout=30.0, follow_redirects=True, headers=headers) as client:
-                                    resp = client.get(rec_url)
-                                    if resp.status_code == 200 and len(resp.content) > 1000:
-                                        text = parse_html_response_sheet(resp.text)
-                        except Exception as rec_err:
-                            logger.warning(f"Error fetching live DigiALM URL from web upload: {rec_err}")
-
-                        # Fallback to direct PDF text / RapidOCR extraction
-                        if not text.strip():
-                            text, err_code = extract_pdf_text_with_status(str(tmp_file))
-
-                if not text.strip():
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self.end_headers()
-                    self.wfile.write(json.dumps({
-                        "success": False,
-                        "error": "या फाईल मधून मजकूर किंवा प्रश्न सापडले नाहीत. (स्कॅन अस्पष्ट असू शकते किंवा प्रश्नपत्रिका नसलेली फाईल असू शकते.)"
-                    }, ensure_ascii=False).encode("utf-8"))
-                    return
-
-                detected_key = detect_exam(text, EXAMS) if exam_override in ("auto", "", None) else exam_override
-                exam_config = EXAMS.get(detected_key, list(EXAMS.values())[0]) if EXAMS else {}
-                records = parse_answers(text)
-
-                if not records:
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self.end_headers()
-                    self.wfile.write(json.dumps({
-                        "success": False,
-                        "error": "या रिस्पॉन्स शीटमध्ये उत्तरे (Answer Key / Chosen Options) सापडली नाहीत."
-                    }, ensure_ascii=False).encode("utf-8"))
-                    return
-
-                res = score_answers(records, exam_config)
-                meta = extract_post_and_metadata(text)
-                score_val = res.get("score", 0)
-                overall_scores, exam_scores, post_scores, cat_scores, post_cat_scores = get_candidate_scores(
-                    detected_key, user_category, meta.get("post_name")
+            if is_complete:
+                status_code, resp_dict = process_sheet_payload(
+                    file_bytes=all_bytes,
+                    filename=entry_meta["filename"],
+                    user_category=entry_meta["category"],
+                    exam_override=entry_meta["exam"],
+                    tg_user_id=entry_meta["telegram_user_id"]
                 )
-                rank_info = estimate_cohort_rank(
-                    score_val, exam_scores, user_category, cat_scores, overall_scores=overall_scores
-                )
-
-                # Persist to database uploads table
-                try:
-                    with get_connection() as db:
-                        db.execute(
-                            """INSERT INTO uploads(
-                                telegram_user_id, filename, storage_path, exam_key, category, post_name,
-                                roll_number, candidate_name, score, correct_count, incorrect_count, unanswered_count,
-                                rank, percentile, status
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                            (
-                                tg_user_id, safe_fn, "web_upload", detected_key, user_category,
-                                meta.get("post_name") or "General", meta.get("roll_number") or "",
-                                meta.get("candidate_name") or "परीक्षार्थी", score_val,
-                                res.get("correct", 0), res.get("incorrect", 0), res.get("unattempted", 0),
-                                rank_info.get("exam_rank", 1), rank_info.get("exam_percentile", 100.0), "web_upload"
-                            )
-                        )
-                except Exception as db_e:
-                    logger.warning(f"Could not record web upload to db: {db_e}")
-
-                # Optional: Send instant Telegram notification if telegram_user_id was passed
-                if tg_user_id and TOKEN:
-                    try:
-                        def _notify_tg():
-                            tg_text = (
-                                f"✅ <b>वेब पोर्टल निकाल तयार आहे!</b>\n\n"
-                                f"👤 <b>नाव:</b> {html.escape(meta.get('candidate_name') or 'परीक्षार्थी')}\n"
-                                f"🎯 <b>परीक्षा:</b> {html.escape(exam_config.get('name', detected_key))}\n"
-                                f"🏷️ <b>प्रवर्ग:</b> {html.escape(user_category)}\n"
-                                f"📊 <b>एकूण गुण:</b> <b>{score_val}</b> / {exam_config.get('total_marks', 200)}\n"
-                                f"🏆 <b>संभाव्य राज्य रँक:</b> <b>#{rank_info.get('exam_rank', 1)}</b> / {rank_info.get('exam_total', 1)}\n"
-                                f"📈 <b>पर्सेंटाईल:</b> <b>{rank_info.get('exam_percentile', 100.0)}%</b>\n"
-                                f"✅ बरोबर: {res.get('correct', 0)} | ❌ चूक: {res.get('incorrect', 0)}"
-                            )
-                            httpx.post(
-                                f"https://api.telegram.org/bot{TOKEN}/sendMessage",
-                                json={"chat_id": tg_user_id, "text": tg_text, "parse_mode": "HTML"},
-                                timeout=5.0
-                            )
-                        threading.Thread(target=_notify_tg, daemon=True).start()
-                    except Exception:
-                        pass
-
+                self.send_response(status_code)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_security_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps(resp_dict, ensure_ascii=False).encode("utf-8"))
+                return
+            else:
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_security_headers()
                 self.end_headers()
                 self.wfile.write(json.dumps({
                     "success": True,
-                    "candidate_name": meta.get("candidate_name") or "परीक्षार्थी",
-                    "roll_number": meta.get("roll_number") or "उपलब्ध नाही",
-                    "exam_title": exam_config.get("name", detected_key),
-                    "exam_key": detected_key,
-                    "category": user_category,
-                    "total_questions": res.get("total_parsed", len(records)),
-                    "correct": res.get("correct", 0),
-                    "incorrect": res.get("incorrect", 0),
-                    "unanswered": res.get("unattempted", 0),
-                    "raw_score": score_val,
-                    "max_marks": exam_config.get("total_marks", 200),
-                    "rank": rank_info.get("exam_rank", 1),
-                    "total_candidates": rank_info.get("exam_total", 1),
-                    "percentile": rank_info.get("exam_percentile", 100.0),
-                    "section_scores": res.get("section_scores", {})
-                }, ensure_ascii=False).encode("utf-8"))
-                return
-            except Exception as proc_err:
-                logger.error(f"Error processing web uploaded sheet: {proc_err}", exc_info=True)
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps({"success": False, "error": f"सर्व्हर त्रुटी: {proc_err}"}).encode("utf-8"))
+                    "status": "chunk_saved",
+                    "chunk_index": chunk_index,
+                    "total_chunks": total_chunks
+                }).encode("utf-8"))
                 return
 
         # Admin API: Sync folder PDFs to digital_products

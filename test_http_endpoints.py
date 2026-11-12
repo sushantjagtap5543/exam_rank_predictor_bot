@@ -227,5 +227,38 @@ class TestHTTPEndpoints(unittest.TestCase):
         # Must return valid JSON without crashing with "cannot access local variable 'base64'"
         self.assertIn("success", data)
 
+        # 4. Test POST /api/upload_chunk (multi-chunk resilient upload)
+        chunk1 = base64.b64encode(b"%PDF-1.4 chunk one ").decode("utf-8")
+        chunk2 = base64.b64encode(b"chunk two content").decode("utf-8")
+        upload_id = "test_up_123"
+
+        # Chunk 1 of 2
+        req_c1 = urllib.request.Request(
+            f"{self.base_url}/api/upload_chunk",
+            data=json.dumps({
+                "upload_id": upload_id, "chunk_index": 0, "total_chunks": 2,
+                "filename": "test_chunked.pdf", "data": chunk1, "category": "Open"
+            }).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        resp_c1 = urllib.request.urlopen(req_c1)
+        self.assertEqual(resp_c1.status, 200)
+        d_c1 = json.loads(resp_c1.read().decode("utf-8"))
+        self.assertEqual(d_c1.get("status"), "chunk_saved")
+
+        # Chunk 2 of 2 (triggers assembly and processing)
+        req_c2 = urllib.request.Request(
+            f"{self.base_url}/api/upload_chunk",
+            data=json.dumps({
+                "upload_id": upload_id, "chunk_index": 1, "total_chunks": 2,
+                "filename": "test_chunked.pdf", "data": chunk2, "category": "Open"
+            }).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        resp_c2 = urllib.request.urlopen(req_c2)
+        self.assertEqual(resp_c2.status, 200)
+        d_c2 = json.loads(resp_c2.read().decode("utf-8"))
+        self.assertIn("success", d_c2)
+
 if __name__ == "__main__":
     unittest.main()
