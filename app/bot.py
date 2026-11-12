@@ -1995,10 +1995,10 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
 
         if not downloaded or not Path(path).is_file() or Path(path).stat().st_size == 0:
             is_large_file = file_size >= 20_000_000
-            admin_panel_link = f"{get_store_web_url()}/admin"
+            web_upload_link = f"{get_store_web_url()}/upload"
             calc_kb = [
-                [InlineKeyboardButton("✍️ थेट गुण नोंदवा (Manual Score & Rank)", callback_data="manual_calc")],
-                [InlineKeyboardButton("🌐 ॲडमिन वेब पोर्टलवरून अपलोड करा", url=admin_panel_link)]
+                [InlineKeyboardButton("🌐 वेबवरून थेट अपलोड करा (कोणतीही साईज मर्यादा नाही)", url=web_upload_link)],
+                [InlineKeyboardButton("✍️ थेट गुण नोंदवा (Manual Score & Rank)", callback_data="manual_calc")]
             ]
 
             if is_large_file:
@@ -2006,11 +2006,11 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
                 await safe_edit_message(
                     status_msg,
                     f"⚠️ <b>मोठी फाईल मर्यादा ({size_mb} MB):</b>\n"
-                    "Telegram Bot API च्या सुरक्षेच्या नियमांनुसार २० MB पेक्षा मोठ्या फाईल्ससाठी थेट डाऊनलोड वेळ मर्यादा संपली किंवा ब्लॉक झाली आहे.\n\n"
+                    "Telegram Bot API च्या अधिकृत नियमांनुसार २० MB पेक्षा मोठ्या फाईल्स थेट बॉट API द्वारे डाऊनलोड होऊ शकत नाहीत.\n\n"
                     "💡 <b>या फाईलसाठी पुढील सोपे पर्याय वापरा:</b>\n\n"
                     "1️⃣ <b>थेट DigiALM लिंक (शिफारस):</b> तुमच्या रिस्पॉन्स शीटची थेट वेब लिंक येथे चॅटमध्ये पेस्ट करा (उदा. <code>https://cdn.digialm.com/...</code>).\n"
                     "<i>(कोणतीही फाईल अपलोड न करता १ सेकंदात निकाल व रँक मिळते!)</i>\n\n"
-                    f"2️⃣ <b>वेब पोर्टल:</b> ही फाईल थेट <b>{admin_panel_link}</b> वरून अपलोड करा (कोणतीही २० MB मर्यादा नाही).\n\n"
+                    f"2️⃣ <b>वेब अपलोड पोर्टल:</b> ही फाईल थेट <b>{web_upload_link}</b> वरून अपलोड करा (कोणतीही २० MB मर्यादा नाही, २५ MB+ फाईल्स १ सेकंदात तपासल्या जातात).\n\n"
                     "3️⃣ <b>फाईल कॉम्प्रेस करा:</b> ilovepdf.com किंवा तत्सम टूल वापरून ही फाईल २० MB च्या आत कॉम्प्रेस करून पुन्हा पाठवा.\n\n"
                     "4️⃣ <b>किंवा थेट गुण नोंदवा:</b> खालील बटणावर क्लिक करून तुमचे गुण नोंदवा व संभाव्य रँक तपासा:",
                     parse_mode="HTML",
@@ -2024,7 +2024,7 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
                     "तुमच्या DigiALM / परीक्षा पोर्टलची <b>थेट वेब लिंक</b> येथे चॅटमध्ये पेस्ट करा (उदा. <code>https://cdn.digialm.com/...</code>)\n"
                     "<i>(कोणतीही फाईल अपलोड न करता १ सेकंदात निकाल व रँक मिळते!)</i>",
                     parse_mode="HTML",
-                    reply_markup=InlineKeyboardMarkup(calc_kb[:1])
+                    reply_markup=InlineKeyboardMarkup(calc_kb[1:])
                 )
             return
 
@@ -4502,6 +4502,230 @@ async def set_bot_commands(application: Application):
     except Exception as e:
         logger.warning(f"Could not set bot commands or description: {e}")
 
+def render_upload_portal_html() -> str:
+    """Renders the public Web Upload & Rank Predictor page for response sheets of any size."""
+    return """<!DOCTYPE html>
+<html lang="mr" class="h-full bg-slate-900 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ExamRankers — रिस्पॉन्स शीट अपलोड व रँक प्रिडिक्टर</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>body { font-family: 'Mukta', sans-serif; }</style>
+</head>
+<body class="min-h-full flex flex-col justify-between p-4 sm:p-6 md:p-8">
+    <div class="max-w-2xl mx-auto w-full">
+        <header class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-600 shadow-lg shadow-indigo-500/30 mb-4">
+                <span class="text-3xl">🎯</span>
+            </div>
+            <h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-100 to-indigo-200 bg-clip-text text-transparent">
+                ExamRankers India
+            </h1>
+            <p class="text-slate-400 mt-2 text-base sm:text-lg">
+                रिस्पॉन्स शीट वेब अपलोड पोर्टल <span class="bg-indigo-500/20 text-indigo-300 text-xs px-2.5 py-1 rounded-full font-semibold border border-indigo-500/30 ml-1">कोणतीही साईज मर्यादा नाही (५०० MB पर्यंत)</span>
+            </p>
+        </header>
+
+        <div class="bg-slate-800/80 backdrop-blur-md rounded-2xl border border-slate-700/80 p-6 sm:p-8 shadow-xl">
+            <div id="uploadSection">
+                <div class="mb-5">
+                    <label class="block text-sm font-semibold text-slate-200 mb-2">१. परीक्षा प्रवर्ग (Category) निवडा:</label>
+                    <select id="userCategory" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <option value="Open">Open / General (खुला)</option>
+                        <option value="OBC">OBC (इतर मागास वर्ग)</option>
+                        <option value="SC">SC (अनुसूचित जाती)</option>
+                        <option value="ST">ST (अनुसूचित जमाती)</option>
+                        <option value="EWS">EWS (आर्थिक दुर्बल घटक)</option>
+                        <option value="VJ-A">VJ-A / DT-A (विमुक्त जाती)</option>
+                        <option value="NT-B">NT-B (भटक्या जमाती ब)</option>
+                        <option value="NT-C">NT-C (भटक्या जमाती क)</option>
+                        <option value="NT-D">NT-D (भटक्या जमाती ड)</option>
+                        <option value="SBC">SBC (विशेष मागास प्रवर्ग)</option>
+                    </select>
+                </div>
+
+                <div class="mb-6">
+                    <label class="block text-sm font-semibold text-slate-200 mb-2">२. तुमची Response Sheet (PDF / HTML फाईल) निवडा:</label>
+                    <div id="dropZone" class="border-2 border-dashed border-slate-600 hover:border-indigo-500 rounded-2xl p-8 text-center cursor-pointer transition-all bg-slate-900/50 hover:bg-slate-900/80">
+                        <input type="file" id="fileInput" accept=".pdf,.html,.htm" class="hidden" />
+                        <div class="text-4xl mb-2">📄</div>
+                        <div id="filePrompt" class="text-slate-300 font-semibold text-base sm:text-lg">
+                            येथे क्लिक करा किंवा PDF फाईल ड्रॅग करा
+                        </div>
+                        <p class="text-xs text-slate-400 mt-1">
+                            मोठ्या फाईल्स (२० MB, २५ MB, ५० MB, १०० MB+) थेट समर्थित
+                        </p>
+                        <div id="selectedFileName" class="hidden mt-3 inline-block bg-indigo-950/80 text-indigo-300 border border-indigo-500/40 px-3 py-1.5 rounded-lg text-sm font-mono font-medium"></div>
+                    </div>
+                </div>
+
+                <button id="submitBtn" class="w-full bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg shadow-indigo-500/25 transition-all text-lg flex items-center justify-center gap-2">
+                    <span>📊 गुण व रँक तपासा</span>
+                </button>
+            </div>
+
+            <div id="loadingSection" class="hidden py-12 text-center">
+                <div class="inline-block animate-spin w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full mb-4"></div>
+                <h3 class="text-xl font-bold text-slate-100">AI विश्लेषण सुरू आहे... ⏳</h3>
+                <p class="text-slate-400 text-sm mt-1">सर्व प्रश्न, उत्तरे आणि नेगेटिव्ह मार्किंग तपासली जात आहेत...</p>
+            </div>
+
+            <div id="errorBox" class="hidden mt-4 p-4 rounded-xl bg-red-950/80 border border-red-500/50 text-red-200 text-sm"></div>
+
+            <div id="resultSection" class="hidden">
+                <div class="border-b border-slate-700 pb-4 mb-5 flex items-center justify-between">
+                    <div>
+                        <span class="text-xs uppercase tracking-wider text-indigo-400 font-bold">निकाल पत्रिका</span>
+                        <h2 id="resCandidate" class="text-2xl font-bold text-white">परीक्षार्थी</h2>
+                        <p id="resExam" class="text-sm text-slate-400">परीक्षा निकाल</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-xs text-slate-400">प्रवर्ग:</span>
+                        <span id="resCategory" class="block font-bold text-indigo-300 text-lg">Open</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                    <div class="bg-slate-900/80 border border-slate-700/60 p-3.5 rounded-xl text-center">
+                        <div class="text-xs text-slate-400 font-semibold mb-1">एकूण गुण (Score)</div>
+                        <div id="resScore" class="text-2xl sm:text-3xl font-extrabold text-amber-400">0</div>
+                    </div>
+                    <div class="bg-slate-900/80 border border-slate-700/60 p-3.5 rounded-xl text-center">
+                        <div class="text-xs text-slate-400 font-semibold mb-1">संभाव्य रँक</div>
+                        <div id="resRank" class="text-2xl sm:text-3xl font-extrabold text-indigo-400">#1</div>
+                    </div>
+                    <div class="bg-slate-900/80 border border-slate-700/60 p-3.5 rounded-xl text-center">
+                        <div class="text-xs text-slate-400 font-semibold mb-1">बरोबर उत्तरे</div>
+                        <div id="resCorrect" class="text-2xl sm:text-3xl font-extrabold text-emerald-400">0</div>
+                    </div>
+                    <div class="bg-slate-900/80 border border-slate-700/60 p-3.5 rounded-xl text-center">
+                        <div class="text-xs text-slate-400 font-semibold mb-1">चूक उत्तरे</div>
+                        <div id="resIncorrect" class="text-2xl sm:text-3xl font-extrabold text-rose-400">0</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4 mb-6 text-sm text-slate-300 space-y-2">
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">अनुक्रमांक (Roll No):</span>
+                        <span id="resRoll" class="font-mono font-bold text-white">-</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">एकूण सोडवलेले प्रश्न:</span>
+                        <span id="resTotalQ" class="font-bold text-white">-</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">पर्सेंटाईल (Percentile):</span>
+                        <span id="resPercentile" class="font-bold text-emerald-300">-</span>
+                    </div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <button onclick="location.reload()" class="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-semibold py-3 px-4 rounded-xl text-center transition-all">
+                        🔄 दुसरी फाईल तपासा
+                    </button>
+                    <a href="https://t.me/ExamRankersIndiaBot" class="flex-1 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 text-white font-semibold py-3 px-4 rounded-xl text-center transition-all flex items-center justify-center gap-2">
+                        <span>🤖 टेलिग्राम बॉट उघडा</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <footer class="mt-8 text-center text-xs text-slate-400">
+            ExamRankers India © 2026 • AI-Powered TCS & IBPS Exam Analytics Platform
+        </footer>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const selectedFileName = document.getElementById('selectedFileName');
+        const submitBtn = document.getElementById('submitBtn');
+        const errorBox = document.getElementById('errorBox');
+        let selectedFile = null;
+
+        dropZone.onclick = () => fileInput.click();
+        fileInput.onchange = (e) => {
+            if (e.target.files.length) handleFile(e.target.files[0]);
+        };
+        dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('border-indigo-400'); };
+        dropZone.ondragleave = () => { dropZone.classList.remove('border-indigo-400'); };
+        dropZone.ondrop = (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-indigo-400');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        };
+
+        function handleFile(file) {
+            selectedFile = file;
+            selectedFileName.textContent = file.name + ' (' + (file.size / (1024*1024)).toFixed(1) + ' MB)';
+            selectedFileName.classList.remove('hidden');
+            errorBox.classList.add('hidden');
+        }
+
+        submitBtn.onclick = async () => {
+            if (!selectedFile) {
+                showError('कृपया तुमची रिस्पॉन्स शीट (PDF/HTML) निवडा.');
+                return;
+            }
+            errorBox.classList.add('hidden');
+            document.getElementById('uploadSection').classList.add('hidden');
+            document.getElementById('loadingSection').classList.remove('hidden');
+
+            const reader = new FileReader();
+            reader.onload = async () => {
+                try {
+                    const b64 = reader.result.split(',')[1];
+                    const cat = document.getElementById('userCategory').value;
+                    const res = await fetch('/api/upload_sheet', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            file_b64: b64,
+                            filename: selectedFile.name,
+                            category: cat
+                        })
+                    });
+                    const data = await res.json();
+                    document.getElementById('loadingSection').classList.add('hidden');
+                    if (data.success) {
+                        showResults(data);
+                    } else {
+                        document.getElementById('uploadSection').classList.remove('hidden');
+                        showError(data.error || 'विश्लेषण करताना अडचण आली.');
+                    }
+                } catch (err) {
+                    document.getElementById('loadingSection').classList.add('hidden');
+                    document.getElementById('uploadSection').classList.remove('hidden');
+                    showError('सर्व्हरशी संपर्क होऊ शकला नाही: ' + err.message);
+                }
+            };
+            reader.readAsDataURL(selectedFile);
+        };
+
+        function showError(msg) {
+            errorBox.textContent = msg;
+            errorBox.classList.remove('hidden');
+        }
+
+        function showResults(data) {
+            document.getElementById('resCandidate').textContent = data.candidate_name || 'परीक्षार्थी';
+            document.getElementById('resExam').textContent = data.exam_title || 'परीक्षा निकाल';
+            document.getElementById('resCategory').textContent = data.category || 'Open';
+            document.getElementById('resScore').textContent = data.raw_score + ' / ' + data.max_marks;
+            document.getElementById('resRank').textContent = '#' + data.rank + ' / ' + data.total_candidates;
+            document.getElementById('resCorrect').textContent = data.correct;
+            document.getElementById('resIncorrect').textContent = data.incorrect;
+            document.getElementById('resRoll').textContent = data.roll_number || 'N/A';
+            document.getElementById('resTotalQ').textContent = data.total_questions;
+            document.getElementById('resPercentile').textContent = (data.percentile ? data.percentile.toFixed(2) + '%' : 'N/A');
+            document.getElementById('resultSection').classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>"""
+
 class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
     def send_security_headers(self, is_admin: bool = False):
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -5038,6 +5262,18 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 logger.debug("Client disconnected while downloading full content zip")
             return
 
+        # 5b. Public Web Upload & Score/Rank Predictor Portal (No Telegram 20MB limit!)
+        if path in ("/upload", "/sheet", "/rank_calculator"):
+            portal_html = render_upload_portal_html()
+            html_bytes = portal_html.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(html_bytes)))
+            self.send_security_headers()
+            self.end_headers()
+            self.wfile.write(html_bytes)
+            return
+
         # 6. Default Root / Store: Serve ExamRankers Digital Products Storefront!
         client_ip = (
             self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
@@ -5109,8 +5345,8 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             except ValueError:
                 max_admin_upload = 524_288_000
 
-        # Non-admin endpoints strictly capped at 1 MB
-        max_allowed_len = max_admin_upload if path == "/api/admin/upload_pdf" else 1_048_576
+        # Non-admin endpoints strictly capped at 1 MB except public response sheet upload (up to max_admin_upload e.g. 500 MB)
+        max_allowed_len = max_admin_upload if path in ("/api/admin/upload_pdf", "/api/upload_sheet") else 1_048_576
         if content_len > max_allowed_len:
             self.send_response(413)
             self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -5149,6 +5385,110 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
 
         ua = self.headers.get("User-Agent", "Unknown")
         ref = self.headers.get("Referer", "")
+
+        # Public API: High-speed Response Sheet Processing (No 20 MB Telegram limit!)
+        if path == "/api/upload_sheet":
+            file_b64 = data.get("file_b64", "")
+            filename = data.get("filename", "response_sheet.pdf")
+            user_category = data.get("category", "Open")
+            exam_override = data.get("exam", "auto")
+
+            if not file_b64:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "error": "फाईल डेटा आढळला नाही (No file content provided)."}).encode("utf-8"))
+                return
+
+            try:
+                pdf_bytes = base64.b64decode(file_b64)
+            except Exception as b64_err:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "error": f"Invalid base64 payload: {b64_err}"}).encode("utf-8"))
+                return
+
+            try:
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    safe_fn = re.sub(r"[^A-Za-z0-9._-]+", "_", filename) or "sheet.pdf"
+                    tmp_file = Path(tmp_dir) / safe_fn
+                    tmp_file.write_bytes(pdf_bytes)
+
+                    text = ""
+                    # Check if PDF contains DigiALM live web URL
+                    try:
+                        rec_url = recover_digialm_url_from_pdf(str(tmp_file))
+                        if rec_url:
+                            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+                            with httpx.Client(timeout=30.0, follow_redirects=True, headers=headers) as client:
+                                resp = client.get(rec_url)
+                                if resp.status_code == 200 and len(resp.content) > 1000:
+                                    text = parse_html_response_sheet(resp.text)
+                    except Exception as rec_err:
+                        logger.warning(f"Error fetching live DigiALM URL from web upload: {rec_err}")
+
+                    # Fallback to direct PDF text / RapidOCR extraction
+                    if not text.strip():
+                        text, err_code = extract_pdf_text_with_status(str(tmp_file))
+
+                    if not text.strip():
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json; charset=utf-8")
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            "success": False,
+                            "error": "या फाईल मधून मजकूर किंवा प्रश्न सापडले नाहीत. (स्कॅन अस्पष्ट असू शकते किंवा प्रश्नपत्रिका नसलेली फाईल असू शकते.)"
+                        }, ensure_ascii=False).encode("utf-8"))
+                        return
+
+                    detected_key = detect_exam(text, EXAMS) if exam_override == "auto" else exam_override
+                    exam_config = EXAMS.get(detected_key, list(EXAMS.values())[0]) if EXAMS else {}
+                    records = parse_answers(text)
+
+                    if not records:
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json; charset=utf-8")
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            "success": False,
+                            "error": "या रिस्पॉन्स शीटमध्ये उत्तरे सापडली नाहीत."
+                        }, ensure_ascii=False).encode("utf-8"))
+                        return
+
+                    res = score_answers(records, exam_config)
+                    meta = extract_post_and_metadata(text)
+                    score_val = res.get("score", 0)
+                    rank_info = calculate_rank_and_percentile(detected_key, user_category, score_val)
+
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "success": True,
+                        "candidate_name": meta.get("candidate_name") or "परीक्षार्थी",
+                        "roll_number": meta.get("roll_number") or "उपलब्ध नाही",
+                        "exam_title": exam_config.get("name", detected_key),
+                        "category": user_category,
+                        "total_questions": res.get("total_parsed", len(records)),
+                        "correct": res.get("correct", 0),
+                        "incorrect": res.get("incorrect", 0),
+                        "unanswered": res.get("unattempted", 0),
+                        "raw_score": score_val,
+                        "max_marks": exam_config.get("total_marks", 200),
+                        "rank": rank_info.get("rank", 1),
+                        "total_candidates": rank_info.get("total_candidates", 100),
+                        "percentile": rank_info.get("percentile", 95.0),
+                        "section_scores": res.get("section_scores", {})
+                    }, ensure_ascii=False).encode("utf-8"))
+                    return
+            except Exception as proc_err:
+                logger.error(f"Error processing web uploaded sheet: {proc_err}", exc_info=True)
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "error": f"सर्व्हर त्रुटी: {proc_err}"}).encode("utf-8"))
+                return
 
         # Admin API: Sync folder PDFs to digital_products
         if path == "/api/admin/sync_products":

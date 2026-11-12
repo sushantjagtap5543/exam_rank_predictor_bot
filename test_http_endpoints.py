@@ -195,5 +195,24 @@ class TestHTTPEndpoints(unittest.TestCase):
         self.assertEqual(req_img_none.headers.get("Content-Type"), "image/png")
         self.assertTrue(req_img_none.read().startswith(b"\x89PNG\r\n\x1a\n"))
 
+    def test_upload_portal_and_api(self):
+        # 1. Test GET /upload serves public upload portal
+        req = urllib.request.urlopen(f"{self.base_url}/upload")
+        self.assertEqual(req.status, 200)
+        content = req.read().decode("utf-8")
+        self.assertIn("रिस्पॉन्स शीट वेब अपलोड पोर्टल", content)
+        self.assertIn("dropZone", content)
+        self.assertIn("userCategory", content)
+
+        # 2. Test POST /api/upload_sheet with empty payload returns 400
+        req_empty = urllib.request.Request(
+            f"{self.base_url}/api/upload_sheet",
+            data=json.dumps({}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(req_empty)
+        self.assertEqual(ctx.exception.code, 400)
+
 if __name__ == "__main__":
     unittest.main()
