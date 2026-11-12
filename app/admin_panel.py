@@ -720,8 +720,8 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 <button class="btn btn-gold" onclick="openAddModal()">➕ नवीन ई-बुक जोडा</button>
                 <button class="btn btn-blue" onclick="openBulkUploadModal()" style="background:#2563eb; color:#fff;">📚 बल्क PDFs एकत्र अपलोड करा (Bulk Upload)</button>
                 <button class="btn btn-outline" onclick="document.getElementById('pdfFileInput').click()">📁 थेट Single PDF</button>
-                <input type="file" id="pdfFileInput" style="display:none;" accept=".pdf" onchange="uploadDirectPdf(this)">
-                <input type="file" id="bulkModalFileInput" style="display:none;" accept=".pdf" multiple onchange="handleBulkFilesSelected(this.files)">
+                <input type="file" id="pdfFileInput" style="display:none;" accept=".pdf,.zip" onchange="uploadDirectPdf(this)">
+                <input type="file" id="bulkModalFileInput" style="display:none;" accept=".pdf,.zip" multiple onchange="handleBulkFilesSelected(this.files)">
                 <button class="btn btn-outline" onclick="syncFolderPdfs()">🔄 फोल्डर PDF सिंक</button>
                 <button class="btn btn-danger" onclick="purgeAllProducts()">🧹 सर्व ई-बुक्स हटवा (Clean Slate)</button>
                 <a href="/admin/download_all_products" class="btn btn-outline">📦 ZIP बॅकअप</a>
@@ -841,10 +841,10 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             <div class="dropzone-box" id="bulkDropZone" onclick="document.getElementById('bulkModalFileInput').click()">
                 <div style="font-size:36px; margin-bottom:8px;">📥</div>
                 <div style="font-size:14px; font-weight:700; color:#fff; margin-bottom:4px;">
-                    येथे PDF फाईल्स ड्रॅग करा किंवा कॉम्प्युटरमधून निवडण्यासाठी क्लिक करा
+                    येथे PDF / ZIP फाईल्स ड्रॅग करा किंवा कॉम्प्युटरमधून निवडण्यासाठी क्लिक करा
                 </div>
                 <div style="font-size:12px; color:#64748b;">
-                    (एकाच वेळी २०+ फाईल्स निवडू शकता, कमाल मर्यादा ५०० MB प्रति फाईल)
+                    (एकाच वेळी अनेक PDFs किंवा १ ZIP फाईल निवडू शकता — ZIP मधील सर्व PDFs आपोआप अनपॅक होतात)
                 </div>
             </div>
 

@@ -5816,7 +5816,8 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                     return
 
                 safe_fn = os.path.basename(fn)
-                if not safe_fn.lower().endswith(".pdf"):
+                is_zip = safe_fn.lower().endswith(".zip")
+                if not is_zip and not safe_fn.lower().endswith(".pdf"):
                     safe_fn += ".pdf"
 
                 dest_dir = STORAGE_DIR / "products"
@@ -5824,11 +5825,67 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 dest_path = dest_dir / safe_fn
 
                 pdf_bytes = base64.b64decode(b64)
+
+                if is_zip:
+                    # Handle Bulk ZIP archive containing multiple exam PDFs
+                    try:
+                        zip_bytes_io = io.BytesIO(pdf_bytes)
+                        with zipfile.ZipFile(zip_bytes_io, "r") as zf:
+                            extracted_count = 0
+                            for item in zf.infolist():
+                                if item.filename.startswith("__MACOSX") or item.is_dir():
+                                    continue
+                                if item.filename.lower().endswith(".pdf"):
+                                    sub_data = zf.read(item.filename)
+                                    sub_fn = re.sub(r"[^A-Za-z0-9._-]+", "_", os.path.basename(item.filename))
+                                    if not sub_fn.lower().endswith(".pdf"):
+                                        sub_fn += ".pdf"
+                                    sub_dest = dest_dir / sub_fn
+                                    sub_dest.write_bytes(sub_data)
+
+                                    try:
+                                        import pymupdf as fitz
+                                    except ImportError:
+                                        import fitz
+                                    actual_p = 1
+                                    try:
+                                        with fitz.open(str(sub_dest)) as dt:
+                                            actual_p = max(1, len(dt))
+                                    except Exception:
+                                        actual_p = 1
+
+                                    clean_title = os.path.splitext(sub_fn)[0].replace("_", " ").strip()
+                                    clean_title = re.sub(r"\s+", " ", clean_title).title()
+                                    packaging_agent.register_pdf_file_as_product(
+                                        sub_dest,
+                                        title=f"{clean_title} (अधिकृत ई-बुक प्रश्नसंच)",
+                                        pages=actual_p,
+                                        price=49,
+                                        db_path=DB_PATH
+                                    )
+                                    extracted_count += 1
+
+                            self.send_response(200)
+                            self.send_header("Content-Type", "application/json; charset=utf-8")
+                            self.end_headers()
+                            self.wfile.write(json.dumps({
+                                "success": True,
+                                "message": f"ZIP यशस्वीरित्या अनपॅक झाली! {extracted_count} PDFs सिस्टीममध्ये समाविष्ट केले.",
+                                "count": extracted_count
+                            }, ensure_ascii=False).encode("utf-8"))
+                            return
+                    except Exception as zerr:
+                        self.send_response(400)
+                        self.send_header("Content-Type", "application/json; charset=utf-8")
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"success": False, "message": f"अवैध ZIP फाईल: {zerr}"}).encode("utf-8"))
+                        return
+
                 if not pdf_bytes.startswith(b"%PDF-"):
                     self.send_response(400)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
                     self.end_headers()
-                    self.wfile.write(json.dumps({"success": False, "message": "अवैध PDF फाईल: केवळ खरी PDF फाईल (%PDF- हेडर असलेली) अपलोड करता येईल."}, ensure_ascii=False).encode("utf-8"))
+                    self.wfile.write(json.dumps({"success": False, "message": "अवैध PDF फाईल: केवळ खरी PDF फाईल (%PDF- हेडर असलेली) किंवा ZIP फाईल अपलोड करता येईल."}, ensure_ascii=False).encode("utf-8"))
                     return
 
                 with open(dest_path, "wb") as f:
