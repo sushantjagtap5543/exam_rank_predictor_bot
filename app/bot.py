@@ -5215,19 +5215,19 @@ def process_sheet_payload(
             "success": True,
             "candidate_name": meta.get("candidate_name") or "परीक्षार्थी",
             "roll_number": meta.get("roll_number") or "उपलब्ध नाही",
-            "exam_title": exam_config.get("name", detected_key),
+            "exam_title": exam_config.get("display_name") or exam_config.get("name") or detected_key,
             "exam_key": detected_key,
             "category": user_category,
             "total_questions": res.get("total_parsed", len(records)),
             "correct": res.get("correct", 0),
             "incorrect": res.get("incorrect", 0),
-            "unanswered": res.get("unattempted", 0),
+            "unanswered": res.get("unanswered", res.get("unattempted", 0)),
             "raw_score": score_val,
             "max_marks": exam_config.get("total_marks", 200),
             "rank": rank_info.get("exam_rank", 1),
             "total_candidates": rank_info.get("exam_total", 1),
             "percentile": rank_info.get("exam_percentile", 100.0),
-            "section_scores": res.get("section_scores", {})
+            "section_scores": res.get("section_scores") or res.get("sections") or {}
         }
     except Exception as proc_err:
         logger.error(f"Error processing web uploaded sheet: {proc_err}", exc_info=True)

@@ -575,18 +575,25 @@ def parse_answers(text: str):
         if not block.strip():
             continue
 
-        sec_match = section_pattern.search(block)
-        if sec_match:
-            candidate_sec = sec_match.group(1).strip()
-            candidate_sec = re.sub(r"\s+", " ", candidate_sec)
-            if len(candidate_sec) > 3 and not candidate_sec.isdigit():
-                current_section = candidate_sec[:40]
-
         qid_match = re.search(r"(?:Question|प्रश्न)\s*(?:ID|आयडी)?\s*[:\-]+\s*(\w+)", block, re.IGNORECASE)
         qnum_match = re.search(r"(?:Q\.\s*|Question\s*(?:No\.?|Number)?\s*|प्रश्न\s*(?:क्र\.?|क्रमांक)?\s*|प्र\s*\.\s*क्र\s*\.\s*)([\d१-९]+)", block, re.IGNORECASE)
 
         if not qid_match and not qnum_match:
+            sec_match = section_pattern.search(block)
+            if sec_match:
+                candidate_sec = sec_match.group(1).strip()
+                candidate_sec = re.sub(r"\s+", " ", candidate_sec)
+                if len(candidate_sec) > 3 and not candidate_sec.isdigit():
+                    current_section = candidate_sec[:40]
             continue
+
+        q_start = qnum_match.start() if qnum_match else (qid_match.start() if qid_match else len(block))
+        sec_before_q = section_pattern.search(block[:q_start])
+        if sec_before_q:
+            candidate_sec = sec_before_q.group(1).strip()
+            candidate_sec = re.sub(r"\s+", " ", candidate_sec)
+            if len(candidate_sec) > 3 and not candidate_sec.isdigit():
+                current_section = candidate_sec[:40]
 
         raw_qnum_str = qnum_match.group(1) if qnum_match else ""
         norm_qnum_str = "".join(dev_digits.get(ch, ch) for ch in raw_qnum_str) if raw_qnum_str else ""
@@ -730,6 +737,13 @@ def parse_answers(text: str):
             "status_text": status,
             "raw_excerpt": clean_excerpt
         })
+
+        sec_after_q = section_pattern.search(block[q_start:])
+        if sec_after_q:
+            candidate_sec = sec_after_q.group(1).strip()
+            candidate_sec = re.sub(r"\s+", " ", candidate_sec)
+            if len(candidate_sec) > 3 and not candidate_sec.isdigit():
+                current_section = candidate_sec[:40]
 
     # Robust fallback: If structured TCS/iON parsing found 0 or very few questions,
     # parse general MCQ compilation / question bank format (Q. 1, 1., Options A-D / 1-4, Ans)
