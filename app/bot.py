@@ -1898,7 +1898,8 @@ async def process_uploaded_pdf(update: Update, context: ContextTypes.DEFAULT_TYP
             [InlineKeyboardButton("🔙 Main Menu", callback_data="main_menu")]
         ]
         try:
-            await status_msg.edit_text(
+            await safe_edit_message(
+                status_msg,
                 f"⚠️ <b>रिस्पॉन्स शीट तपासताना त्रुटी आली:</b>\n"
                 f"<i>{html.escape(str(e)[:200])}</i>\n\n"
                 "💡 <b>सोपे पर्याय:</b>\n"
@@ -1909,6 +1910,9 @@ async def process_uploaded_pdf(update: Update, context: ContextTypes.DEFAULT_TYP
             )
         except Exception:
             pass
+    finally:
+        context.user_data.pop("pending_msg_id", None)
+        context.user_data.pop("pending_pdf_doc", None)
 
 async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAULT_TYPE, doc, status_msg):
     with tempfile.TemporaryDirectory() as tmp:
@@ -1964,7 +1968,8 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
 
         # If file is >= 20MB or standard download failed, use MTProto downloader (up to 2GB)
         if not downloaded:
-            await status_msg.edit_text(
+            await safe_edit_message(
+                status_msg,
                 "⚡ <b>मोठी फाईल आढळली (> 20 MB):</b>\n"
                 "Telegram हाय-स्पीड MTProto इंजिन वापरून डाऊनलोड करत आहे (कोणतीही साईज मर्यादा नाही)... ⏳",
                 parse_mode="HTML"
@@ -1976,37 +1981,50 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
                 else context.user_data.get("pending_msg_id")
             )
             chat_id = update.effective_chat.id
+            username = getattr(update.effective_user, "username", None) if update.effective_user else None
             if msg_id:
                 try:
-                    success = await download_file_mtproto(chat_id, msg_id, path)
+                    success = await asyncio.wait_for(
+                        download_file_mtproto(chat_id, msg_id, path, username=username, timeout_seconds=30.0),
+                        timeout=35.0
+                    )
                     if success and Path(path).is_file() and Path(path).stat().st_size > 0:
                         downloaded = True
                 except Exception as e:
-                    logger.warning(f"MTProto fallback attempt failed: {e}")
+                    logger.warning(f"MTProto fallback attempt failed or timed out: {e}")
 
         if not downloaded or not Path(path).is_file() or Path(path).stat().st_size == 0:
             is_large_file = file_size >= 20_000_000
-            has_mtproto = bool(os.getenv("TELEGRAM_API_ID", "31309393").strip() and os.getenv("TELEGRAM_API_HASH", "6876ef173762650c05c4ab2af73370a1").strip())
-            
-            if is_large_file and not has_mtproto:
+            admin_panel_link = f"{get_store_web_url()}/admin"
+            calc_kb = [
+                [InlineKeyboardButton("✍️ थेट गुण नोंदवा (Manual Score & Rank)", callback_data="manual_calc")],
+                [InlineKeyboardButton("🌐 ॲडमिन वेब पोर्टलवरून अपलोड करा", url=admin_panel_link)]
+            ]
+
+            if is_large_file:
                 size_mb = round(file_size / (1024 * 1024), 1)
-                admin_panel_link = f"{get_store_web_url()}/admin"
-                await status_msg.edit_text(
+                await safe_edit_message(
+                    status_msg,
                     f"⚠️ <b>मोठी फाईल मर्यादा ({size_mb} MB):</b>\n"
-                    "Telegram Bot API च्या सुरक्षेच्या नियमांनुसार २० MB पेक्षा मोठ्या फाईल्स थेट बॉट API द्वारे डाऊनलोड होऊ शकत नाहीत.\n\n"
-                    "💡 <b>या फाईलसाठी पुढील २ सोपे पर्याय वापरा:</b>\n\n"
-                    "1️⃣ <b>थेट DigiALM लिंक:</b> तुमच्या रिस्पॉन्स शीटची थेट वेब लिंक येथे चॅटमध्ये पेस्ट करा (उदा. <code>https://cdn.digialm.com/...</code>).\n\n"
-                    f"2️⃣ <b>ॲडमिन वेब पोर्टल:</b> जर तुम्ही ॲडमिन असाल, तर <b>{admin_panel_link}</b> वरून ही फाईल एका क्लिकमध्ये थेट अपलोड करा.\n\n"
-                    "3️⃣ <b>MTProto डायरेक्ट इंजिन:</b> .env मध्ये <code>TELEGRAM_API_ID</code> व <code>TELEGRAM_API_HASH</code> (my.telegram.org वरून) जोडल्यास बॉट स्वतः २०० MB+ फाईल्स थेट टेलिग्राम चॅटमधून डाऊनलोड करेल.",
-                    parse_mode="HTML"
+                    "Telegram Bot API च्या सुरक्षेच्या नियमांनुसार २० MB पेक्षा मोठ्या फाईल्ससाठी थेट डाऊनलोड वेळ मर्यादा संपली किंवा ब्लॉक झाली आहे.\n\n"
+                    "💡 <b>या फाईलसाठी पुढील सोपे पर्याय वापरा:</b>\n\n"
+                    "1️⃣ <b>थेट DigiALM लिंक (शिफारस):</b> तुमच्या रिस्पॉन्स शीटची थेट वेब लिंक येथे चॅटमध्ये पेस्ट करा (उदा. <code>https://cdn.digialm.com/...</code>).\n"
+                    "<i>(कोणतीही फाईल अपलोड न करता १ सेकंदात निकाल व रँक मिळते!)</i>\n\n"
+                    f"2️⃣ <b>वेब पोर्टल:</b> ही फाईल थेट <b>{admin_panel_link}</b> वरून अपलोड करा (कोणतीही २० MB मर्यादा नाही).\n\n"
+                    "3️⃣ <b>फाईल कॉम्प्रेस करा:</b> ilovepdf.com किंवा तत्सम टूल वापरून ही फाईल २० MB च्या आत कॉम्प्रेस करून पुन्हा पाठवा.\n\n"
+                    "4️⃣ <b>किंवा थेट गुण नोंदवा:</b> खालील बटणावर क्लिक करून तुमचे गुण नोंदवा व संभाव्य रँक तपासा:",
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(calc_kb)
                 )
             else:
-                await status_msg.edit_text(
+                await safe_edit_message(
+                    status_msg,
                     "❌ <b>Download Error:</b> फाईल डाऊनलोड होऊ शकली नाही.\n\n"
                     "💡 <b>सर्वात सोपा व १००% अचूक पर्याय:</b>\n"
                     "तुमच्या DigiALM / परीक्षा पोर्टलची <b>थेट वेब लिंक</b> येथे चॅटमध्ये पेस्ट करा (उदा. <code>https://cdn.digialm.com/...</code>)\n"
                     "<i>(कोणतीही फाईल अपलोड न करता १ सेकंदात निकाल व रँक मिळते!)</i>",
-                    parse_mode="HTML"
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(calc_kb[:1])
                 )
             return
 
@@ -2025,7 +2043,8 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
                 logger.warning(f"SSRF protection: rejected recovered URL '{clean_url}': {sec_err}")
             else:
                 context.user_data["recovered_url"] = clean_url
-                await status_msg.edit_text(
+                await safe_edit_message(
+                    status_msg,
                     "🔗 <b>मूळ DigiALM रिस्पॉन्स शीट लिंक डिटेक्ट झाली:</b>\n"
                     f"<code>{html.escape(clean_url[:70])}...</code>\n\n"
                     "⚡ अधिकृत सर्व्हरवरून थेट १००% अचूक डेटा डाऊनलोड करत आहे... ⏳",
@@ -2063,7 +2082,8 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
         # Step 2: If no web URL or fetch failed, extract text directly via fitz / RapidOCR
         pdf_err_code = ""
         if not text.strip():
-            await status_msg.edit_text(
+            await safe_edit_message(
+                status_msg,
                 "🔍 <b>PDF मजकूर व प्रश्न विश्लेषित करत आहे...</b>\n"
                 "<i>RapidOCR + AI इंजिन सुरू आहे... कृपया थोडी प्रतीक्षा करा ⏳</i>",
                 parse_mode="HTML"
@@ -2105,7 +2125,8 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
                     "(स्कॅन खूप अस्पष्ट असू शकते किंवा प्रश्नपत्रिका नसलेली फाईल असू शकते.)"
                 )
 
-            await status_msg.edit_text(
+            await safe_edit_message(
+                status_msg,
                 f"{err_detail}\n\n"
                 "💡 <b>सोपे पर्याय:</b>\n"
                 "1️⃣ तुमच्या DigiALM / परीक्षा पोर्टलची URL येथे थेट पेस्ट करा.\n"

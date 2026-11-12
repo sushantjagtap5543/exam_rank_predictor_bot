@@ -321,6 +321,58 @@ class TestUploadComprehensiveMatrix(unittest.IsolatedAsyncioTestCase):
         status_msg = update.effective_chat.sent_messages[0]
         self.assertTrue(any("मोठी फाईल मर्यादा" in t for t in status_msg.sent_texts))
 
+    # 3b. Large file with MTProto failure/timeout fallback messaging (Finding 10: no infinite 24hr hang)
+    async def test_03b_large_file_mtproto_timeout_and_fallback_messaging(self):
+        large_doc = MockDocument(file_id="large_doc_peon_30mb", file_name="peon.pdf", file_size=28_500_000)
+        bot = MockBot()
+        user = MockUser(user_id=88802, username="peon_candidate")
+        msg = MockMessage(document=large_doc, message_id=777, chat_id=user.id)
+        update = MockUpdate(user=user, message=msg)
+        context = MockContext(bot=bot)
+        context.user_data["category"] = "Open"
+
+        with patch("app.mtproto_downloader.download_file_mtproto", AsyncMock(return_value=False)):
+            await process_uploaded_pdf(update, context, large_doc)
+
+        # Ensure status message is never left hanging on "डाऊनलोड करत आहे... ⏳"
+        status_msg = update.effective_chat.sent_messages[0]
+        last_text = status_msg.sent_texts[-1]
+        self.assertIn("मोठी फाईल मर्यादा", last_text)
+        self.assertIn("27.2 MB", last_text)
+        self.assertIn("DigiALM", last_text)
+        
+        # Verify manual calc button is present in keyboard
+        self.assertIsNotNone(status_msg.reply_markup)
+        last_markup = status_msg.reply_markup
+        found_calc = any(
+            btn.callback_data == "manual_calc"
+            for row in last_markup.inline_keyboard
+            for btn in row
+            if hasattr(btn, "callback_data")
+        )
+        self.assertTrue(found_calc)
+
+    # 3c. Uncaught exception safety: never freeze status_msg on error
+    async def test_03c_process_uploaded_pdf_exception_safety(self):
+        doc = MockDocument(file_id="doc_err", file_name="error_test.pdf", file_size=1024)
+        bot = MockBot()
+        user = MockUser(user_id=88803)
+        msg = MockMessage(document=doc, message_id=888, chat_id=user.id)
+        update = MockUpdate(user=user, message=msg)
+        context = MockContext(bot=bot)
+        context.user_data["category"] = "Open"
+        context.user_data["pending_msg_id"] = 888
+
+        with patch("app.bot._process_uploaded_pdf_impl", AsyncMock(side_effect=RuntimeError("Simulated OCR Crash"))):
+            await process_uploaded_pdf(update, context, doc)
+
+        status_msg = update.effective_chat.sent_messages[0]
+        last_text = status_msg.sent_texts[-1]
+        self.assertIn("रिस्पॉन्स शीट तपासताना त्रुटी आली", last_text)
+        self.assertIn("Simulated OCR Crash", last_text)
+        # Verify pending data is cleaned up
+        self.assertNotIn("pending_msg_id", context.user_data)
+
     # 4. Upload first, pick category second flow (update.message is None in callback)
     async def test_04_upload_first_pick_category_second_flow(self):
         pdf_path = build_tcs_ion_pdf(num_questions=10, is_marathi=True)
