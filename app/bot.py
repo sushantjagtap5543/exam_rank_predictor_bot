@@ -5459,7 +5459,12 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                     res = score_answers(records, exam_config)
                     meta = extract_post_and_metadata(text)
                     score_val = res.get("score", 0)
-                    rank_info = calculate_rank_and_percentile(detected_key, user_category, score_val)
+                    overall_scores, exam_scores, post_scores, cat_scores, post_cat_scores = get_candidate_scores(
+                        detected_key, user_category, meta.get("post_name")
+                    )
+                    rank_info = estimate_cohort_rank(
+                        score_val, exam_scores, user_category, cat_scores, overall_scores=overall_scores
+                    )
 
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -5476,9 +5481,9 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                         "unanswered": res.get("unattempted", 0),
                         "raw_score": score_val,
                         "max_marks": exam_config.get("total_marks", 200),
-                        "rank": rank_info.get("rank", 1),
-                        "total_candidates": rank_info.get("total_candidates", 100),
-                        "percentile": rank_info.get("percentile", 95.0),
+                        "rank": rank_info.get("exam_rank", 1),
+                        "total_candidates": rank_info.get("exam_total", 1),
+                        "percentile": rank_info.get("exam_percentile", 100.0),
                         "section_scores": res.get("section_scores", {})
                     }, ensure_ascii=False).encode("utf-8"))
                     return
