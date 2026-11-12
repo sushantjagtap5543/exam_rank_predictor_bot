@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import hashlib
 import hmac
 import html
@@ -5400,6 +5401,9 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "error": "फाईल डेटा आढळला नाही (No file content provided)."}).encode("utf-8"))
                 return
 
+            if "," in file_b64:
+                file_b64 = file_b64.split(",", 1)[1]
+
             try:
                 pdf_bytes = base64.b64decode(file_b64)
             except Exception as b64_err:
@@ -5802,7 +5806,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         # Admin API: Upload PDF directly from browser
         if path == "/api/admin/upload_pdf":
             try:
-                import base64
                 fn = data.get("filename", "uploaded.pdf").strip()
                 b64 = data.get("base64_data", "")
                 if not b64 or not fn:

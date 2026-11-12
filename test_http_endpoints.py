@@ -214,5 +214,18 @@ class TestHTTPEndpoints(unittest.TestCase):
             urllib.request.urlopen(req_empty)
         self.assertEqual(ctx.exception.code, 400)
 
+        # 3. Test POST /api/upload_sheet with base64 data URL payload (no UnboundLocalError)
+        sample_b64 = "data:application/pdf;base64," + base64.b64encode(b"%PDF-1.4 empty mock pdf content").decode("utf-8")
+        req_b64 = urllib.request.Request(
+            f"{self.base_url}/api/upload_sheet",
+            data=json.dumps({"file_b64": sample_b64, "filename": "test_peon.pdf", "category": "Open"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"}
+        )
+        resp_b64 = urllib.request.urlopen(req_b64)
+        self.assertEqual(resp_b64.status, 200)
+        data = json.loads(resp_b64.read().decode("utf-8"))
+        # Must return valid JSON without crashing with "cannot access local variable 'base64'"
+        self.assertIn("success", data)
+
 if __name__ == "__main__":
     unittest.main()
