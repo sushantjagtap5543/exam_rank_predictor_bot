@@ -4505,7 +4505,7 @@ async def set_bot_commands(application: Application):
 
 def render_upload_portal_html() -> str:
     """Renders the comprehensive Web Upload & Rank Predictor page for response sheets of any size."""
-    return """<!DOCTYPE html>
+    return r"""<!DOCTYPE html>
 <html lang="mr" class="h-full bg-slate-900 text-slate-100">
 <head>
     <meta charset="UTF-8">
