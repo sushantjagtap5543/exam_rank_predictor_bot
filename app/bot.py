@@ -4547,14 +4547,14 @@ def render_upload_portal_html() -> str:
                         <label class="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">१. परीक्षा निवडा:</label>
                         <select id="examSelect" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm">
                             <option value="auto">⚡ स्वयंचलित ओळख (Auto Detect)</option>
-                            <option value="zp_peon">जिल्हा परिषद - शिपाई / परिचर (ZP Peon)</option>
-                            <option value="talathi">तलाठी भरती (Talathi)</option>
-                            <option value="zp_arogya">जिल्हा परिषद - आरोग्य सेवक (Arogya)</option>
-                            <option value="zp_gramsevak">जिल्हा परिषद - ग्रामसेवक (Gramsevak)</option>
-                            <option value="vanrakshak">वनरक्षक भरती (Vanrakshak)</option>
-                            <option value="police">महाराष्ट्र पोलीस भरती (Police Bharti)</option>
-                            <option value="mpsc_clerk">MPSC लिपिक टंकलेखक (Clerk Typist)</option>
-                            <option value="dmr_staff_nurse">सार्वजनिक आरोग्य व वैद्यकीय भरती</option>
+                            <option value="ZP_BHARTI">जिल्हा परिषद भरती (ZP Bharti / शिपाई / आरोग्य)</option>
+                            <option value="TALATHI_BHARTI">तलाठी भरती (Talathi Bharti)</option>
+                            <option value="POLICE_BHARTI">महाराष्ट्र पोलीस भरती (Police Bharti)</option>
+                            <option value="VANRAKSHAK_BHARTI">वनरक्षक भरती (Vanrakshak)</option>
+                            <option value="AROGYA_BHARTI">सार्वजनिक आरोग्य भरती (Arogya)</option>
+                            <option value="MPSC_COMBINED">MPSC अराजपत्रित / संयुक्त (Combined)</option>
+                            <option value="NAGAR_PARISHAD">नगर परिषद भरती (Nagar Parishad)</option>
+                            <option value="GMC_SARALSEWA">GMC वैद्यकीय व सरळसेवा भरती</option>
                         </select>
                     </div>
                     <div>
@@ -5133,8 +5133,23 @@ def process_sheet_payload(
                 "error": "या फाईल मधून मजकूर किंवा प्रश्न सापडले नाहीत. (स्कॅन अस्पष्ट असू शकते किंवा प्रश्नपत्रिका नसलेली फाईल असू शकते.)"
             }
 
-        detected_key = detect_exam(text, EXAMS) if exam_override in ("auto", "", None) else exam_override
-        exam_config = EXAMS.get(detected_key, list(EXAMS.values())[0]) if EXAMS else {}
+        # Safely resolve detected_key and exam_config
+        detected_key = "ZP_BHARTI"
+        exam_config = {}
+        if exam_override and exam_override != "auto" and exam_override in EXAMS:
+            detected_key = exam_override
+            exam_config = EXAMS[detected_key]
+        else:
+            detected = detect_exam(text, EXAMS)
+            if isinstance(detected, dict) and detected.get("status") == "detected":
+                detected_key = detected.get("key", "ZP_BHARTI")
+                exam_config = detected.get("config") or EXAMS.get(detected_key, {})
+            elif isinstance(detected, dict) and detected.get("status") == "ambiguous" and detected.get("matches"):
+                detected_key = detected["matches"][0].get("key", "ZP_BHARTI")
+                exam_config = EXAMS.get(detected_key, {})
+            else:
+                detected_key = "ZP_BHARTI"
+                exam_config = EXAMS.get("ZP_BHARTI", list(EXAMS.values())[0] if EXAMS else {})
         records = parse_answers(text)
 
         if not records:
