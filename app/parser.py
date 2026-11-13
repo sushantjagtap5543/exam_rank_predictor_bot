@@ -43,12 +43,6 @@ def _is_green_tick_image(img_bytes: bytes) -> bool:
 
 def _extract_text_with_green_ticks(doc) -> str:
     """Extracts text while detecting visual green tick marks on option lines (e.g. TCS iON printouts)."""
-    # Fast path for large master booklets (>40 pages, e.g. GMC 427-page master book)
-    # Multi-exam master books contain embedded text; skipping per-image rect loops
-    # drops extraction time from 300+ seconds to <5 seconds with 0 data loss.
-    if len(doc) > 40:
-        return "\n".join([p.get_text("text") for p in doc])
-
     try:
         all_xrefs = set()
         for page in doc:
@@ -68,17 +62,25 @@ def _extract_text_with_green_ticks(doc) -> str:
             pages = [p.get_text("text") for p in doc]
             return "\n".join(pages)
 
+        dev_digit_map = {"१": "1", "२": "2", "३": "3", "४": "4"}
+        valid_opt_tokens = ["1.", "2.", "3.", "4.", "1)", "2)", "3)", "4)", "१.", "२.", "३.", "४.", "१)", "२)", "३)", "४)"]
+
         all_pages_text = []
         for pno in range(len(doc)):
             page = doc[pno]
             raw_text = page.get_text("text")
 
+            # Fast check: does this page contain any green tick xref?
+            page_img_xrefs = {img[0] for img in page.get_images()}
+            active_ticks = page_img_xrefs.intersection(green_xrefs)
+            if not active_ticks:
+                all_pages_text.append(raw_text)
+                continue
+
             ticks = []
-            for img in page.get_images():
-                xref = img[0]
-                if xref in green_xrefs:
-                    for r in page.get_image_rects(xref):
-                        ticks.append(r)
+            for xref in active_ticks:
+                for r in page.get_image_rects(xref):
+                    ticks.append(r)
 
             if not ticks:
                 all_pages_text.append(raw_text)
@@ -87,8 +89,11 @@ def _extract_text_with_green_ticks(doc) -> str:
             words = page.get_text("words")
             opt_words = []
             for w in words:
-                if w[4] in ["1.", "2.", "3.", "4."]:
-                    opt_words.append({"num": w[4][0], "y": w[1]})
+                token = w[4]
+                if token in valid_opt_tokens:
+                    first_char = token[0]
+                    norm_num = dev_digit_map.get(first_char, first_char)
+                    opt_words.append({"num": norm_num, "y": w[1]})
 
             matched_y_levels = []
             for t in ticks:
@@ -99,7 +104,7 @@ def _extract_text_with_green_ticks(doc) -> str:
                     if dist < min_dist:
                         min_dist = dist
                         closest = opt
-                if closest and min_dist < 10.0:
+                if closest and min_dist < 12.0:
                     matched_y_levels.append(closest)
 
             if not matched_y_levels:
@@ -113,7 +118,7 @@ def _extract_text_with_green_ticks(doc) -> str:
                 s_line = line.strip()
                 matched = False
                 for c_opt in matched_nums:
-                    if s_line.startswith(f"{c_opt}.") and "[Correct Option]" not in line:
+                    if (s_line.startswith(f"{c_opt}.") or s_line.startswith(f"{c_opt})")) and "[Correct Option]" not in line:
                         new_lines.append(f"{line} [Correct Option]")
                         matched = True
                         break
@@ -457,6 +462,7 @@ def extract_post_and_metadata(text: str) -> dict:
         ("peon", "शिपाई (Peon)"),
         ("कक्ष सेवक", "कक्ष सेवक (Ward Boy)"),
         ("ward boy", "कक्ष सेवक (Ward Boy)"),
+        ("ward servant", "कक्ष सेवक / परिचर (Ward Servant)"),
         ("सफाईगार", "सफाईगार (Sweeper)")
     ]
     for term, formal_name in known_posts:

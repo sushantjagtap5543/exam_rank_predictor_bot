@@ -2264,11 +2264,11 @@ async def _process_uploaded_pdf_impl(update: Update, context: ContextTypes.DEFAU
         roll_entropy = hashlib.sha256(f"{user_id}:{clean_roll}:{time.time()}".encode()).hexdigest()[:8]
 
         # Check if this is an Admin Bulk / Master MCQ PDF or an individual candidate response sheet
-        has_bulk_keyword = any(k in safe_name.lower() for k in ["bulk", "master", "qbank", "mcq_master", "gmc"])
+        has_bulk_keyword = any(k in safe_name.lower() for k in ["bulk", "master", "qbank", "mcq_master", "master_book"])
         is_large_master_bank = (len(records) > 120 and not clean_roll)
         is_admin_bulk_mode = (user_id in ADMIN_IDS) and (context.user_data.get("admin_bulk_mode") is True)
 
-        is_bulk_request = has_bulk_keyword or is_large_master_bank or is_admin_bulk_mode
+        is_bulk_request = (user_id in ADMIN_IDS) and (has_bulk_keyword or is_large_master_bank or is_admin_bulk_mode)
 
         RESPONSE_DIR.mkdir(parents=True, exist_ok=True)
         if is_bulk_request:
@@ -6187,8 +6187,24 @@ def process_sheet_payload(
                 detected_key = detected["matches"][0].get("key", "ZP_BHARTI")
                 exam_config = EXAMS.get(detected_key, {})
             else:
-                detected_key = "ZP_BHARTI"
-                exam_config = EXAMS.get("ZP_BHARTI", list(EXAMS.values())[0] if EXAMS else {})
+                fn_lower = (filename or "").lower()
+                if "gmc" in fn_lower or "vdgmc" in fn_lower:
+                    detected_key = "GMC_SARALSEWA"
+                elif "talathi" in fn_lower:
+                    detected_key = "TALATHI_BHARTI"
+                elif "police" in fn_lower:
+                    detected_key = "POLICE_BHARTI"
+                elif "vanrakshak" in fn_lower or "forest" in fn_lower:
+                    detected_key = "VANRAKSHAK_BHARTI"
+                elif "arogya" in fn_lower:
+                    detected_key = "AROGYA_BHARTI"
+                elif "mpsc" in fn_lower:
+                    detected_key = "MPSC_COMBINED"
+                elif "nagar" in fn_lower:
+                    detected_key = "NAGAR_PARISHAD"
+                else:
+                    detected_key = "ZP_BHARTI"
+                exam_config = EXAMS.get(detected_key, EXAMS.get("ZP_BHARTI", list(EXAMS.values())[0] if EXAMS else {}))
         records = parse_answers(text)
 
         if not records:
@@ -6204,6 +6220,9 @@ def process_sheet_payload(
         overall_scores, exam_scores, post_scores, cat_scores, post_cat_scores = get_candidate_scores(
             detected_key, user_category, post_name
         )
+        effective_max_marks = float(exam_config.get("max_marks", exam_config.get("total_marks", 100.0)))
+        if len(records) > int(exam_config.get("total_questions", 100)):
+            effective_max_marks = max(effective_max_marks, round(len(records) * float(exam_config.get("positive_marks", 1.0)), 2))
         rank_info = estimate_cohort_rank(
             score_val,
             exam_scores,
@@ -6213,7 +6232,7 @@ def process_sheet_payload(
             post_name=post_name,
             post_scores=post_scores,
             post_category_scores=post_cat_scores,
-            max_marks=exam_config.get("total_marks", 200)
+            max_marks=effective_max_marks
         )
 
         # Accuracy and Analytical Calculations
@@ -6323,7 +6342,7 @@ def process_sheet_payload(
             "unanswered": res.get("unanswered", res.get("unattempted", 0)),
             "accuracy": accuracy_pct,
             "raw_score": score_val,
-            "max_marks": exam_config.get("total_marks", 200),
+            "max_marks": effective_max_marks,
             "rank": rank_info.get("exam_rank", 1),
             "total_candidates": rank_info.get("exam_total", 1),
             "percentile": rank_info.get("exam_percentile", 100.0),
