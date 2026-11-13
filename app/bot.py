@@ -8128,110 +8128,20 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         # Admin API: Dispatch Live Quiz to Channel from Web Dashboard
         if path == "/api/admin/dispatch_quiz":
             try:
-                target_channel = (
-                    data.get("channel")
-                    or os.getenv("PAID_CHANNEL_ID")
-                    or os.getenv("CHANNEL_ID")
-                    or PAID_CHANNEL_ID
-                    or "-1004381339759"
-                )
-                target_channel = str(target_channel).strip()
-                if target_channel.startswith("http"):
-                    target_channel = "-1004381339759"
-
-                from app.quiz_generator import resolve_quiz_correct_index
-                q_row = None
-                with get_connection() as db:
-                    db.row_factory = sqlite3.Row
-                    q_row = db.execute(
-                        """SELECT * FROM qbank_questions WHERE options_json IS NOT NULL AND length(options_json) > 10 ORDER BY RANDOM() LIMIT 1"""
-                    ).fetchone()
-
-                if not q_row:
-                    daily = get_daily_latest_exam_questions()
-                    qs = daily.get("questions", [])
-                    if not qs:
-                        self.send_response(400)
-                        self.send_header("Content-Type", "application/json; charset=utf-8")
-                        self.end_headers()
-                        self.wfile.write(json.dumps({"success": False, "message": "क्वेश्चन बँक रिकामी आहे."}).encode("utf-8"))
-                        return
-                    chosen = random.choice(qs)
-                    q_text = f"🎯 [{chosen.get('subject', 'General')}] {chosen.get('question')}"
-                    opts = [re.sub(r"^[A-Da-d1-4][\.\):\-]\s*", "", o).strip()[:95] for o in chosen.get("options", [])[:4]]
-                    opts = [o for o in opts if o]
-                    c_idx = resolve_quiz_correct_index(chosen, opts)
-                    exp = (chosen.get("explanation") or "अधिकृत उत्तर व विश्लेषण प्रमाणित आहे.")[:195]
-                else:
-                    opts_dict = json.loads(q_row["options_json"] or "{}")
-                    sec = q_row["section"] or "General"
-                    q_text = f"🎯 [{sec}] {q_row['question_text']}"
-                    opts = [re.sub(r"^[A-Da-d1-4][\.\):\-]\s*", "", str(v)).strip()[:95] for v in list(opts_dict.values())[:4]]
-                    opts = [o for o in opts if o]
-                    c_num = q_row["correct_option_num"] or 1
-                    try:
-                        c_idx = max(0, min(len(opts) - 1, int(c_num) - 1))
-                    except Exception:
-                        c_idx = 0
-                    exp = (q_row["explanation"] or "अधिकृत उत्तर व विश्लेषण प्रमाणित आहे.")[:195]
-
-                if len(opts) < 2:
-                    daily = get_daily_latest_exam_questions()
-                    chosen = random.choice(daily.get("questions", []))
-                    q_text = f"🎯 [{chosen.get('subject', 'General')}] {chosen.get('question')}"
-                    opts = [re.sub(r"^[A-Da-d1-4][\.\):\-]\s*", "", o).strip()[:95] for o in chosen.get("options", [])[:4]]
-                    opts = [o for o in opts if o]
-                    c_idx = resolve_quiz_correct_index(chosen, opts)
-                    exp = (chosen.get("explanation") or "अधिकृत उत्तर व विश्लेषण प्रमाणित आहे.")[:195]
-
-                if len(opts) < 2:
-                    self.send_response(400)
-                    self.send_header("Content-Type", "application/json; charset=utf-8")
-                    self.end_headers()
-                    self.wfile.write(json.dumps({"success": False, "message": "प्रश्नात किमान २ पर्याय असणे आवश्यक आहे."}).encode("utf-8"))
-                    return
-
-                bot_token = TOKEN or os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-                if bot_token:
-                    api_base = os.getenv("TELEGRAM_BOT_API_URL", "").rstrip("/")
-                    bot_url = f"{api_base}/bot{bot_token}/sendPoll" if api_base else f"https://api.telegram.org/bot{bot_token}/sendPoll"
-                    poll_res = httpx.post(
-                        bot_url,
-                        json={
-                            "chat_id": target_channel,
-                            "question": q_text[:295],
-                            "options": opts,
-                            "type": "quiz",
-                            "correct_option_id": c_idx,
-                            "explanation": exp[:195],
-                            "is_anonymous": True
-                        },
-                        timeout=15.0
-                    )
-                    if poll_res.status_code == 200:
-                        poll_json = poll_res.json()
-                        chat_info = poll_json.get("result", {}).get("chat", {})
-                        ch_title = chat_info.get("title") or target_channel
-                        self.send_response(200)
-                        self.send_header("Content-Type", "application/json; charset=utf-8")
-                        self.end_headers()
-                        self.wfile.write(json.dumps({
-                            "success": True,
-                            "message": f"क्विझ यशस्वीरित्या {ch_title} वर पाठवला गेला!",
-                            "channel": ch_title,
-                            "question": q_text[:80] + "..."
-                        }, ensure_ascii=False).encode("utf-8"))
-                        return
-                    else:
-                        raise Exception(f"Telegram API Error ({poll_res.status_code}): {poll_res.text}")
-                else:
-                    raise Exception("TELEGRAM_BOT_TOKEN सेट नाही.")
+                target_channel = data.get("channel")
+                res_data = dispatch_single_quiz_to_channel(target_channel)
+                st_code = 200 if res_data.get("success") else 400
+                self.send_response(st_code)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps(res_data, ensure_ascii=False).encode("utf-8"))
+                return
             except Exception as q_err:
                 logger.error(f"Error dispatching quiz from admin: {q_err}")
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(json.dumps({"success": False, "message": str(q_err)}).encode("utf-8"))
+                self.wfile.write(json.dumps({"success": False, "message": str(q_err)}, ensure_ascii=False).encode("utf-8"))
                 return
 
         # Admin API: Optimize System, Vacuum DB & Purge Cache (Reduces Bot Load)
@@ -9167,44 +9077,200 @@ async def youtube_upload_watcher_loop(application: Application):
             logger.warning(f"Error in youtube_upload_watcher_loop: {e}")
         await asyncio.sleep(600)
 
+_KEEP_ALIVE_STARTED = False
+_AUTO_QUIZ_STARTED = False
+
+def dispatch_single_quiz_to_channel(target_channel: Optional[str] = None) -> dict:
+    """
+    Selects the next unposted question from qbank_questions (or fresh daily pool),
+    formats it as a native Telegram Quiz poll, sends it to the target channel (is_anonymous=True),
+    and records it in posted_quizzes table so no duplicate quiz is ever posted.
+    """
+    channel = (
+        target_channel
+        or os.getenv("PAID_CHANNEL_ID")
+        or os.getenv("CHANNEL_ID")
+        or PAID_CHANNEL_ID
+        or "-1004381339759"
+    )
+    channel = str(channel).strip()
+    if channel.startswith("http"):
+        channel = "-1004381339759"
+
+    from app.quiz_generator import (
+        compute_question_hash,
+        init_quiz_db,
+        is_quiz_already_posted,
+        mark_quiz_as_posted,
+        resolve_quiz_correct_index,
+    )
+    init_quiz_db(DB_PATH)
+
+    chosen_row = None
+    with get_connection() as db:
+        db.row_factory = sqlite3.Row
+        rows = db.execute("""
+            SELECT * FROM qbank_questions 
+            WHERE options_json IS NOT NULL AND length(options_json) > 10
+            ORDER BY id ASC LIMIT 100
+        """).fetchall()
+        for r in rows:
+            try:
+                opts_list = list(json.loads(r["options_json"] or "{}").values())
+                q_h = r["question_hash"] or compute_question_hash(r["question_text"], opts_list)
+                if not is_quiz_already_posted(q_h, r["question_text"], db_path=DB_PATH):
+                    chosen_row = r
+                    break
+            except Exception:
+                continue
+
+    if not chosen_row:
+        daily = get_daily_latest_exam_questions()
+        qs = daily.get("questions", [])
+        chosen = None
+        for cand in qs:
+            c_opts = cand.get("options", [])
+            cand_h = compute_question_hash(cand.get("question", ""), c_opts)
+            if not is_quiz_already_posted(cand_h, cand.get("question", ""), db_path=DB_PATH):
+                chosen = cand
+                break
+        if not chosen and qs:
+            chosen = random.choice(qs)
+        if not chosen:
+            return {"success": False, "message": "सर्व उपलब्ध प्रश्न आधीच चॅनेलवर पोस्ट केले आहेत किंवा क्वेश्चन बँक रिकामी आहे."}
+
+        q_text = f"🎯 [{chosen.get('subject', 'General')}] {chosen.get('question')}"
+        opts = [re.sub(r"^[A-Da-d1-4][\.\):\-]\s*", "", o).strip()[:95] for o in chosen.get("options", [])[:4]]
+        opts = [o for o in opts if o]
+        c_idx = resolve_quiz_correct_index(chosen, opts)
+        exp = (chosen.get("explanation") or "अधिकृत उत्तर व विश्लेषण प्रमाणित आहे.")[:195]
+        q_hash = compute_question_hash(chosen.get("question", ""), opts)
+        sec = chosen.get("subject", "General")
+    else:
+        opts_dict = json.loads(chosen_row["options_json"] or "{}")
+        sec = chosen_row["section"] or "General"
+        q_text = f"🎯 [{sec}] {chosen_row['question_text']}"
+        opts = [re.sub(r"^[A-Da-d1-4][\.\):\-]\s*", "", str(v)).strip()[:95] for v in list(opts_dict.values())[:4]]
+        opts = [o for o in opts if o]
+        c_num = chosen_row["correct_option_num"] or 1
+        try:
+            c_idx = max(0, min(len(opts) - 1, int(c_num) - 1))
+        except Exception:
+            c_idx = 0
+        exp = (chosen_row["explanation"] or "अधिकृत उत्तर व विश्लेषण प्रमाणित आहे.")[:195]
+        q_hash = chosen_row["question_hash"] or compute_question_hash(chosen_row["question_text"], opts)
+
+    if len(opts) < 2:
+        return {"success": False, "message": "प्रश्नात किमान २ पर्याय असणे आवश्यक आहे."}
+
+    bot_token = TOKEN or os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+    if not bot_token:
+        return {"success": False, "message": "TELEGRAM_BOT_TOKEN सेट नाही."}
+
+    api_base = os.getenv("TELEGRAM_BOT_API_URL", "").rstrip("/")
+    bot_url = f"{api_base}/bot{bot_token}/sendPoll" if api_base else f"https://api.telegram.org/bot{bot_token}/sendPoll"
+
+    poll_res = httpx.post(
+        bot_url,
+        json={
+            "chat_id": channel,
+            "question": q_text[:295],
+            "options": opts,
+            "type": "quiz",
+            "correct_option_id": c_idx,
+            "explanation": exp[:195],
+            "is_anonymous": True
+        },
+        timeout=15.0
+    )
+    if poll_res.status_code == 200:
+        poll_json = poll_res.json()
+        chat_info = poll_json.get("result", {}).get("chat", {})
+        ch_title = chat_info.get("title") or channel
+        try:
+            mark_quiz_as_posted(q_hash, q_text, sec, has_passage=False, db_path=DB_PATH)
+        except Exception as m_err:
+            logger.debug(f"Error recording posted quiz: {m_err}")
+
+        return {
+            "success": True,
+            "message": f"क्विझ यशस्वीरित्या {ch_title} वर पाठवला गेला!",
+            "channel": ch_title,
+            "question": q_text[:80] + "..."
+        }
+    else:
+        raise Exception(f"Telegram API Error ({poll_res.status_code}): {poll_res.text}")
+
+def start_automated_quiz_posting_daemon(interval_seconds: int = 180):
+    """
+    Background daemon that monitors qbank_questions and automatically posts
+    new questions one by one to the Telegram channel whenever new questions are available.
+    """
+    global _AUTO_QUIZ_STARTED
+    if _AUTO_QUIZ_STARTED:
+        return
+    _AUTO_QUIZ_STARTED = True
+
+    def _quiz_daemon_loop():
+        logger.info(f"🤖 Automated 1-by-1 Quiz Posting Daemon active (interval: {interval_seconds}s)")
+        time.sleep(45)  # Initial grace period on bot start
+        while True:
+            try:
+                with get_connection() as db:
+                    total_q = db.execute("SELECT count(*) FROM qbank_questions").fetchone()[0]
+                if total_q > 0:
+                    res = dispatch_single_quiz_to_channel()
+                    if res.get("success"):
+                        logger.info(f"📢 Auto-Quiz Daemon posted question to channel: {res.get('question')}")
+                    else:
+                        logger.debug(f"Auto-Quiz Daemon idle: {res.get('message')}")
+            except Exception as err:
+                logger.warning(f"Auto-Quiz Daemon warning: {err}")
+            time.sleep(interval_seconds)
+
+    t = threading.Thread(target=_quiz_daemon_loop, daemon=True, name="AutoQuizPostingDaemon")
+    t.start()
+
 def start_keep_alive_pinger():
     """
-    Periodically sends an HTTP GET request to the bot's public Render URL every 8 minutes
+    Periodically sends an HTTP GET request to the bot's public Render URL every 3.3 minutes (200s)
     to keep Render's free web service awake 24/7 (preventing the 15-minute idle spin-down).
     """
+    global _KEEP_ALIVE_STARTED
+    if _KEEP_ALIVE_STARTED:
+        return
+    _KEEP_ALIVE_STARTED = True
+
     url = (
         os.getenv("RENDER_EXTERNAL_URL")
         or os.getenv("SELF_PING_URL")
         or os.getenv("PING_URL")
+        or (f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}" if os.getenv("RENDER_EXTERNAL_HOSTNAME") else None)
+        or "https://exam-rank-predictor-bot.onrender.com"
     )
-    if not url:
-        hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME")
-        if hostname:
-            url = f"https://{hostname}"
-
-    if not url:
-        port_str = os.getenv("PORT", "8080")
-        url = f"http://127.0.0.1:{port_str}/health"
-        logger.info(f"ℹ️ Keep-alive pinger: Using local health endpoint fallback: {url}")
-
-    import time
 
     import httpx
 
     target_url = url.strip().rstrip("/") + "/"
+    health_url = url.strip().rstrip("/") + "/health"
 
     def _ping_loop():
-        logger.info(f"🔄 Automated 24/7 Keep-Alive self-pinger active for: {target_url} (every 8 min)")
-        time.sleep(30)  # Initial wait before first ping
+        logger.info(f"🔄 Automated 24/7 Keep-Alive self-pinger active for: {target_url} (every 200s)")
+        time.sleep(15)  # Quick initial ping
         while True:
             try:
-                res = httpx.get(target_url, timeout=20.0, follow_redirects=True)
-                logger.info(f"💓 Keep-alive ping sent to {target_url} -> Status {res.status_code}")
+                res = httpx.get(health_url, timeout=25.0, follow_redirects=True)
+                logger.info(f"💓 Keep-alive ping sent to {health_url} -> Status {res.status_code}")
             except Exception as e:
-                logger.warning(f"⚠️ Keep-alive ping failed: {e}")
-            time.sleep(8 * 60)  # Ping every 8 minutes
+                logger.warning(f"⚠️ Keep-alive ping to health failed: {e}")
+                try:
+                    res_root = httpx.get(target_url, timeout=25.0, follow_redirects=True)
+                    logger.info(f"💓 Keep-alive ping to root -> Status {res_root.status_code}")
+                except Exception as e2:
+                    logger.warning(f"⚠️ Keep-alive fallback ping failed: {e2}")
+            time.sleep(200)  # Ping every 200 seconds (~3.3 min) to safely prevent 15-min idle spin-down
 
-    t = threading.Thread(target=_ping_loop, daemon=True)
+    t = threading.Thread(target=_ping_loop, daemon=True, name="KeepAlivePinger")
     t.start()
 
 def start_periodic_cleanup_daemon():
@@ -9229,6 +9295,8 @@ def start_periodic_cleanup_daemon():
 def start_health_check_server():
     """Runs a background HTTP server so the bot can be hosted 24/7 on free cloud services (Render, Koyeb, Hugging Face, etc.)."""
     start_periodic_cleanup_daemon()
+    start_keep_alive_pinger()
+    start_automated_quiz_posting_daemon()
     port_str = os.getenv("PORT", "8080")
     try:
         port = int(port_str)
@@ -9247,6 +9315,7 @@ def main():
     validate_environment_security()
     start_health_check_server()
     start_keep_alive_pinger()
+    start_automated_quiz_posting_daemon()
     init_db()
     init_quiz_db(DB_PATH)
     packaging_agent.init_products_db(DB_PATH)

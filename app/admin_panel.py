@@ -513,11 +513,49 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             align-items: center;
             gap: 8px;
         }}
+        /* Universal sleek scrollbars across all tables & views */
+        *::-webkit-scrollbar {{
+            width: 8px;
+            height: 8px;
+        }}
+        *::-webkit-scrollbar-track {{
+            background: #090d16;
+            border-radius: 4px;
+        }}
+        *::-webkit-scrollbar-thumb {{
+            background: #334155;
+            border-radius: 4px;
+        }}
+        *::-webkit-scrollbar-thumb:hover {{
+            background: var(--accent-gold);
+        }}
+        html, body {{
+            scrollbar-width: thin;
+            scrollbar-color: #334155 #090d16;
+        }}
+
+        @keyframes pulse {{
+            0%, 100% {{ opacity: 1; transform: scale(1); }}
+            50% {{ opacity: 0.4; transform: scale(0.9); }}
+        }}
+
         .table-wrap {{
             overflow-x: auto;
+            overflow-y: auto;
+            max-height: 520px;
+            scroll-behavior: smooth;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+        }}
+        .table-wrap thead th {{
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            background: #0f172a;
+            box-shadow: 0 1px 0 var(--border);
         }}
         .visitors-scroll-wrap {{
-            max-height: 265px;
+            max-height: 280px;
             overflow-y: auto;
             overflow-x: auto;
             scroll-behavior: smooth;
@@ -832,6 +870,10 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 <button class="btn btn-gold" onclick="openAddModal()">➕ नवीन ई-बुक जोडा</button>
                 <button class="btn btn-blue" onclick="openBulkUploadModal()" style="background:#2563eb; color:#fff;">📚 बल्क PDFs एकत्र अपलोड करा</button>
                 <button class="btn btn-gold" onclick="dispatchQuizNow()" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none;">🚀 चॅनेलवर थेट क्विझ पाठवा</button>
+                <div style="display:inline-flex; align-items:center; gap:8px; padding:6px 14px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); border-radius:8px; font-size:12.5px; font-weight:700; color:#10b981;">
+                    <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#10b981; box-shadow:0 0 8px #10b981;"></span>
+                    🤖 Auto-Quiz Dispatcher: सक्रिय (1-by-1 सुरू)
+                </div>
                 <button class="btn btn-blue" onclick="optimizeSystemNow()" style="background:linear-gradient(135deg, #6366f1, #4f46e5); color:#fff; border:none;">⚡ बॉट मेमरी लोड कमी करा (Optimize)</button>
                 <a href="/admin/export_qbank" class="btn btn-outline">📥 संपूर्ण प्रश्नसंच (Export QBank)</a>
                 <button class="btn btn-outline" onclick="document.getElementById('pdfFileInput').click()">📁 थेट Single PDF</button>

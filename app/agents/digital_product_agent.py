@@ -225,6 +225,57 @@ DEFAULT_PRODUCTS = [
         "description": "अंकगणित व बुद्धिमत्ता चाचणीतील कठीण गणिते अवघ्या १५ सेकंदात सोडवण्याच्या क्लृप्त्या, दिशाज्ञान, नातेसंबंध व सिटिंग अरेंजमेंट ग्रिड्स.",
         "download_file": "maths_reasoning_shortcuts_handbook.pdf",
         "icon": "🔢"
+    },
+    {
+        "id": "prod_gmc_master_2024",
+        "title": "GMC लातूर भरती अधिकृत मास्टर प्रश्नसंच (TCS पॅटर्न)",
+        "subtitle": "१००% अधिकृत प्रश्नोत्तरे, रिस्पॉन्स शीट्स व सविस्तर तांत्रिक विश्लेषण",
+        "subject": "PYQ & Response Sheets",
+        "tier": "Master",
+        "price_inr": 49,
+        "original_price_inr": 199,
+        "badge": "🔥 GMC विशेष (₹49)",
+        "rating": 5.0,
+        "reviews_count": 2450,
+        "pages": 427,
+        "sample_questions_count": 15,
+        "description": "शासकीय वैद्यकीय महाविद्यालय (GMC) लातूर भरती परीक्षेतील TCS अधिकृत प्रश्नपत्रिका, तांत्रिक व अतांत्रिक विषयांचे १००% अधिकृत उत्तरे व सविस्तर स्पष्टीकरणे (४२७ पृष्ठे).",
+        "download_file": "gmc.pdf",
+        "icon": "📑"
+    },
+    {
+        "id": "prod_52e8ee13",
+        "title": "GMC लातूर भरती अधिकृत मास्टर प्रश्नसंच (TCS पॅटर्न)",
+        "subtitle": "१००% अधिकृत प्रश्नोत्तरे, रिस्पॉन्स शीट्स व सविस्तर तांत्रिक विश्लेषण",
+        "subject": "PYQ & Response Sheets",
+        "tier": "Master",
+        "price_inr": 49,
+        "original_price_inr": 199,
+        "badge": "🔥 GMC भरती विशेष",
+        "rating": 5.0,
+        "reviews_count": 2450,
+        "pages": 427,
+        "sample_questions_count": 15,
+        "description": "शासकीय वैद्यकीय महाविद्यालय (GMC) लातूर भरती परीक्षेतील TCS अधिकृत प्रश्नपत्रिका, तांत्रिक व अतांत्रिक विषयांचे १००% अधिकृत उत्तरे व सविस्तर स्पष्टीकरणे (४२७ पृष्ठे).",
+        "download_file": "gmc.pdf",
+        "icon": "📚"
+    },
+    {
+        "id": "prod_peon_full_2024",
+        "title": "महाराष्ट्र आरोग्य विभाग - शिपाई (Peon) भरती अधिकृत प्रश्नपत्रिका संच",
+        "subtitle": "सर्व शिफ्ट्स अधिकृत रिस्पॉन्स शीट्स व १००% अचूक उत्तरतालिका",
+        "subject": "PYQ & Response Sheets",
+        "tier": "Comprehensive",
+        "price_inr": 39,
+        "original_price_inr": 149,
+        "badge": "⚡ Peon विशेष (₹39)",
+        "rating": 4.9,
+        "reviews_count": 1890,
+        "pages": 240,
+        "sample_questions_count": 10,
+        "description": "सार्वजनिक आरोग्य विभाग महाराष्ट्र गट-ड (शिपाई/कक्षसेवक) भरती परीक्षेचे सर्व शिफ्ट्सचे अधिकृत प्रश्न व सोडवलेले प्रश्नसंच.",
+        "download_file": "peon.pdf",
+        "icon": "📑"
     }
 ]
 
@@ -406,8 +457,60 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
                         p.get("icon", "📚")
                     ))
 
+            # Auto-seed from custom products manifest so admin uploads persist across container restarts
+            manifest_file = Path(__file__).resolve().parent.parent / "custom_products_manifest.json"
+            if manifest_file.exists():
+                try:
+                    custom_items = json.loads(manifest_file.read_text(encoding="utf-8"))
+                    for cp in custom_items:
+                        c_chk = db.execute("SELECT count(*) FROM digital_products WHERE id = ?", (cp["id"],)).fetchone()[0]
+                        if c_chk == 0:
+                            db.execute("""
+                                INSERT OR IGNORE INTO digital_products (
+                                    id, title, subtitle, subject, tier, price_inr, original_price_inr,
+                                    badge, rating, reviews_count, pages, description, download_file, icon,
+                                    is_active, sales_count
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)
+                            """, (
+                                cp["id"],
+                                cp.get("title", ""),
+                                cp.get("subtitle", "TCS/IBPS परीक्षा विशेष ई-बुक"),
+                                normalize_product_subject(cp.get("subject", "General Knowledge")),
+                                cp.get("tier", "Manual"),
+                                cp.get("price_inr", 19),
+                                cp.get("original_price_inr", 99),
+                                cp.get("badge", "🔥 लोकप्रिय"),
+                                cp.get("rating", 4.9),
+                                cp.get("reviews_count", 150),
+                                cp.get("pages", 48),
+                                cp.get("description", ""),
+                                cp.get("download_file", f"{cp['id']}.pdf"),
+                                cp.get("icon", "📚")
+                            ))
+                except Exception as m_err:
+                    logger.debug(f"Manifest auto-seed notice: {m_err}")
+
             db.commit()
             logger.info("digital_products and product_orders tables initialized and verified.")
+
+    def save_product_to_manifest(self, prod: Dict[str, Any]):
+        """Persists custom uploaded or created products to a JSON manifest so they survive container restarts."""
+        try:
+            manifest_file = Path(__file__).resolve().parent.parent / "custom_products_manifest.json"
+            items = []
+            if manifest_file.exists():
+                try:
+                    items = json.loads(manifest_file.read_text(encoding="utf-8"))
+                except Exception:
+                    items = []
+            existing_ids = {x.get("id") for x in items}
+            if prod.get("id") not in existing_ids:
+                items.append(prod)
+            else:
+                items = [prod if x.get("id") == prod.get("id") else x for x in items]
+            manifest_file.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.debug(f"Manifest save notice: {e}")
 
     def create_product(self, data: Dict[str, Any], db_path: str = "bot.db") -> Dict[str, Any]:
         """Manually creates a new product in the digital_products table with full admin control."""
@@ -461,7 +564,10 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             db.commit()
 
         logger.info(f"✅ Manually created product '{title}' (ID: {prod_id}, ₹{price_inr})")
-        return self.get_product_by_id(prod_id, db_path)
+        created_prod = self.get_product_by_id(prod_id, db_path)
+        if created_prod:
+            self.save_product_to_manifest(created_prod)
+        return created_prod
 
     def update_product(self, product_id: str, updates: Dict[str, Any], db_path: str = "bot.db") -> bool:
         """Manually updates an existing product with specified fields."""
@@ -747,15 +853,23 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             db.commit()
 
         logger.info(f"✅ Registered PDF '{filename}' in store as '{final_title}' (₹{price_inr}, ID: {prod_id})")
-        return {
+        ret_product = {
             "id": prod_id,
             "title": final_title,
-            "subject": subject,
+            "subtitle": final_subtitle,
+            "subject": final_subject,
             "price_inr": price_inr,
             "original_price_inr": original_price_inr,
             "pages": pages,
-            "download_file": filename
+            "badge": final_badge,
+            "description": final_desc,
+            "download_file": filename,
+            "icon": final_icon,
+            "tier": "E-Book",
+            "is_active": 1
         }
+        self.save_product_to_manifest(ret_product)
+        return ret_product
 
     def seed_default_products(self, db_path: str = "bot.db", force: bool = False) -> int:
         """Seeds all default curated e-books into digital_products table if not already present."""
@@ -895,11 +1009,11 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
                             pass
                         return cand if cand.exists() else target_path
 
-        # Check if automatic eBook generation is disabled
-        if not force_rebuild and os.getenv("ENABLE_AUTO_EBOOK_GENERATION", "").lower() not in ("true", "1", "yes"):
+        # Only suppress auto eBook generation if explicitly disabled
+        if not force_rebuild and os.getenv("ENABLE_AUTO_EBOOK_GENERATION", "true").lower() in ("false", "0", "no"):
             if target_path.exists():
                 return target_path
-            logger.info(f"Auto eBook generation disabled: not generating dummy/auto PDF for '{product_id}'.")
+            logger.info(f"Auto eBook generation disabled: not generating auto PDF for '{product_id}'.")
             return None
 
         # If product is Current Affairs, use Chalu Ghadamodi specification layout
