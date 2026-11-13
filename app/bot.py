@@ -596,6 +596,23 @@ def init_db():
             )
         """)
 
+        # Question Bank table for harvested authentic exam questions from response sheets
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS qbank_questions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                question_hash TEXT UNIQUE,
+                exam_key TEXT,
+                section TEXT,
+                question_text TEXT,
+                options_json TEXT,
+                correct_option_num INTEGER DEFAULT 1,
+                correct_option_text TEXT,
+                explanation TEXT,
+                source TEXT DEFAULT 'web_upload',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # Security & Integrity: Unique constraints inside BEGIN IMMEDIATE
         try:
             db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_uploads_roll_exam ON uploads(roll_number, exam_key) WHERE roll_number != '' AND roll_number IS NOT NULL")
@@ -624,6 +641,55 @@ def log_store_visitor(ip: str, user_agent: str, referrer: str = "", tg_id: int =
             """, (str(ip or "")[:45], str(user_agent or "")[:250], device_type, str(referrer or "")[:250], tg_id, str(page_path or "")[:100], str(action or "")[:50], str(product_id or "")[:50], str(details or "")[:250]))
     except Exception as e:
         logger.warning(f"Error logging store visitor: {e}")
+
+def sync_records_to_qbank(records: list, exam_key: str = "ZP_BHARTI", source: str = "web_upload") -> int:
+    """
+    Synchronizes parsed questions from submitted response sheets into central qbank_questions table.
+    Ensures strict SHA-256 deduplication and valid 4-option formatting so the questions can be
+    immediately used by Telegram bot /quiz, scheduled channel polls, and Question Bank PDF generation.
+    Returns number of newly stored questions.
+    """
+    if not records:
+        return 0
+    from app.quiz_generator import compute_question_hash
+    stored_cnt = 0
+    try:
+        with get_connection() as db:
+            for r in records:
+                q_text = (r.get("question_text") or "").strip()
+                opts = r.get("options") or {}
+                if not q_text or len(q_text) < 6 or len(opts) < 2:
+                    continue
+
+                opts_list = [str(v) for v in opts.values()]
+                q_hash = compute_question_hash(q_text, opts_list)
+
+                c_num = r.get("correct_option_number") or r.get("correct_option_id") or 1
+                try:
+                    c_num = int(str(c_num).replace("पर्याय", "").strip() or 1)
+                except Exception:
+                    c_num = 1
+                c_text = (r.get("correct_option_text") or "").strip()
+                sec = (r.get("section") or "General").strip()
+                exp = (r.get("explanation") or "").strip()
+
+                cur = db.execute(
+                    """INSERT OR IGNORE INTO qbank_questions(
+                        question_hash, exam_key, section, question_text, options_json,
+                        correct_option_num, correct_option_text, explanation, source
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        q_hash, exam_key, sec, q_text, json.dumps(opts, ensure_ascii=False),
+                        c_num, c_text, exp, source
+                    )
+                )
+                if cur.rowcount > 0:
+                    stored_cnt += 1
+        if stored_cnt > 0:
+            logger.info(f"Synchronized {stored_cnt} new questions from {source} ({exam_key}) into Question Bank.")
+    except Exception as e:
+        logger.warning(f"Failed to sync records to qbank: {e}")
+    return stored_cnt
 
 async def _send_single_msg(bot, chat_id, chunk: str, parse_mode, reply_markup, disable_web_page_preview):
     try:
@@ -2363,6 +2429,11 @@ async def _complete_analysis_impl(update: Update, context: ContextTypes.DEFAULT_
             upload_id = cursor.lastrowid
             db.execute("UPDATE users SET total_uploads = total_uploads + 1 WHERE telegram_id = ?", (user_id,))
 
+        try:
+            sync_records_to_qbank(records, exam_key=exam_key, source="telegram_bot")
+        except Exception as qb_err:
+            logger.warning(f"Could not sync records to qbank from bot upload: {qb_err}")
+
     overall_scores, exam_scores, post_scores, cat_scores, post_cat_scores = get_candidate_scores(exam_key, category, post_name)
     rank_data = estimate_cohort_rank(
         student_score=score,
@@ -3139,6 +3210,28 @@ async def quiz_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Pool of questions: curated daily questions + master qbank items
     daily = get_daily_latest_exam_questions()
     questions = list(daily.get("questions", []))
+
+    # Also load authentic harvested questions from central qbank_questions table
+    try:
+        with get_connection() as db:
+            db.row_factory = sqlite3.Row
+            rows = db.execute(
+                """SELECT section, question_text, options_json, correct_option_num,
+                          correct_option_text, explanation
+                   FROM qbank_questions ORDER BY RANDOM() LIMIT 80"""
+            ).fetchall()
+            for row in rows:
+                opts_dict = json.loads(row["options_json"] or "{}")
+                if len(opts_dict) >= 4:
+                    questions.append({
+                        "subject": row["section"] or "General",
+                        "question": row["question_text"],
+                        "options": list(opts_dict.values()),
+                        "correct": str(row["correct_option_num"]),
+                        "explanation": row["explanation"] or ""
+                    })
+    except Exception as qb_err:
+        logger.warning(f"Could not load questions from qbank_questions: {qb_err}")
 
     # Also load from qbank_master.json for high diversity
     try:
@@ -5811,7 +5904,7 @@ def render_upload_portal_html() -> str:
 <html lang="mr">
 <head>
     <meta charset="UTF-8">
-    <title>\${name} - ExamRankers 100 Questions Report</title>
+    <title>${name} - ExamRankers 100 Questions Report</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.5; color: #1e293b; max-width: 860px; margin: 0 auto; padding: 20px; background: #f8fafc; }
         .card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
@@ -5828,39 +5921,39 @@ def render_upload_portal_html() -> str:
         <div class="header">
             <div>
                 <h2 style="margin:0;color:#1e1b4b;">ExamRankers India • अधिकृत १०० प्रश्न अहवाल</h2>
-                <div style="font-size:13px;color:#64748b;margin-top:2px;">परीक्षा: \${exam} | रोल नं: \${roll}</div>
+                <div style="font-size:13px;color:#64748b;margin-top:2px;">परीक्षा: ${exam} | रोल नं: ${roll}</div>
             </div>
             <div style="text-align:right;">
-                <h3 style="margin:0;color:#334155;">\${name}</h3>
-                <span style="font-size:12px;background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:4px;">प्रवर्ग: \${cat}</span>
+                <h3 style="margin:0;color:#334155;">${name}</h3>
+                <span style="font-size:12px;background:#e0e7ff;color:#3730a3;padding:2px 8px;border-radius:4px;">प्रवर्ग: ${cat}</span>
             </div>
         </div>
 
         <div class="zone-box">
-            🎯 Cutoff Prediction Zone (निवड अंदाज): \${zone}
+            🎯 Cutoff Prediction Zone (निवड अंदाज): ${zone}
         </div>
 
         <div class="stats">
             <div class="stat-box">
                 <div style="font-size:11px;color:#64748b;">एकूण गुण</div>
-                <div class="stat-val">\${score} / \${maxM}</div>
+                <div class="stat-val">${score} / ${maxM}</div>
             </div>
             <div class="stat-box">
                 <div style="font-size:11px;color:#64748b;">अचूकता</div>
-                <div class="stat-val" style="color:#0284c7;">\${acc}%</div>
+                <div class="stat-val" style="color:#0284c7;">${acc}%</div>
             </div>
             <div class="stat-box">
                 <div style="font-size:11px;color:#64748b;">राज्य रँक</div>
-                <div class="stat-val" style="color:#d97706;">#\${rank} / \${total}</div>
+                <div class="stat-val" style="color:#d97706;">#${rank} / ${total}</div>
             </div>
             <div class="stat-box">
                 <div style="font-size:11px;color:#64748b;">बरोबर / चूक</div>
-                <div class="stat-val" style="color:#10b981;">\${d.correct || 0} / <span style="color:#ef4444;">\${d.incorrect || 0}</span></div>
+                <div class="stat-val" style="color:#10b981;">${d.correct || 0} / <span style="color:#ef4444;">${d.incorrect || 0}</span></div>
             </div>
         </div>
 
         <h3 style="border-bottom:1px solid #e2e8f0;padding-bottom:6px;color:#1e293b;font-size:15px;">सविस्तर प्रश्नपत्रिका व अधिकृत उत्तरे:</h3>
-        \${qHtml}
+        ${qHtml}
 
         <div style="margin-top:20px;text-align:center;font-size:12px;color:#94a3b8;">
             अहवाल निर्मिती: ExamRankers AI Platform (https://exam-rank-predictor-bot.onrender.com)
@@ -5914,7 +6007,7 @@ def render_upload_portal_html() -> str:
 <html lang="mr">
 <head>
     <meta charset="UTF-8">
-    <title>\${name} - चुकीचे प्रश्न व आक्षेप अहवाल</title>
+    <title>${name} - चुकीचे प्रश्न व आक्षेप अहवाल</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.5; color: #1e293b; max-width: 860px; margin: 0 auto; padding: 20px; background: #fff1f2; }
         .card { background: white; border: 1px solid #fecdd3; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
@@ -5926,9 +6019,9 @@ def render_upload_portal_html() -> str:
     <div class="card">
         <div class="header">
             <h2 style="margin:0;color:#9f1239;">ExamRankers • चुकीचे प्रश्न पोस्टमार्टम व आक्षेप अहवाल</h2>
-            <div style="font-size:13px;color:#64748b;margin-top:4px;">परीक्षार्थी: <b>\${name}</b> | परीक्षा: <b>\${exam}</b> | एकूण चुका: <b>\${wrongQs.length}</b></div>
+            <div style="font-size:13px;color:#64748b;margin-top:4px;">परीक्षार्थी: <b>${name}</b> | परीक्षा: <b>${exam}</b> | एकूण चुका: <b>${wrongQs.length}</b></div>
         </div>
-        \${qHtml}
+        ${qHtml}
         <div style="margin-top:20px;text-align:center;font-size:12px;color:#94a3b8;">
             अहवाल निर्मिती: ExamRankers AI Platform (https://exam-rank-predictor-bot.onrender.com)
         </div>
@@ -6128,6 +6221,12 @@ def process_sheet_payload(
                 )
         except Exception as db_e:
             logger.warning(f"Could not record web upload to db: {db_e}")
+
+        # Synchronize harvested questions into central Question Bank for Quizzes & Study Materials
+        try:
+            sync_records_to_qbank(records, exam_key=detected_key, source="web_upload")
+        except Exception as qb_err:
+            logger.warning(f"Could not sync questions to qbank: {qb_err}")
 
         # Optional: Send instant Telegram notification if telegram_user_id was passed
         if tg_user_id and TOKEN:
@@ -6731,6 +6830,37 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             except (BrokenPipeError, ConnectionResetError):
                 logger.debug("Client disconnected while downloading full content zip")
             return
+
+        # 5a. Admin API: Export Harvested Question Bank (JSON)
+        if path == "/admin/export_qbank":
+            query_params = urllib.parse.parse_qs(parsed.query)
+            if not is_admin_request_authenticated(self.headers, query_params):
+                self.send_response(403)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(b"Unauthorized: Missing or invalid X-Admin-Key")
+                return
+
+            try:
+                with get_connection() as db:
+                    db.row_factory = sqlite3.Row
+                    rows = db.execute("SELECT * FROM qbank_questions ORDER BY id DESC").fetchall()
+                    q_list = [dict(r) for r in rows]
+                json_bytes = json.dumps(q_list, ensure_ascii=False, indent=2).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Disposition", 'attachment; filename="ExamRankers_QBank_Master.json"')
+                self.send_header("Content-Length", str(len(json_bytes)))
+                self.send_security_headers(is_admin=True)
+                self.end_headers()
+                self.wfile.write(json_bytes)
+                return
+            except Exception as exp_err:
+                self.send_response(500)
+                self.send_header("Content-Type", "text/plain; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(f"Export Error: {exp_err}".encode("utf-8"))
+                return
 
         # 5b. Public Web Upload & Score/Rank Predictor Portal (No Telegram 20MB limit!)
         if path in ("/upload", "/sheet", "/rank_calculator"):
@@ -7543,6 +7673,140 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.end_headers()
                 self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
+                return
+
+        # Admin API: Dispatch Live Quiz to Channel from Web Dashboard
+        if path == "/api/admin/dispatch_quiz":
+            try:
+                target_channel = data.get("channel") or os.getenv("CHANNEL_ID", "@ExamRankersIndia")
+                from app.quiz_generator import resolve_quiz_correct_index
+                q_row = None
+                with get_connection() as db:
+                    db.row_factory = sqlite3.Row
+                    q_row = db.execute(
+                        """SELECT * FROM qbank_questions ORDER BY RANDOM() LIMIT 1"""
+                    ).fetchone()
+
+                if not q_row:
+                    daily = get_daily_latest_exam_questions()
+                    qs = daily.get("questions", [])
+                    if not qs:
+                        self.send_response(400)
+                        self.send_header("Content-Type", "application/json; charset=utf-8")
+                        self.end_headers()
+                        self.wfile.write(json.dumps({"success": False, "message": "क्वेश्चन बँक रिकामी आहे."}).encode("utf-8"))
+                        return
+                    chosen = random.choice(qs)
+                    q_text = f"[{chosen.get('subject', 'General')}] {chosen.get('question')}"
+                    opts = [re.sub(r"^[A-Da-d1-4][\.\):\-]\s*", "", o).strip()[:95] for o in chosen.get("options", [])[:4]]
+                    c_idx = resolve_quiz_correct_index(chosen, opts)
+                    exp = (chosen.get("explanation") or "अधिकृत उत्तर व विश्लेषण")[:195]
+                else:
+                    opts_dict = json.loads(q_row["options_json"] or "{}")
+                    sec = q_row["section"] or "General"
+                    q_text = f"[{sec}] {q_row['question_text']}"
+                    opts = [re.sub(r"^[A-Da-d1-4][\.\):\-]\s*", "", str(v)).strip()[:95] for v in list(opts_dict.values())[:4]]
+                    c_num = q_row["correct_option_num"] or 1
+                    try:
+                        c_idx = max(0, min(len(opts) - 1, int(c_num) - 1))
+                    except Exception:
+                        c_idx = 0
+                    exp = (q_row["explanation"] or "अधिकृत उत्तर व विश्लेषण")[:195]
+
+                if TOKEN:
+                    poll_res = httpx.post(
+                        f"https://api.telegram.org/bot{TOKEN}/sendPoll",
+                        json={
+                            "chat_id": target_channel,
+                            "question": q_text[:300],
+                            "options": opts,
+                            "type": "quiz",
+                            "correct_option_id": c_idx,
+                            "explanation": exp,
+                            "is_anonymous": False
+                        },
+                        timeout=10.0
+                    )
+                    if poll_res.status_code == 200:
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json; charset=utf-8")
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            "success": True,
+                            "message": f"क्विझ यशस्वीरित्या {target_channel} वर पाठवला गेला!",
+                            "question": q_text[:80] + "..."
+                        }, ensure_ascii=False).encode("utf-8"))
+                        return
+                    else:
+                        raise Exception(f"Telegram API Error: {poll_res.text}")
+                else:
+                    raise Exception("BOT_TOKEN सेट नाही.")
+            except Exception as q_err:
+                logger.error(f"Error dispatching quiz from admin: {q_err}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(q_err)}).encode("utf-8"))
+                return
+
+        # Admin API: Optimize System, Vacuum DB & Purge Cache (Reduces Bot Load)
+        if path == "/api/admin/optimize_system":
+            try:
+                import gc
+                cleanup_stale_chunk_uploads()
+                gc.collect()
+                before_size = 0.0
+                if os.path.exists(DB_PATH):
+                    before_size = os.path.getsize(DB_PATH) / (1024 * 1024)
+
+                with sqlite3.connect(DB_PATH, timeout=60.0) as db:
+                    db.execute("VACUUM")
+
+                after_size = 0.0
+                if os.path.exists(DB_PATH):
+                    after_size = os.path.getsize(DB_PATH) / (1024 * 1024)
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "success": True,
+                    "message": f"सिस्टीम व डेटाबेस ऑप्टिमायझेशन यशस्वी! DB आकार {before_size:.2f} MB वरून {after_size:.2f} MB झाला, रॅम मेमरी फ्री केली गेली.",
+                    "before_mb": round(before_size, 2),
+                    "after_mb": round(after_size, 2)
+                }, ensure_ascii=False).encode("utf-8"))
+                return
+            except Exception as opt_err:
+                logger.error(f"Error optimizing system: {opt_err}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(opt_err)}).encode("utf-8"))
+                return
+
+        # Admin API: Delete Upload Record
+        if path == "/api/admin/delete_upload":
+            try:
+                upload_id = data.get("upload_id")
+                if not upload_id:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"success": False, "message": "upload_id आवश्यक आहे."}).encode("utf-8"))
+                    return
+                with get_connection() as db:
+                    db.execute("DELETE FROM uploads WHERE id = ?", (upload_id,))
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": True, "message": f"अपलोड #{upload_id} यशस्वीरित्या हटवले."}).encode("utf-8"))
+                return
+            except Exception as del_err:
+                logger.error(f"Error deleting upload: {del_err}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(del_err)}).encode("utf-8"))
                 return
 
         if path == "/api/checkout":

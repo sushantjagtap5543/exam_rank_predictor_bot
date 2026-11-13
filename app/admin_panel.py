@@ -14,6 +14,7 @@ Features:
 
 import html as html_lib
 import json
+import os
 import sqlite3
 
 
@@ -29,6 +30,18 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
     products = []
     recent_visitors = []
     recent_orders = []
+    recent_uploads = []
+    total_uploads_cnt = 0
+    recent_qbank = []
+    total_qbank_cnt = 0
+    total_users_cnt = 0
+    db_size_mb = 0.0
+
+    try:
+        if os.path.exists(db_path):
+            db_size_mb = round(os.path.getsize(db_path) / (1024 * 1024), 2)
+    except Exception:
+        pass
 
     try:
         with sqlite3.connect(db_path, timeout=30.0) as db:
@@ -64,6 +77,26 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 rev_row = db.execute("SELECT sum(amount_paid) FROM product_orders WHERE status IN ('delivered', 'approved', 'paid')").fetchone()
                 if rev_row and rev_row[0]:
                     total_revenue = float(rev_row[0])
+            except Exception:
+                pass
+
+            # Candidate Uploads & Scorecards
+            try:
+                total_uploads_cnt = db.execute("SELECT count(*) FROM uploads").fetchone()[0]
+                recent_uploads = [dict(r) for r in db.execute("SELECT * FROM uploads ORDER BY id DESC LIMIT 50").fetchall()]
+            except Exception:
+                pass
+
+            # Central Harvested Question Bank
+            try:
+                total_qbank_cnt = db.execute("SELECT count(*) FROM qbank_questions").fetchone()[0]
+                recent_qbank = [dict(r) for r in db.execute("SELECT * FROM qbank_questions ORDER BY id DESC LIMIT 30").fetchall()]
+            except Exception:
+                pass
+
+            # Registered Users
+            try:
+                total_users_cnt = db.execute("SELECT count(*) FROM users").fetchone()[0]
             except Exception:
                 pass
     except Exception:
@@ -265,6 +298,59 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 </td>
                 <td style="color:#64748b; font-size:11px;">{safe_ts}</td>
                 <td style="text-align:center;">{action_btns}</td>
+            </tr>
+        """)
+
+    # Build Candidate Upload Rows HTML
+    upload_rows_html = []
+    for u in recent_uploads:
+        u_id = u.get("id", 0)
+        u_name = html_lib.escape(str(u.get("candidate_name") or "परीक्षार्थी"))
+        u_roll = html_lib.escape(str(u.get("roll_number") or "-"))
+        u_exam = html_lib.escape(str(u.get("exam_key") or "ZP_BHARTI"))
+        u_cat = html_lib.escape(str(u.get("category") or "Open"))
+        u_score = u.get("score", 0.0)
+        u_rank = u.get("rank", 1)
+        u_src = html_lib.escape(str(u.get("status") or "upload"))
+        u_date = html_lib.escape(str(u.get("created_at") or "")[:19])
+
+        upload_rows_html.append(f"""
+            <tr id="upload_row_{u_id}">
+                <td style="font-weight:700; color:#94a3b8;">#{u_id}</td>
+                <td>
+                    <b style="color:#ffffff;">{u_name}</b><br>
+                    <span style="font-size:11.5px; color:#94a3b8;">रोल: <code>{u_roll}</code></span>
+                </td>
+                <td><span class="badge badge-sub">{u_exam}</span></td>
+                <td><span style="font-size:12px; color:#cbd5e1;">{u_cat}</span></td>
+                <td><b style="color:var(--accent-gold); font-size:14px;">{u_score}</b></td>
+                <td><span class="badge badge-green">#{u_rank}</span></td>
+                <td><span class="badge badge-gray">{u_src}</span></td>
+                <td style="color:#64748b; font-size:11px;">{u_date}</td>
+                <td style="text-align:center;">
+                    <button class="btn-sm btn-del" title="हटवा" onclick="deleteUploadRecord({u_id})">🗑️ Delete</button>
+                </td>
+            </tr>
+        """)
+
+    # Build Harvested Question Bank Rows HTML
+    qbank_rows_html = []
+    for q in recent_qbank:
+        q_id = q.get("id", 0)
+        q_sec = html_lib.escape(str(q.get("section") or "General"))
+        q_exam = html_lib.escape(str(q.get("exam_key") or "ZP_BHARTI"))
+        q_txt = html_lib.escape(str(q.get("question_text") or "")[:120])
+        q_cnum = q.get("correct_option_num", 1)
+        q_src = html_lib.escape(str(q.get("source") or "web_upload"))
+
+        qbank_rows_html.append(f"""
+            <tr>
+                <td style="font-weight:700; color:#94a3b8;">#{q_id}</td>
+                <td><span class="badge badge-sub">{q_sec}</span></td>
+                <td><span style="font-size:12px; color:#cbd5e1;">{q_exam}</span></td>
+                <td><span style="color:#f1f5f9; font-size:12.5px;">{q_txt}...</span></td>
+                <td style="text-align:center;"><span class="badge badge-green">पर्याय {q_cnum}</span></td>
+                <td><span class="badge badge-gray">{q_src}</span></td>
             </tr>
         """)
 
@@ -709,21 +795,44 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 <div class="kpi-val" style="color:var(--accent-emerald);">₹{int(total_revenue) or (purchases * 29)}</div>
                 <div class="kpi-sub">एकूण यशस्वी खरेदी: <b>{purchases}</b></div>
             </div>
+            <div class="kpi-card">
+                <div class="kpi-title">📑 एकूण रिस्पॉन्स शीट्स (Uploads)</div>
+                <div class="kpi-val" style="color:var(--accent-cyan);">{total_uploads_cnt}</div>
+                <div class="kpi-sub">वेब व टेलिग्राम बॉट निकाल</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">🧠 केंद्रीय प्रश्नसंच (Q-Bank)</div>
+                <div class="kpi-val" style="color:var(--accent-gold);">{total_qbank_cnt}</div>
+                <div class="kpi-sub">अचूक TCS/IBPS प्रश्न</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">🤖 नोंदणीकृत सदस्य (Bot Users)</div>
+                <div class="kpi-val" style="color:var(--accent-emerald);">{total_users_cnt}</div>
+                <div class="kpi-sub">बॉट ॲक्टिव्ह परीक्षार्थी</div>
+            </div>
+            <div class="kpi-card">
+                <div class="kpi-title">💾 डेटाबेस व मेमरी (DB Health)</div>
+                <div class="kpi-val" style="color:var(--accent-emerald);">{db_size_mb} MB</div>
+                <div class="kpi-sub"><button onclick="optimizeSystemNow()" style="background:none; border:none; color:var(--accent-cyan); font-weight:700; cursor:pointer; text-decoration:underline;">⚡ Optimize Now</button></div>
+            </div>
         </div>
 
         <!-- Manual Control & Studio Action Center -->
         <div class="toolbar">
             <div style="font-size:14px; font-weight:700; color:#fff;">
-                🎛️ <b>मॅन्युअल स्टोअर नियंत्रण व ऑपरेशन्स (Manual Store Controls):</b>
+                🎛️ <b>प्रकल्प कमांड सेंटर व मॅन्युअल ऑपरेशन्स (Master Controls & Bot Offloader):</b>
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
                 <button class="btn btn-gold" onclick="openAddModal()">➕ नवीन ई-बुक जोडा</button>
-                <button class="btn btn-blue" onclick="openBulkUploadModal()" style="background:#2563eb; color:#fff;">📚 बल्क PDFs एकत्र अपलोड करा (Bulk Upload)</button>
+                <button class="btn btn-blue" onclick="openBulkUploadModal()" style="background:#2563eb; color:#fff;">📚 बल्क PDFs एकत्र अपलोड करा</button>
+                <button class="btn btn-gold" onclick="dispatchQuizNow()" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none;">🚀 चॅनेलवर थेट क्विझ पाठवा</button>
+                <button class="btn btn-blue" onclick="optimizeSystemNow()" style="background:linear-gradient(135deg, #6366f1, #4f46e5); color:#fff; border:none;">⚡ बॉट मेमरी लोड कमी करा (Optimize)</button>
+                <a href="/admin/export_qbank" class="btn btn-outline">📥 संपूर्ण प्रश्नसंच (Export QBank)</a>
                 <button class="btn btn-outline" onclick="document.getElementById('pdfFileInput').click()">📁 थेट Single PDF</button>
                 <input type="file" id="pdfFileInput" style="display:none;" accept=".pdf,.zip" onchange="uploadDirectPdf(this)">
                 <input type="file" id="bulkModalFileInput" style="display:none;" accept=".pdf,.zip" multiple onchange="handleBulkFilesSelected(this.files)">
                 <button class="btn btn-outline" onclick="syncFolderPdfs()">🔄 फोल्डर PDF सिंक</button>
-                <button class="btn btn-danger" onclick="purgeAllProducts()">🧹 सर्व ई-बुक्स हटवा (Clean Slate)</button>
+                <button class="btn btn-danger" onclick="purgeAllProducts()">🧹 सर्व ई-बुक्स हटवा</button>
                 <a href="/admin/download_all_products" class="btn btn-outline">📦 ZIP बॅकअप</a>
             </div>
         </div>
@@ -822,6 +931,72 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                     </thead>
                     <tbody id="ordersTbody">
                         {"".join(order_rows_html) if order_rows_html else '<tr><td colspan="7" style="text-align:center; padding:20px; color:#64748b;">अद्याप कोणतीही ऑर्डर नोंदवलेली नाही.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Central Question Bank & Live Quiz Studio -->
+        <div class="section-box">
+            <div class="section-header" style="flex-wrap:wrap; gap:12px;">
+                <div class="section-title">
+                    🧠 केंद्रीय प्रश्नसंच व क्विझ व्यवस्थापन (Central Question Bank — {total_qbank_cnt} Questions)
+                    <span class="badge badge-green" style="margin-left:8px;">Live Harvester</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <input type="text" placeholder="🔍 प्रश्न किंवा विषय शोधा..." oninput="filterQbankTable(this.value)" style="padding:6px 12px; background:#1e293b; border:1px solid #334155; border-radius:6px; color:#fff; font-size:12px; width:200px; outline:none;">
+                    <button class="btn btn-sm btn-gold" onclick="dispatchQuizNow()">🚀 चॅनेलवर क्विझ पाठवा</button>
+                    <a href="/admin/export_qbank" class="btn btn-sm btn-outline">📥 Export JSON</a>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width:60px;">ID</th>
+                            <th>विषय (Section)</th>
+                            <th>परीक्षा (Exam)</th>
+                            <th>प्रश्न मजकूर (Question Text)</th>
+                            <th style="text-align:center; width:120px;">अधिकृत उत्तर</th>
+                            <th style="width:110px;">स्रोत (Source)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="qbankTbody">
+                        {"".join(qbank_rows_html) if qbank_rows_html else '<tr><td colspan="6" style="text-align:center; padding:20px; color:#64748b;">अद्याप प्रश्नसंचात कोणताही प्रश्न नोंदवलेला नाही. विद्यार्थी किंवा ॲडमिनने रिस्पॉन्स शीट अपलोड करताच येथे प्रश्न आपोआप साठवले जातील.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Live Candidate Submissions & Scores Table -->
+        <div class="section-box">
+            <div class="section-header" style="flex-wrap:wrap; gap:12px;">
+                <div class="section-title">
+                    📑 थेट परीक्षार्थी निकाल व अपलोड्स (Live Candidate Submissions — {total_uploads_cnt} Records)
+                    <span class="badge badge-sub" style="margin-left:8px;">वेब व बॉट डेटा</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <input type="text" placeholder="🔍 नाव, रोल नं किंवा परीक्षा शोधा..." oninput="filterUploadsTable(this.value)" style="padding:6px 12px; background:#1e293b; border:1px solid #334155; border-radius:6px; color:#fff; font-size:12px; width:220px; outline:none;">
+                    <button class="btn btn-sm btn-outline" onclick="location.reload()">🔄 रिफ्रेश</button>
+                </div>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width:50px;">ID</th>
+                            <th>परीक्षार्थी व रोल नंबर</th>
+                            <th>परीक्षा</th>
+                            <th>प्रवर्ग</th>
+                            <th>गुण (Score)</th>
+                            <th>रँक</th>
+                            <th>प्रकार</th>
+                            <th>वेळ</th>
+                            <th style="text-align:center; width:90px;">ॲक्शन</th>
+                        </tr>
+                    </thead>
+                    <tbody id="uploadsTbody">
+                        {"".join(upload_rows_html) if upload_rows_html else '<tr><td colspan="9" style="text-align:center; padding:20px; color:#64748b;">अद्याप कोणत्याही परीक्षार्थ्याने रिस्पॉन्स शीट अपलोड केलेली नाही.</td></tr>'}
                     </tbody>
                 </table>
             </div>
@@ -1620,6 +1795,84 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             }} catch(e) {{
                 alert('❌ सर्व्हर त्रुटी: ' + e.message);
             }}
+        }}
+
+        async function dispatchQuizNow() {{
+            if (!confirm('📢 चॅनेलवर थेट सराव क्विझ पाठवायचा का?')) return;
+            try {{
+                const res = await adminFetch('/api/admin/dispatch_quiz', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{}})
+                }});
+                const data = await res.json();
+                if (data.success) {{
+                    alert('🚀 ' + (data.message || 'क्विझ चॅनेलवर पाठवला!'));
+                }} else {{
+                    alert('❌ त्रुटी: ' + data.message);
+                }}
+            }} catch(e) {{
+                alert('❌ सर्व्हर त्रुटी: ' + e.message);
+            }}
+        }}
+
+        async function optimizeSystemNow() {{
+            if (!confirm('⚡ बॉट मेमरी लोड कमी करण्यासाठी आणि डेटाबेस ऑप्टिमाईझ करण्यासाठी VACUUM चालवायचा का?')) return;
+            try {{
+                const res = await adminFetch('/api/admin/optimize_system', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{}})
+                }});
+                const data = await res.json();
+                if (data.success) {{
+                    alert('⚡ ' + (data.message || 'सिस्टीम ऑप्टिमायझेशन यशस्वी!'));
+                    location.reload();
+                }} else {{
+                    alert('❌ त्रुटी: ' + data.message);
+                }}
+            }} catch(e) {{
+                alert('❌ सर्व्हर त्रुटी: ' + e.message);
+            }}
+        }}
+
+        async function deleteUploadRecord(uploadId) {{
+            if (!confirm('हा निकाल / अपलोड कायमचा हटवायचा का?')) return;
+            try {{
+                const res = await adminFetch('/api/admin/delete_upload', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ upload_id: uploadId }})
+                }});
+                const data = await res.json();
+                if (data.success) {{
+                    const row = document.getElementById('upload_row_' + uploadId);
+                    if (row) row.remove();
+                    alert('✅ अपलोड हटवले गेले.');
+                }} else {{
+                    alert('❌ त्रुटी: ' + data.message);
+                }}
+            }} catch(e) {{
+                alert('❌ सर्व्हर त्रुटी: ' + e.message);
+            }}
+        }}
+
+        function filterUploadsTable(query) {{
+            const q = (query || '').toLowerCase().trim();
+            const rows = document.querySelectorAll('#uploadsTbody tr');
+            rows.forEach(row => {{
+                const text = row.innerText.toLowerCase();
+                row.style.display = (!q || text.includes(q)) ? '' : 'none';
+            }});
+        }}
+
+        function filterQbankTable(query) {{
+            const q = (query || '').toLowerCase().trim();
+            const rows = document.querySelectorAll('#qbankTbody tr');
+            rows.forEach(row => {{
+                const text = row.innerText.toLowerCase();
+                row.style.display = (!q || text.includes(q)) ? '' : 'none';
+            }});
         }}
     </script>
 </body>
