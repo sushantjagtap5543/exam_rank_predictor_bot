@@ -1064,17 +1064,36 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label class="form-label">विषय (Subject) *</label>
-                        <select id="add_subject" class="form-select" required>
-                            <option value="Current Affairs">📰 चालू घडामोडी (Current Affairs)</option>
-                            <option value="Marathi">✍️ मराठी व्याकरण (Marathi)</option>
-                            <option value="English">📖 इंग्रजी भाषा (English)</option>
-                            <option value="General Knowledge">🗺️ सामान्य ज्ञान व GS (GK)</option>
-                            <option value="Maths & Reasoning">🔢 गणित व बुद्धिमत्ता (Maths)</option>
-                            <option value="PYQ & Response Sheets">📑 रिस्पॉन्स शीट प्रश्नसंच (Q-Bank)</option>
-                            <option value="Technical">⚙️ तांत्रिक व विशेष (Technical)</option>
-                            <option value="Comprehensive">🏆 सर्वसमावेशक (Master)</option>
-                        </select>
+                        <label class="form-label">विषय / कॅटेगरी (Subject / Category) *</label>
+                        <input type="text" id="add_subject" list="subject_list" class="form-input" placeholder="निवडा किंवा नवा विषय टाईप करा..." value="General Knowledge" required>
+                        <datalist id="subject_list">
+                            <option value="Current Affairs">
+                            <option value="Marathi">
+                            <option value="English">
+                            <option value="General Knowledge">
+                            <option value="Maths & Reasoning">
+                            <option value="PYQ & Response Sheets">
+                            <option value="Technical">
+                            <option value="Comprehensive">
+                            <option value="Maha Police Special">
+                            <option value="Talathi Bharti Mock Series">
+                            <option value="Arogya Sevak Test Series">
+                            <option value="Formula Handbook">
+                        </datalist>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">प्रॉडक्ट प्रकार (Product Type / Tier) *</label>
+                        <input type="text" id="add_tier" list="tier_list" class="form-input" placeholder="उदा. PDF E-Book, Question Bank, Test Series" value="PDF E-Book" required>
+                        <datalist id="tier_list">
+                            <option value="PDF E-Book">
+                            <option value="Question Bank">
+                            <option value="Mock Test Series">
+                            <option value="Formula Handbook">
+                            <option value="Rapid Revision">
+                            <option value="Handwritten Notes">
+                            <option value="VIP Study Material">
+                            <option value="Audio Revision">
+                        </datalist>
                     </div>
                     <div class="form-group">
                         <label class="form-label">चिन्ह (Icon)</label>
@@ -1141,17 +1160,12 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label class="form-label">विषय (Subject) *</label>
-                        <select id="edit_subject" class="form-select" required>
-                            <option value="Current Affairs">📰 चालू घडामोडी (Current Affairs)</option>
-                            <option value="Marathi">✍️ मराठी व्याकरण (Marathi)</option>
-                            <option value="English">📖 इंग्रजी भाषा (English)</option>
-                            <option value="General Knowledge">🗺️ सामान्य ज्ञान व GS (GK)</option>
-                            <option value="Maths & Reasoning">🔢 गणित व बुद्धिमत्ता (Maths)</option>
-                            <option value="PYQ & Response Sheets">📑 रिस्पॉन्स शीट प्रश्नसंच (Q-Bank)</option>
-                            <option value="Technical">⚙️ तांत्रिक व विशेष (Technical)</option>
-                            <option value="Comprehensive">🏆 सर्वसमावेशक (Master)</option>
-                        </select>
+                        <label class="form-label">विषय / कॅटेगरी (Subject / Category) *</label>
+                        <input type="text" id="edit_subject" list="subject_list" class="form-input" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">प्रॉडक्ट प्रकार (Product Type / Tier) *</label>
+                        <input type="text" id="edit_tier" list="tier_list" class="form-input" required>
                     </div>
                     <div class="form-group">
                         <label class="form-label">चिन्ह (Icon)</label>
@@ -1308,6 +1322,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             document.getElementById('edit_title').value = prod.title || '';
             document.getElementById('edit_subtitle').value = prod.subtitle || '';
             document.getElementById('edit_subject').value = prod.subject || 'General Knowledge';
+            document.getElementById('edit_tier').value = prod.tier || 'PDF E-Book';
             document.getElementById('edit_icon').value = prod.icon || '📚';
             document.getElementById('edit_price').value = prod.price_inr || 19;
             document.getElementById('edit_orig_price').value = prod.original_price_inr || 99;
@@ -1573,7 +1588,8 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             const payload = {{
                 title: document.getElementById('add_title').value.trim(),
                 subtitle: document.getElementById('add_subtitle').value.trim(),
-                subject: document.getElementById('add_subject').value,
+                subject: (document.getElementById('add_subject').value || 'General Knowledge').trim(),
+                tier: (document.getElementById('add_tier').value || 'PDF E-Book').trim(),
                 icon: document.getElementById('add_icon').value,
                 price_inr: parseInt(document.getElementById('add_price').value),
                 original_price_inr: parseInt(document.getElementById('add_orig_price').value),
@@ -1610,7 +1626,8 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 product_id: prodId,
                 title: document.getElementById('edit_title').value.trim(),
                 subtitle: document.getElementById('edit_subtitle').value.trim(),
-                subject: document.getElementById('edit_subject').value,
+                subject: (document.getElementById('edit_subject').value || 'General Knowledge').trim(),
+                tier: (document.getElementById('edit_tier').value || 'PDF E-Book').trim(),
                 icon: document.getElementById('edit_icon').value,
                 price_inr: parseInt(document.getElementById('edit_price').value),
                 original_price_inr: parseInt(document.getElementById('edit_orig_price').value),

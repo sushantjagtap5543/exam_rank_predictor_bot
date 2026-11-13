@@ -25,11 +25,13 @@ CANONICAL_SUBJECTS = [
     "Marathi",
     "English",
     "General Knowledge",
-    "Maths & Reasoning"
+    "Maths & Reasoning",
+    "Technical",
+    "Comprehensive"
 ]
 
 def normalize_product_subject(raw_subject: Optional[str]) -> str:
-    """Normalizes any free-form subject string into one of the 6 canonical categories."""
+    """Normalizes known aliases into canonical categories, while fully preserving any custom subject/type entered by admin."""
     if not raw_subject:
         return "General Knowledge"
     s = raw_subject.strip()
@@ -46,7 +48,10 @@ def normalize_product_subject(raw_subject: Optional[str]) -> str:
         return "English"
     if any(k in s_lower for k in ["math", "reason", "ankganit", "buddhimate", "logic", "aptitude"]):
         return "Maths & Reasoning"
-    return "General Knowledge"
+    if any(k in s_lower for k in ["tech", "तांत्रिक"]):
+        return "Technical"
+    # Full Admin Control: Preserve any custom subject or product type specified by the administrator
+    return s
 
 MONTHS_2026_DATA = [
     ("prod_ca_2026_11", "नोव्हेंबर २०२६ चालू घडामोडी Top 200 MCQs (Live Daily Edition)", "नोव्हेंबर २०२६ मधील सर्व चालू घडामोडी + दैनंदिन अद्ययावत प्रश्न", "⚡ LIVE DAILY UPDATED (₹19)", 52, "current_affairs_2026_11_top200.pdf", "दररोज अद्ययावत होणारे चालू घडामोडींचे २०० दर्जेदार बहुपर्यायी प्रश्न, सविस्तर स्पष्टीकरणे आणि स्मरण क्लृप्त्या."),
