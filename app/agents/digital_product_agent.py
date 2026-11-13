@@ -372,6 +372,35 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             # Clean/normalize any historical non-canonical subjects in digital_products table
             db.execute("UPDATE digital_products SET subject = 'PYQ & Response Sheets' WHERE subject IN ('Comprehensive', 'Response Sheets', 'PYQ')")
             db.execute("UPDATE digital_products SET subject = 'General Knowledge' WHERE subject IN ('General Studies', 'General', 'GS', 'GK')")
+
+            # Auto-seed default products if catalog is empty so store & admin are immediately populated
+            cur = db.execute("SELECT count(*) FROM digital_products")
+            if cur.fetchone()[0] == 0:
+                for p in DEFAULT_PRODUCTS:
+                    db.execute("""
+                        INSERT OR IGNORE INTO digital_products (
+                            id, title, subtitle, subject, tier, price_inr, original_price_inr,
+                            badge, rating, reviews_count, pages, description, download_file, icon,
+                            is_active, sales_count
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)
+                    """, (
+                        p["id"],
+                        p.get("title", ""),
+                        p.get("subtitle", "TCS/IBPS परीक्षा विशेष ई-बुक"),
+                        normalize_product_subject(p.get("subject", "General Knowledge")),
+                        p.get("tier", "Manual"),
+                        p.get("price_inr", 19),
+                        p.get("original_price_inr", 99),
+                        p.get("badge", "🔥 लोकप्रिय"),
+                        p.get("rating", 4.9),
+                        p.get("reviews_count", 150),
+                        p.get("pages", 48),
+                        p.get("description", ""),
+                        p.get("download_file", f"{p['id']}.pdf"),
+                        p.get("icon", "📚")
+                    ))
+                logger.info(f"Auto-seeded {len(DEFAULT_PRODUCTS)} default products into digital_products table.")
+
             db.commit()
             logger.info("digital_products and product_orders tables initialized and verified.")
 
@@ -769,10 +798,6 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             else:
                 rows = db.execute("SELECT * FROM digital_products WHERE is_active = 1 ORDER BY rowid DESC").fetchall()
             products = [dict(r) for r in rows]
-            if not include_inactive:
-                # Strictly filter out ghost/dummy products without a physical PDF on disk
-                from ..digital_store import locate_product_pdf
-                products = [p for p in products if locate_product_pdf(p.get("id"), db_path)]
             return products
 
     def get_product_by_id(self, product_id: str, db_path: str = "bot.db") -> Optional[Dict[str, Any]]:
