@@ -7867,13 +7867,23 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         # Admin API: Dispatch Live Quiz to Channel from Web Dashboard
         if path == "/api/admin/dispatch_quiz":
             try:
-                target_channel = data.get("channel") or os.getenv("CHANNEL_ID", "@ExamRankersIndia")
+                target_channel = (
+                    data.get("channel")
+                    or os.getenv("PAID_CHANNEL_ID")
+                    or os.getenv("CHANNEL_ID")
+                    or PAID_CHANNEL_ID
+                    or "-1004381339759"
+                )
+                target_channel = str(target_channel).strip()
+                if target_channel.startswith("http"):
+                    target_channel = "-1004381339759"
+
                 from app.quiz_generator import resolve_quiz_correct_index
                 q_row = None
                 with get_connection() as db:
                     db.row_factory = sqlite3.Row
                     q_row = db.execute(
-                        """SELECT * FROM qbank_questions ORDER BY RANDOM() LIMIT 1"""
+                        """SELECT * FROM qbank_questions WHERE options_json IS NOT NULL AND length(options_json) > 10 ORDER BY RANDOM() LIMIT 1"""
                     ).fetchone()
 
                 if not q_row:
@@ -7886,21 +7896,32 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                         self.wfile.write(json.dumps({"success": False, "message": "क्वेश्चन बँक रिकामी आहे."}).encode("utf-8"))
                         return
                     chosen = random.choice(qs)
-                    q_text = f"[{chosen.get('subject', 'General')}] {chosen.get('question')}"
+                    q_text = f"🎯 [{chosen.get('subject', 'General')}] {chosen.get('question')}"
                     opts = [re.sub(r"^[A-Da-d1-4][\.\):\-]\s*", "", o).strip()[:95] for o in chosen.get("options", [])[:4]]
+                    opts = [o for o in opts if o]
                     c_idx = resolve_quiz_correct_index(chosen, opts)
-                    exp = (chosen.get("explanation") or "अधिकृत उत्तर व विश्लेषण")[:195]
+                    exp = (chosen.get("explanation") or "अधिकृत उत्तर व विश्लेषण प्रमाणित आहे.")[:195]
                 else:
                     opts_dict = json.loads(q_row["options_json"] or "{}")
                     sec = q_row["section"] or "General"
-                    q_text = f"[{sec}] {q_row['question_text']}"
+                    q_text = f"🎯 [{sec}] {q_row['question_text']}"
                     opts = [re.sub(r"^[A-Da-d1-4][\.\):\-]\s*", "", str(v)).strip()[:95] for v in list(opts_dict.values())[:4]]
+                    opts = [o for o in opts if o]
                     c_num = q_row["correct_option_num"] or 1
                     try:
                         c_idx = max(0, min(len(opts) - 1, int(c_num) - 1))
                     except Exception:
                         c_idx = 0
-                    exp = (q_row["explanation"] or "अधिकृत उत्तर व विश्लेषण")[:195]
+                    exp = (q_row["explanation"] or "अधिकृत उत्तर व विश्लेषण प्रमाणित आहे.")[:195]
+
+                if len(opts) < 2:
+                    daily = get_daily_latest_exam_questions()
+                    chosen = random.choice(daily.get("questions", []))
+                    q_text = f"🎯 [{chosen.get('subject', 'General')}] {chosen.get('question')}"
+                    opts = [re.sub(r"^[A-Da-d1-4][\.\):\-]\s*", "", o).strip()[:95] for o in chosen.get("options", [])[:4]]
+                    opts = [o for o in opts if o]
+                    c_idx = resolve_quiz_correct_index(chosen, opts)
+                    exp = (chosen.get("explanation") or "अधिकृत उत्तर व विश्लेषण प्रमाणित आहे.")[:195]
 
                 if len(opts) < 2:
                     self.send_response(400)
@@ -7909,36 +7930,41 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                     self.wfile.write(json.dumps({"success": False, "message": "प्रश्नात किमान २ पर्याय असणे आवश्यक आहे."}).encode("utf-8"))
                     return
 
-                if TOKEN:
+                bot_token = TOKEN or os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+                if bot_token:
                     api_base = os.getenv("TELEGRAM_BOT_API_URL", "").rstrip("/")
-                    bot_url = f"{api_base}/bot{TOKEN}/sendPoll" if api_base else f"https://api.telegram.org/bot{TOKEN}/sendPoll"
+                    bot_url = f"{api_base}/bot{bot_token}/sendPoll" if api_base else f"https://api.telegram.org/bot{bot_token}/sendPoll"
                     poll_res = httpx.post(
                         bot_url,
                         json={
                             "chat_id": target_channel,
-                            "question": q_text[:300],
+                            "question": q_text[:295],
                             "options": opts,
                             "type": "quiz",
                             "correct_option_id": c_idx,
-                            "explanation": exp,
-                            "is_anonymous": False
+                            "explanation": exp[:195],
+                            "is_anonymous": True
                         },
-                        timeout=10.0
+                        timeout=15.0
                     )
                     if poll_res.status_code == 200:
+                        poll_json = poll_res.json()
+                        chat_info = poll_json.get("result", {}).get("chat", {})
+                        ch_title = chat_info.get("title") or target_channel
                         self.send_response(200)
                         self.send_header("Content-Type", "application/json; charset=utf-8")
                         self.end_headers()
                         self.wfile.write(json.dumps({
                             "success": True,
-                            "message": f"क्विझ यशस्वीरित्या {target_channel} वर पाठवला गेला!",
+                            "message": f"क्विझ यशस्वीरित्या {ch_title} वर पाठवला गेला!",
+                            "channel": ch_title,
                             "question": q_text[:80] + "..."
                         }, ensure_ascii=False).encode("utf-8"))
                         return
                     else:
-                        raise Exception(f"Telegram API Error: {poll_res.text}")
+                        raise Exception(f"Telegram API Error ({poll_res.status_code}): {poll_res.text}")
                 else:
-                    raise Exception("BOT_TOKEN सेट नाही.")
+                    raise Exception("TELEGRAM_BOT_TOKEN सेट नाही.")
             except Exception as q_err:
                 logger.error(f"Error dispatching quiz from admin: {q_err}")
                 self.send_response(500)

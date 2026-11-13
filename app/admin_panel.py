@@ -1824,20 +1824,27 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         }}
 
         async function dispatchQuizNow() {{
-            if (!confirm('📢 चॅनेलवर थेट सराव क्विझ पाठवायचा का?')) return;
+            const defaultCh = "-1004381339759";
+            const targetChannel = prompt("📢 क्विझ पाठवण्यासाठी टेलिग्राम चॅनेल ID किंवा Username प्रविष्ट करा:", defaultCh);
+            if (!targetChannel) return;
+
+            showToast("⏳ चॅनेलवर सराव क्विझ पाठवत आहे...", "info");
             try {{
                 const res = await adminFetch('/api/admin/dispatch_quiz', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{}})
+                    body: JSON.stringify({{ channel: targetChannel.trim() }})
                 }});
                 const data = await res.json();
                 if (data.success) {{
+                    showToast('🚀 ' + (data.message || 'क्विझ चॅनेलवर पाठवला!'), 'success');
                     alert('🚀 ' + (data.message || 'क्विझ चॅनेलवर पाठवला!'));
                 }} else {{
+                    showToast('❌ त्रुटी: ' + data.message, 'error');
                     alert('❌ त्रुटी: ' + data.message);
                 }}
             }} catch(e) {{
+                showToast('❌ सर्व्हर त्रुटी: ' + e.message, 'error');
                 alert('❌ सर्व्हर त्रुटी: ' + e.message);
             }}
         }}
