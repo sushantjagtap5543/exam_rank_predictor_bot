@@ -624,6 +624,16 @@ def init_db():
         except Exception as e:
             logger.debug(f"Note on idx_orders_utr_unique: {e}")
 
+        # Performance compound indexes for lightning-fast rank & cohort queries
+        try:
+            db.execute("CREATE INDEX IF NOT EXISTS idx_uploads_exam_status ON uploads(exam_key, status)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_uploads_exam_cat ON uploads(exam_key, category, status)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_uploads_exam_post ON uploads(exam_key, post_name, status)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_qbank_exam_sec ON qbank_questions(exam_key, section)")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_visitors_action ON store_visitors(action, visited_at)")
+        except Exception as e:
+            logger.debug(f"Note on compound indexes: {e}")
+
     try:
         init_monetization_db(DB_PATH)
     except Exception as e:
@@ -8729,8 +8739,28 @@ def start_keep_alive_pinger():
     t = threading.Thread(target=_ping_loop, daemon=True)
     t.start()
 
+def start_periodic_cleanup_daemon():
+    """
+    Periodically purges stale chunk uploads and triggers garbage collection
+    every 10 minutes to minimize memory footprint on Render.
+    """
+    def _cleanup_loop():
+        while True:
+            try:
+                time.sleep(600)
+                cleanup_stale_chunk_uploads()
+                import gc
+                gc.collect()
+            except Exception as e:
+                logger.debug(f"Periodic upload cleanup notice: {e}")
+
+    t = threading.Thread(target=_cleanup_loop, daemon=True, name="PeriodicCleanupDaemon")
+    t.start()
+    logger.info("🟢 Periodic upload cleanup & memory optimization daemon started.")
+
 def start_health_check_server():
     """Runs a background HTTP server so the bot can be hosted 24/7 on free cloud services (Render, Koyeb, Hugging Face, etc.)."""
+    start_periodic_cleanup_daemon()
     port_str = os.getenv("PORT", "8080")
     try:
         port = int(port_str)

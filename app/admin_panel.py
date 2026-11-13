@@ -976,6 +976,15 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                     <span class="badge badge-sub" style="margin-left:8px;">वेब व बॉट डेटा</span>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                    <select onchange="filterUploadsTable(this.value)" style="padding:6px 10px; background:#1e293b; border:1px solid #334155; border-radius:6px; color:#fff; font-size:12px; outline:none; cursor:pointer;">
+                        <option value="">सर्व परीक्षा (All Exams)</option>
+                        <option value="ZP_BHARTI">ZP Bharti (जिल्हा परिषद)</option>
+                        <option value="MAHA_POLICE">Maha Police (महाराष्ट्र पोलीस)</option>
+                        <option value="TALATHI">Talathi Bharti (तलाठी)</option>
+                        <option value="AROGYA">Arogya Seva (आरोग्य सेवक)</option>
+                        <option value="FOREST">Forest Guard (वनरक्षक)</option>
+                        <option value="MPSC">MPSC Exams</option>
+                    </select>
                     <input type="text" placeholder="🔍 नाव, रोल नं किंवा परीक्षा शोधा..." oninput="filterUploadsTable(this.value)" style="padding:6px 12px; background:#1e293b; border:1px solid #334155; border-radius:6px; color:#fff; font-size:12px; width:220px; outline:none;">
                     <button class="btn btn-sm btn-outline" onclick="location.reload()">🔄 रिफ्रेश</button>
                 </div>
