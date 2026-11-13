@@ -60,8 +60,14 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
 
             # Digital Products (Both Active and Inactive for Admin - newest uploaded first)
             try:
+                from .digital_store import packaging_agent
+                packaging_agent.init_products_db(db_path)
                 prods_rows = db.execute("SELECT * FROM digital_products ORDER BY rowid DESC").fetchall()
                 products = [dict(r) for r in prods_rows]
+                if not products:
+                    packaging_agent.sync_folder_pdfs_to_products(db_path)
+                    prods_rows = db.execute("SELECT * FROM digital_products ORDER BY rowid DESC").fetchall()
+                    products = [dict(r) for r in prods_rows]
             except Exception:
                 pass
 
@@ -1599,13 +1605,10 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                     showToast(`⏳ PDF अपलोड सुरू आहे (${{file.name}}): ${{pct}}% (तुकडा ${{done}}/${{total}})...`, 'info');
                 }});
                 if (data && data.success) {{
-                    showToast('✅ PDF फाईल यशस्वीरित्या अपलोड झाली: ' + data.filename, 'success');
-                    document.getElementById('add_file').value = data.filename;
-                    document.getElementById('add_title').value = file.name.replace(/\\.pdf$/i, '').replace(/_/g, ' ');
-                    if (data.pages) {{
-                        document.getElementById('add_pages').value = data.pages;
-                    }}
-                    openAddModal();
+                    showToast('🎉 ✅ ' + data.filename + ' यशस्वीरित्या अपलोड झाली व डिजिटल कॅटलॉगमध्ये जोडली गेली! रिफ्रेश होत आहे...', 'success');
+                    setTimeout(() => {{
+                        location.reload();
+                    }}, 1200);
                 }} else {{
                     showToast('❌ अपलोड त्रुटी: ' + (data && data.message ? data.message : 'Unknown error'), 'error');
                 }}
