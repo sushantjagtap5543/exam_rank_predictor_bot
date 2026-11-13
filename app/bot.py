@@ -655,31 +655,71 @@ def log_store_visitor(ip: str, user_agent: str, referrer: str = "", tg_id: int =
 def sync_records_to_qbank(records: list, exam_key: str = "ZP_BHARTI", source: str = "web_upload") -> int:
     """
     Synchronizes parsed questions from submitted response sheets into central qbank_questions table.
-    Ensures strict SHA-256 deduplication and valid 4-option formatting so the questions can be
-    immediately used by Telegram bot /quiz, scheduled channel polls, and Question Bank PDF generation.
+    Ensures strict SHA-256 deduplication, HTML entity sanitation, and valid 4-option formatting so
+    the questions can be immediately used by Telegram bot /quiz, channel polls, and Question Bank PDF generation.
     Returns number of newly stored questions.
     """
     if not records:
         return 0
     from app.quiz_generator import compute_question_hash
+    import html as html_lib
     stored_cnt = 0
     try:
         with get_connection() as db:
             for r in records:
-                q_text = (r.get("question_text") or "").strip()
+                raw_q = (r.get("question_text") or "").strip()
                 opts = r.get("options") or {}
-                if not q_text or len(q_text) < 6 or len(opts) < 2:
+                if not raw_q or len(raw_q) < 6 or len(opts) < 2:
                     continue
 
-                opts_list = [str(v) for v in opts.values()]
-                q_hash = compute_question_hash(q_text, opts_list)
+                # Strip HTML tags and unescape entities for clean plain-text question
+                clean_q = re.sub(r"<[^>]+>", " ", raw_q)
+                clean_q = html_lib.unescape(clean_q)
+                clean_q = re.sub(r"\s+", " ", clean_q).strip()
 
-                c_num = r.get("correct_option_number") or r.get("correct_option_id") or 1
-                try:
-                    c_num = int(str(c_num).replace("पर्याय", "").strip() or 1)
-                except Exception:
-                    c_num = 1
+                # Clean options
+                clean_opts = {}
+                for k, v in opts.items():
+                    c_v = re.sub(r"<[^>]+>", " ", str(v))
+                    c_v = html_lib.unescape(c_v)
+                    c_v = re.sub(r"\s+", " ", c_v).strip()
+                    clean_opts[str(k)] = c_v
+
+                opts_list = [str(v) for v in clean_opts.values()]
+                q_hash = compute_question_hash(clean_q, opts_list)
+
+                # Resolve correct_option_num (1..4)
+                c_num = r.get("correct_option_number")
+                if c_num is not None:
+                    try:
+                        c_num = int(re.sub(r"[^\d]+", "", str(c_num)) or 0)
+                    except Exception:
+                        c_num = 0
+
+                # Match correct_option_id with option keys (e.g. TCS 10-digit option ID)
+                if not c_num and r.get("correct_option_id"):
+                    c_id = str(r.get("correct_option_id")).strip()
+                    for idx, k in enumerate(clean_opts.keys(), start=1):
+                        if str(k).strip() == c_id:
+                            c_num = idx
+                            break
+
+                # Match correct_option_text with option values
                 c_text = (r.get("correct_option_text") or "").strip()
+                if not c_num and c_text:
+                    c_txt_clean = html_lib.unescape(re.sub(r"<[^>]+>", "", c_text)).strip().lower()
+                    for idx, v in enumerate(clean_opts.values(), start=1):
+                        if str(v).strip().lower() == c_txt_clean:
+                            c_num = idx
+                            break
+
+                if not c_num or c_num < 1 or c_num > len(clean_opts):
+                    c_num = 1
+
+                # If c_text empty, auto-populate from option values
+                if not c_text and 1 <= c_num <= len(clean_opts):
+                    c_text = list(clean_opts.values())[c_num - 1]
+
                 sec = (r.get("section") or "General").strip()
                 exp = (r.get("explanation") or "").strip()
 
@@ -689,7 +729,7 @@ def sync_records_to_qbank(records: list, exam_key: str = "ZP_BHARTI", source: st
                         correct_option_num, correct_option_text, explanation, source
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
-                        q_hash, exam_key, sec, q_text, json.dumps(opts, ensure_ascii=False),
+                        q_hash, exam_key, sec, clean_q, json.dumps(clean_opts, ensure_ascii=False),
                         c_num, c_text, exp, source
                     )
                 )
