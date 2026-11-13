@@ -150,9 +150,9 @@ def is_allowed_response_url(url: str) -> bool:
     except Exception:
         return False
 
-def extract_pdf_text_with_status(path: str, max_ocr_pages: int = None) -> tuple:
+def extract_pdf_text_with_status(path: str, max_ocr_pages: int = None, max_pages: int = None) -> tuple:
     """
-    Extracts text from all pages of a PDF document safely while classifying extraction errors:
+    Extracts text from pages of a PDF document safely while classifying extraction errors:
     Returns (text, error_code):
       - ("", "empty_file") if 0-byte or 0 pages
       - ("", "password_protected") if doc.needs_pass or doc.is_encrypted
@@ -180,9 +180,20 @@ def extract_pdf_text_with_status(path: str, max_ocr_pages: int = None) -> tuple:
             doc.close()
             return "", "empty_file"
 
+        # Candidate exams (TCS/IBPS/MPSC) have at most 60 pages for a single paper (100-150 questions).
+        # Master compilation booklets contain 200-500+ pages of multiple exams/shifts concatenated.
+        # For candidate score evaluation, cap pages to the candidate exam window (default 60 pages) unless max_pages is explicitly specified.
+        effective_pages = min(total_pages, max_pages) if max_pages else min(total_pages, 60)
+
         sample_chars = sum(len(doc[i].get_text("text").strip()) for i in range(min(3, total_pages)))
         if sample_chars >= 60:
-            text = _extract_text_with_green_ticks(doc)
+            if effective_pages < total_pages:
+                sub_doc = fitz.open()
+                sub_doc.insert_pdf(doc, from_page=0, to_page=effective_pages - 1)
+                text = _extract_text_with_green_ticks(sub_doc)
+                sub_doc.close()
+            else:
+                text = _extract_text_with_green_ticks(doc)
             doc.close()
             return (text, "") if text.strip() else ("", "empty_ocr")
 
@@ -194,7 +205,7 @@ def extract_pdf_text_with_status(path: str, max_ocr_pages: int = None) -> tuple:
             return "", "empty_ocr"
 
         ocr_pages = []
-        limit = min(max_ocr_pages, total_pages) if max_ocr_pages else min(total_pages, 50)
+        limit = min(max_ocr_pages, effective_pages) if max_ocr_pages else min(effective_pages, 50)
         for i in range(limit):
             page = doc[i]
             pix = page.get_pixmap(dpi=100)
@@ -213,13 +224,13 @@ def extract_pdf_text_with_status(path: str, max_ocr_pages: int = None) -> tuple:
             pass
         return "", "corrupt_pdf"
 
-def extract_pdf_text(path: str, max_ocr_pages: int = None) -> str:
+def extract_pdf_text(path: str, max_ocr_pages: int = None, max_pages: int = None) -> str:
     """
-    Extracts text from all pages of a PDF document safely.
+    Extracts text from pages of a PDF document safely.
     If the document has no digital text layer (scanned or printed as images),
     automatically falls back to RapidOCR.
     """
-    text, _ = extract_pdf_text_with_status(path, max_ocr_pages)
+    text, _ = extract_pdf_text_with_status(path, max_ocr_pages, max_pages)
     return text
 
 def recover_digialm_url_from_pdf(path: str) -> str:
@@ -244,9 +255,11 @@ def recover_digialm_url_from_pdf(path: str) -> str:
                     return uri
 
         # 2. Digital text layer
+        sample_chars = 0
         for i in range(min(3, total_pages)):
             page = doc[i]
             txt = page.get_text("text")
+            sample_chars += len(txt.strip())
             m = re.search(r'(https://[^\s"\'<>]+(?:digialm|touchstone|ibpsonline)[^\s"\'<>]*)', txt)
             if m:
                 cand = m.group(1)
@@ -255,35 +268,37 @@ def recover_digialm_url_from_pdf(path: str) -> str:
                     return cand
 
         # 3. Document Title metadata + Page 0 OCR footer (Microsoft Print to PDF / Chrome Print)
-        meta_title = doc.metadata.get("title", "")
-        ocr = get_ocr_engine()
-        if ocr and total_pages > 0:
-            p0 = doc[0]
-            h = p0.rect.height
-            w = p0.rect.width
-            crop_boxes = [
-                fitz.Rect(0, h * 0.88, w, h),  # Footer where print URL is located
-                fitz.Rect(0, 0, w, h * 0.12),  # Header fallback
-            ]
-            m_fn = re.search(r'(\d+_[A-Za-z0-9_]+\.html)', meta_title)
-            raw_fn = m_fn.group(1) if m_fn else ""
+        # Only run raster OCR if digital text was not sufficient
+        if sample_chars < 60:
+            meta_title = doc.metadata.get("title", "")
+            ocr = get_ocr_engine()
+            if ocr and total_pages > 0:
+                p0 = doc[0]
+                h = p0.rect.height
+                w = p0.rect.width
+                crop_boxes = [
+                    fitz.Rect(0, h * 0.88, w, h),  # Footer where print URL is located
+                    fitz.Rect(0, 0, w, h * 0.12),  # Header fallback
+                ]
+                m_fn = re.search(r'(\d+_[A-Za-z0-9_]+\.html)', meta_title)
+                raw_fn = m_fn.group(1) if m_fn else ""
 
-            for crop_rect in crop_boxes:
-                pix = p0.get_pixmap(dpi=100, clip=crop_rect)
-                res, _ = ocr(pix.tobytes("png"))
-                if not res:
-                    continue
-                current_lines = [l[1] for l in res]
+                for crop_rect in crop_boxes:
+                    pix = p0.get_pixmap(dpi=100, clip=crop_rect)
+                    res, _ = ocr(pix.tobytes("png"))
+                    if not res:
+                        continue
+                    current_lines = [l[1] for l in res]
 
-                # Direct full URL check first
-                for raw_line in current_lines:
-                    text_line = raw_line.replace(" ", "").replace(".c0m", ".com")
-                    m_direct = re.search(r'(https?://[^\s"\'<>]*(?:digialm\.com|touchstone)[^\s"\'<>]+\.html)', text_line)
-                    if m_direct:
-                        cand_url = re.sub(r"(?<!:)//+", "/", m_direct.group(1))
-                        if is_allowed_response_url(cand_url):
-                            doc.close()
-                            return cand_url
+                    # Direct full URL check first
+                    for raw_line in current_lines:
+                        text_line = raw_line.replace(" ", "").replace(".c0m", ".com")
+                        m_direct = re.search(r'(https?://[^\s"\'<>]*(?:digialm\.com|touchstone)[^\s"\'<>]+\.html)', text_line)
+                        if m_direct:
+                            cand_url = re.sub(r"(?<!:)//+", "/", m_direct.group(1))
+                            if is_allowed_response_url(cand_url):
+                                doc.close()
+                                return cand_url
 
                 # Truncated URL reconstruction: sort lines with most slashes first (deepest folder)
                 trunc_lines = [l.replace(" ", "").replace(".c0m", ".com") for l in current_lines if ("digialm.com" in l or "touchstone" in l) and "/" in l]

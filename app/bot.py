@@ -5351,18 +5351,72 @@ def render_upload_portal_html() -> str:
                                 data: chunkB64
                             };
 
-                            const res = await fetch('/api/upload_chunk', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(chunkPayload)
-                            });
-
-                            if (!res.ok) {
-                                throw new Error('तुकडा ' + (i+1) + '/' + totalChunks + ' अपलोड अयशस्वी (Status: ' + res.status + ')');
+                            let res;
+                            let retries = 3;
+                            while (retries > 0) {
+                                try {
+                                    res = await fetch('/api/upload_chunk', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(chunkPayload)
+                                    });
+                                    if (res.ok) break;
+                                } catch (fetchErr) {
+                                    console.warn('Chunk upload retry error:', fetchErr);
+                                }
+                                retries--;
+                                if (retries === 0 && (!res || !res.ok)) {
+                                    throw new Error('तुकडा ' + (i+1) + '/' + totalChunks + ' अपलोड अयशस्वी (Status: ' + (res ? res.status : 'Network Error') + ')');
+                                }
+                                await new Promise(r => setTimeout(r, 800));
                             }
 
                             const data = await res.json();
                             if (i === totalChunks - 1) {
+                                if (data.status === 'processing') {
+                                    setLoadingText('AI रिस्पॉन्स शीट विश्लेषण सुरू आहे... ⏳', 'सर्व १०० प्रश्न, अधिकृत की आणि राज्य रँक मोजली जात आहे...');
+                                    let pollAttempts = 0;
+                                    const maxPolls = 180;
+                                    await new Promise((resolve) => {
+                                        const pollInterval = setInterval(async () => {
+                                            pollAttempts++;
+                                            try {
+                                                const pRes = await fetch('/api/upload_status?upload_id=' + encodeURIComponent(uploadId));
+                                                if (!pRes.ok) return;
+                                                const pData = await pRes.json();
+                                                if (pData.status === 'completed') {
+                                                    clearInterval(pollInterval);
+                                                    stopLoading();
+                                                    const finalRes = pData.result || {};
+                                                    if (finalRes.success) {
+                                                        lastResultData = finalRes;
+                                                        showResults(finalRes);
+                                                    } else {
+                                                        document.getElementById('uploadSection').classList.remove('hidden');
+                                                        showError(finalRes.error || 'विश्लेषण करताना अडचण आली.');
+                                                    }
+                                                    resolve();
+                                                } else if (pData.status === 'error') {
+                                                    clearInterval(pollInterval);
+                                                    stopLoading();
+                                                    document.getElementById('uploadSection').classList.remove('hidden');
+                                                    showError(pData.error || 'विश्लेषण करताना अडचण आली.');
+                                                    resolve();
+                                                } else if (pollAttempts >= maxPolls) {
+                                                    clearInterval(pollInterval);
+                                                    stopLoading();
+                                                    document.getElementById('uploadSection').classList.remove('hidden');
+                                                    showError('प्रक्रियेची वेळ संपली (Timeout). कृपया पुन्हा प्रयत्न करा.');
+                                                    resolve();
+                                                }
+                                            } catch (pErr) {
+                                                console.warn('Polling status error:', pErr);
+                                            }
+                                        }, 1000);
+                                    });
+                                    return;
+                                }
+
                                 stopLoading();
                                 if (data.success) {
                                     lastResultData = data;
@@ -6095,12 +6149,19 @@ def render_upload_portal_html() -> str:
 CHUNK_UPLOADS: Dict[str, dict] = {}
 CHUNK_UPLOADS_LOCK = threading.Lock()
 
+CHUNK_PROCESSING_RESULTS: Dict[str, dict] = {}
+CHUNK_PROCESSING_LOCK = threading.Lock()
+
 def cleanup_stale_chunk_uploads():
     now = time.time()
     with CHUNK_UPLOADS_LOCK:
         stale_ids = [uid for uid, info in CHUNK_UPLOADS.items() if now - info.get("timestamp", 0) > 600]
         for uid in stale_ids:
             CHUNK_UPLOADS.pop(uid, None)
+    with CHUNK_PROCESSING_LOCK:
+        stale_proc_ids = [uid for uid, info in CHUNK_PROCESSING_RESULTS.items() if now - info.get("timestamp", 0) > 900]
+        for uid in stale_proc_ids:
+            CHUNK_PROCESSING_RESULTS.pop(uid, None)
 
 def process_sheet_payload(
     file_bytes: Optional[bytes] = None,
@@ -6463,6 +6524,25 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(resp_bytes)
+            return
+
+        # 0c. API: Asynchronous Upload Processing Status (Anti-Timeout)
+        if path == "/api/upload_status":
+            query_params = urllib.parse.parse_qs(parsed.query)
+            upload_id = query_params.get("upload_id", [""])[0].strip()
+            with CHUNK_PROCESSING_LOCK:
+                status_info = CHUNK_PROCESSING_RESULTS.get(
+                    upload_id,
+                    {"status": "not_found", "error": "अपलोड आयडी सापडला नाही किंवा कालबाह्य झाला."}
+                )
+            resp_bytes = json.dumps(status_info, ensure_ascii=False).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_security_headers()
             self.end_headers()
             self.wfile.write(resp_bytes)
             return
@@ -7283,18 +7363,49 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                     del CHUNK_UPLOADS[upload_id]
 
             if is_complete:
-                status_code, resp_dict = process_sheet_payload(
-                    file_bytes=all_bytes,
-                    filename=entry_meta["filename"],
-                    user_category=entry_meta["category"],
-                    exam_override=entry_meta["exam"],
-                    tg_user_id=entry_meta["telegram_user_id"]
-                )
-                self.send_response(status_code)
+                with CHUNK_PROCESSING_LOCK:
+                    CHUNK_PROCESSING_RESULTS[upload_id] = {
+                        "status": "processing",
+                        "timestamp": time.time()
+                    }
+
+                def _bg_process(uid, bts, meta):
+                    try:
+                        sc, res = process_sheet_payload(
+                            file_bytes=bts,
+                            filename=meta["filename"],
+                            user_category=meta["category"],
+                            exam_override=meta["exam"],
+                            tg_user_id=meta["telegram_user_id"]
+                        )
+                        with CHUNK_PROCESSING_LOCK:
+                            CHUNK_PROCESSING_RESULTS[uid] = {
+                                "status": "completed",
+                                "status_code": sc,
+                                "result": res,
+                                "timestamp": time.time()
+                            }
+                    except Exception as exc:
+                        logger.error(f"Error processing background chunk upload {uid}: {exc}")
+                        with CHUNK_PROCESSING_LOCK:
+                            CHUNK_PROCESSING_RESULTS[uid] = {
+                                "status": "error",
+                                "error": f"प्रक्रिया त्रुटी: {exc}",
+                                "timestamp": time.time()
+                            }
+
+                threading.Thread(target=_bg_process, args=(upload_id, all_bytes, entry_meta), daemon=True).start()
+
+                self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_security_headers()
                 self.end_headers()
-                self.wfile.write(json.dumps(resp_dict, ensure_ascii=False).encode("utf-8"))
+                self.wfile.write(json.dumps({
+                    "success": True,
+                    "status": "processing",
+                    "upload_id": upload_id,
+                    "message": "सर्व तुकडे प्राप्त झाले. AI विश्लेषण सुरू आहे..."
+                }, ensure_ascii=False).encode("utf-8"))
                 return
             else:
                 self.send_response(200)
