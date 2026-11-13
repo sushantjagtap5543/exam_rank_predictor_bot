@@ -244,26 +244,34 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         elif delivery_status == "rejected":
             deliv_badge = "badge-rose"
 
+        safe_token = html_lib.escape(str(token))
+        safe_email = html_lib.escape(str(email))
+        safe_prod_title = html_lib.escape(str(prod_title))
+        safe_utr = html_lib.escape(str(utr))
+        safe_status = html_lib.escape(str(status))
+        safe_deliv = html_lib.escape(str(delivery_status))
+        safe_ts = html_lib.escape(str(ts))
+
         action_btns = ""
         if status in ("pending", "pending_verification", "created"):
             action_btns = f"""
                 <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
-                    <button class="btn-sm btn-green" title="पेमेंट मंजूर करा व विद्यार्थ्याचे डाऊनलोड बटण सुरू करा" onclick="orderAction('{token}', 'approve')">✅ मंजूर करा (Enable Download)</button>
-                    <button class="btn-sm btn-del" title="ऑर्डर नाकारा" onclick="orderAction('{token}', 'reject')">❌ नाकारा</button>
-                    <a href="/download/{token}" target="_blank" class="btn-sm btn-outline" style="text-decoration:none;" title="संबंधित PDF तपासा">📥 फाईल पहा</a>
+                    <button class="btn-sm btn-green" title="पेमेंट मंजूर करा व विद्यार्थ्याचे डाऊनलोड बटण सुरू करा" onclick="orderAction('{safe_token}', 'approve')">✅ मंजूर करा (Enable Download)</button>
+                    <button class="btn-sm btn-del" title="ऑर्डर नाकारा" onclick="orderAction('{safe_token}', 'reject')">❌ नाकारा</button>
+                    <a href="/download/{safe_token}" target="_blank" class="btn-sm btn-outline" style="text-decoration:none;" title="संबंधित PDF तपासा">📥 फाईल पहा</a>
                 </div>
             """
         elif status in ("approved", "delivered", "paid"):
             action_btns = f"""
                 <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap; align-items:center;">
                     <span class="badge badge-green" style="font-size:11px;">✅ Download Enabled</span>
-                    <a href="/order/{token}" target="_blank" class="btn-sm btn-green" style="text-decoration:none; padding:4px 10px; font-weight:700;" title="विद्यार्थ्याची ऑर्डर पान पहा">📄 Order Page</a>
+                    <a href="/order/{safe_token}" target="_blank" class="btn-sm btn-green" style="text-decoration:none; padding:4px 10px; font-weight:700;" title="विद्यार्थ्याची ऑर्डर पान पहा">📄 Order Page</a>
                 </div>
             """
         else:
             action_btns = f"""
                 <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap;">
-                    <button class="btn-sm btn-green" title="पुन्हा तपासून डाऊनलोड सुरू करा" onclick="orderAction('{token}', 'approve')">🔄 पुन्हा मंजूर करा (Enable Download)</button>
+                    <button class="btn-sm btn-green" title="पुन्हा तपासून डाऊनलोड सुरू करा" onclick="orderAction('{safe_token}', 'approve')">🔄 पुन्हा मंजूर करा (Enable Download)</button>
                 </div>
             """
 
@@ -272,14 +280,6 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             status_class = "status-active"
         elif status == "rejected":
             status_class = "status-rejected"
-
-        safe_token = html_lib.escape(str(token))
-        safe_email = html_lib.escape(str(email))
-        safe_prod_title = html_lib.escape(str(prod_title))
-        safe_utr = html_lib.escape(str(utr))
-        safe_status = html_lib.escape(str(status))
-        safe_deliv = html_lib.escape(str(delivery_status))
-        safe_ts = html_lib.escape(str(ts))
 
         order_rows_html.append(f"""
             <tr class="order-row" data-status="{status}">

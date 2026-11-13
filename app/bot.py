@@ -5845,6 +5845,13 @@ def render_upload_portal_html() -> str:
             window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(text), '_blank');
         }
 
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = String(str);
+            return div.innerHTML;
+        }
+
         function downloadHtmlFile(content, fileName) {
             const blob = new Blob([content], { type: 'text/html;charset=utf-8' });
             const url = URL.createObjectURL(blob);
@@ -5863,32 +5870,32 @@ def render_upload_portal_html() -> str:
                 return;
             }
             const d = lastResultData;
-            const name = d.candidate_name || 'परीक्षार्थी';
-            const exam = d.exam_title || 'परीक्षा';
-            const cat = d.category || 'Open';
-            const roll = d.roll_number || 'उपलब्ध नाही';
+            const name = escapeHtml(d.candidate_name || 'परीक्षार्थी');
+            const exam = escapeHtml(d.exam_title || 'परीक्षा');
+            const cat = escapeHtml(d.category || 'Open');
+            const roll = escapeHtml(d.roll_number || 'उपलब्ध नाही');
             const score = d.raw_score !== undefined ? d.raw_score : 0;
             const maxM = d.max_marks || 200;
             const acc = d.accuracy || 0;
             const rank = d.overall_rank || d.rank || 1;
             const total = d.overall_total || d.total_candidates || 1;
-            const zone = d.cutoff_zone || 'N/A';
+            const zone = escapeHtml(d.cutoff_zone || 'N/A');
 
             let qHtml = '';
             if (d.all_questions && d.all_questions.length > 0) {
                 d.all_questions.forEach((q, idx) => {
                     const num = q.question_number || (idx + 1);
                     const status = q.evaluation === 'correct' ? '<span style="color:#059669;font-weight:bold;">✅ बरोबर</span>' : (q.evaluation === 'incorrect' ? '<span style="color:#dc2626;font-weight:bold;">❌ चूक</span>' : '<span style="color:#64748b;">⚪ अनुत्तरित</span>');
-                    const chosen = q.chosen_num ? ('पर्याय ' + q.chosen_num + (q.chosen_text ? ' (' + q.chosen_text + ')' : '')) : 'अनुत्तरित';
-                    const correct = q.correct_num ? ('पर्याय ' + q.correct_num + (q.correct_text ? ' (' + q.correct_text + ')' : '')) : '-';
-                    const exp = q.explanation ? `<div style="margin-top:8px;padding:8px;background:#f8fafc;border-left:3px solid #6366f1;font-size:12px;color:#334155;border-radius:4px;"><b>🧠 AI स्पष्टीकरण:</b> ${q.explanation}</div>` : '';
+                    const chosen = q.chosen_num ? ('पर्याय ' + escapeHtml(q.chosen_num) + (q.chosen_text ? ' (' + escapeHtml(q.chosen_text) + ')' : '')) : 'अनुत्तरित';
+                    const correct = q.correct_num ? ('पर्याय ' + escapeHtml(q.correct_num) + (q.correct_text ? ' (' + escapeHtml(q.correct_text) + ')' : '')) : '-';
+                    const exp = q.explanation ? `<div style="margin-top:8px;padding:8px;background:#f8fafc;border-left:3px solid #6366f1;font-size:12px;color:#334155;border-radius:4px;"><b>🧠 AI स्पष्टीकरण:</b> ${escapeHtml(q.explanation)}</div>` : '';
                     qHtml += `
                     <div style="border:1px solid #cbd5e1;border-radius:8px;padding:12px;margin-bottom:12px;background:#ffffff;">
                         <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px;border-bottom:1px solid #e2e8f0;padding-bottom:4px;">
-                            <b>प्रश्न #${num} [${q.section || 'General'}]</b>
+                            <b>प्रश्न #${num} [${escapeHtml(q.section || 'General')}]</b>
                             <div>${status}</div>
                         </div>
-                        <div style="font-size:13px;color:#0f172a;margin-bottom:8px;line-height:1.4;">${q.question_text || 'प्रश्न उपलब्ध नाही'}</div>
+                        <div style="font-size:13px;color:#0f172a;margin-bottom:8px;line-height:1.4;">${escapeHtml(q.question_text || 'प्रश्न उपलब्ध नाही')}</div>
                         <div style="font-size:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;background:#f8fafc;padding:6px;border-radius:6px;border:1px solid #e2e8f0;">
                             <div><b>तुमची निवड:</b> ${chosen}</div>
                             <div><b>अधिकृत उत्तर:</b> ${correct}</div>
@@ -5971,8 +5978,8 @@ def render_upload_portal_html() -> str:
                 return;
             }
             const d = lastResultData;
-            const name = d.candidate_name || 'परीक्षार्थी';
-            const exam = d.exam_title || 'परीक्षा';
+            const name = escapeHtml(d.candidate_name || 'परीक्षार्थी');
+            const exam = escapeHtml(d.exam_title || 'परीक्षा');
             const wrongQs = d.wrong_questions || [];
 
             let qHtml = '';
@@ -5981,18 +5988,18 @@ def render_upload_portal_html() -> str:
             } else {
                 wrongQs.forEach((q, idx) => {
                     const num = q.question_number || (idx + 1);
-                    const chosen = q.chosen_num ? ('पर्याय ' + q.chosen_num + (q.chosen_text ? ' (' + q.chosen_text + ')' : '')) : 'अनुत्तरित';
-                    const correct = q.correct_num ? ('पर्याय ' + q.correct_num + (q.correct_text ? ' (' + q.correct_text + ')' : '')) : '-';
-                    const exp = q.explanation ? `<div style="margin-top:8px;padding:8px;background:#ffffff;border-left:3px solid #6366f1;font-size:12px;color:#334155;border-radius:4px;"><b>🧠 AI स्पष्टीकरण:</b> ${q.explanation}</div>` : '';
-                    const obj = q.objection_reason ? `<div style="margin-top:6px;padding:8px;background:#fffbeb;border-left:3px solid #f59e0b;font-size:12px;color:#92400e;border-radius:4px;"><b>⚖️ आक्षेप सल्ला:</b> ${q.objection_reason}</div>` : '';
+                    const chosen = q.chosen_num ? ('पर्याय ' + escapeHtml(q.chosen_num) + (q.chosen_text ? ' (' + escapeHtml(q.chosen_text) + ')' : '')) : 'अनुत्तरित';
+                    const correct = q.correct_num ? ('पर्याय ' + escapeHtml(q.correct_num) + (q.correct_text ? ' (' + escapeHtml(q.correct_text) + ')' : '')) : '-';
+                    const exp = q.explanation ? `<div style="margin-top:8px;padding:8px;background:#ffffff;border-left:3px solid #6366f1;font-size:12px;color:#334155;border-radius:4px;"><b>🧠 AI स्पष्टीकरण:</b> ${escapeHtml(q.explanation)}</div>` : '';
+                    const obj = q.objection_reason ? `<div style="margin-top:6px;padding:8px;background:#fffbeb;border-left:3px solid #f59e0b;font-size:12px;color:#92400e;border-radius:4px;"><b>⚖️ आक्षेप सल्ला:</b> ${escapeHtml(q.objection_reason)}</div>` : '';
 
                     qHtml += `
                     <div style="border:1px solid #fca5a5;border-radius:8px;padding:12px;margin-bottom:12px;background:#fff5f5;">
                         <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px;border-bottom:1px solid #fecaca;padding-bottom:4px;">
-                            <b style="color:#b91c1c;">चुकलेला प्रश्न #${num} [${q.section || 'General'}]</b>
-                            <span style="font-size:11px;color:#64748b;">ID: ${q.question_id || '-'}</span>
+                            <b style="color:#b91c1c;">चुकलेला प्रश्न #${num} [${escapeHtml(q.section || 'General')}]</b>
+                            <span style="font-size:11px;color:#64748b;">ID: ${escapeHtml(q.question_id || '-')}</span>
                         </div>
-                        <div style="font-size:13px;color:#1e293b;margin-bottom:8px;line-height:1.4;">${q.question_text || 'प्रश्न उपलब्ध नाही'}</div>
+                        <div style="font-size:13px;color:#1e293b;margin-bottom:8px;line-height:1.4;">${escapeHtml(q.question_text || 'प्रश्न उपलब्ध नाही')}</div>
                         <div style="font-size:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;background:white;padding:8px;border-radius:6px;border:1px solid #fee2e2;">
                             <div style="color:#dc2626;"><b>❌ तुमची निवड:</b> ${chosen}</div>
                             <div style="color:#16a34a;"><b>✅ अधिकृत उत्तर:</b> ${correct}</div>
