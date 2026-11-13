@@ -7496,17 +7496,21 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         # Admin API: Sync folder PDFs to digital_products
         if path == "/api/admin/sync_products":
             try:
+                seed_cnt = packaging_agent.seed_default_products(DB_PATH)
                 added_cnt = packaging_agent.sync_folder_pdfs_to_products(DB_PATH)
-                all_prods = packaging_agent.get_all_products(DB_PATH)
+                all_prods = packaging_agent.get_all_products(DB_PATH, include_inactive=True)
+                active_prods = packaging_agent.get_all_products(DB_PATH, include_inactive=False)
                 res = {
                     "success": True,
+                    "seeded": seed_cnt,
                     "added": added_cnt if isinstance(added_cnt, int) else 0,
-                    "total": len(all_prods)
+                    "total": len(all_prods),
+                    "active": len(active_prods)
                 }
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(json.dumps(res).encode("utf-8"))
+                self.wfile.write(json.dumps(res, ensure_ascii=False).encode("utf-8"))
                 return
             except Exception as e:
                 logger.error(f"Error syncing folder PDFs: {e}")
@@ -7520,7 +7524,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
         if path == "/api/admin/update_price":
             try:
                 prod_id = data.get("product_id")
-                new_price = int(data.get("price_inr", 19))
+                new_price = int(data.get("price_inr") or data.get("price") or 19)
                 if not prod_id or new_price < 5 or new_price > 500:
                     self.send_response(400)
                     self.send_header("Content-Type", "application/json; charset=utf-8")

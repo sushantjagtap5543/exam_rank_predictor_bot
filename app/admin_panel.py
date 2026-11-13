@@ -852,6 +852,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 <div style="display:flex; align-items:center; gap:8px;">
                     <input type="text" placeholder="🔍 शीर्षक किंवा ID शोधा..." oninput="filterProductsTable(this.value)" style="padding:6px 12px; background:#1e293b; border:1px solid #334155; border-radius:6px; color:#fff; font-size:12px; width:210px; outline:none;">
                     <button class="btn btn-sm btn-gold" onclick="openAddModal()">➕ Add Product</button>
+                    <button class="btn btn-sm btn-primary" onclick="syncFolderPdfs()" title="सर्व अधिकृत TCS/IBPS ई-बुक्स कॅटलॉग सिंक करा">🌱 Seed Catalog</button>
                     <button class="btn btn-sm btn-outline" onclick="location.reload()">🔄 रिफ्रेश</button>
                 </div>
             </div>
@@ -1819,9 +1820,9 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
 
         async function syncFolderPdfs() {{
             try {{
-                const res = await adminFetch('/api/admin/sync_products', {{ method: 'POST' }});
+                const res = await adminFetch('/api/admin/sync_products', {{ method: 'POST', body: JSON.stringify({{}}) }});
                 const data = await res.json();
-                alert('✅ फोल्डर सिंक यशस्वी! ' + (data.added || 0) + ' नवीन PDF ई-बुक्स स्टोअरमध्ये जोडली गेली.');
+                alert('✅ कॅटलॉग सिंक यशस्वी!\n• नवीन ई-बुक्स: ' + (data.seeded || 0) + '\n• एकूण उपलब्ध ई-बुक्स: ' + (data.total || 0) + '\n• सक्रिय ई-बुक्स: ' + (data.active || 0));
                 location.reload();
             }} catch(e) {{
                 alert('❌ सिंक अयशस्वी: ' + e.message);

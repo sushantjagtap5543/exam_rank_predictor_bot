@@ -301,14 +301,20 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         env_db = os.getenv("DATABASE_PATH")
         if env_db and os.path.exists(env_db):
             return str(Path(env_db).resolve())
+        data_dir = os.getenv("DATA_DIR") or os.getenv("PERSISTENT_STORAGE_DIR")
+        if data_dir:
+            cand_data = Path(data_dir).resolve() / "bot.db"
+            if cand_data.exists():
+                return str(cand_data)
         project_root = Path(__file__).resolve().parent.parent.parent
         cands = [
+            (Path(data_dir).resolve() / "bot.db") if data_dir else None,
             project_root / "bot.db",
             project_root.parent / "bot.db",
             Path("bot.db").resolve(),
         ]
         for c in cands:
-            if c.exists():
+            if c and c.exists():
                 return str(c.resolve())
         return str((project_root / "bot.db").resolve())
 
@@ -373,10 +379,10 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             db.execute("UPDATE digital_products SET subject = 'PYQ & Response Sheets' WHERE subject IN ('Comprehensive', 'Response Sheets', 'PYQ')")
             db.execute("UPDATE digital_products SET subject = 'General Knowledge' WHERE subject IN ('General Studies', 'General', 'GS', 'GK')")
 
-            # Auto-seed default products if catalog is empty so store & admin are immediately populated
-            cur = db.execute("SELECT count(*) FROM digital_products")
-            if cur.fetchone()[0] == 0:
-                for p in DEFAULT_PRODUCTS:
+            # Auto-seed any missing default products so store & admin are immediately populated
+            for p in DEFAULT_PRODUCTS:
+                chk = db.execute("SELECT count(*) FROM digital_products WHERE id = ?", (p["id"],)).fetchone()[0]
+                if chk == 0:
                     db.execute("""
                         INSERT OR IGNORE INTO digital_products (
                             id, title, subtitle, subject, tier, price_inr, original_price_inr,
@@ -399,7 +405,6 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
                         p.get("download_file", f"{p['id']}.pdf"),
                         p.get("icon", "📚")
                     ))
-                logger.info(f"Auto-seeded {len(DEFAULT_PRODUCTS)} default products into digital_products table.")
 
             db.commit()
             logger.info("digital_products and product_orders tables initialized and verified.")
@@ -751,6 +756,42 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             "pages": pages,
             "download_file": filename
         }
+
+    def seed_default_products(self, db_path: str = "bot.db", force: bool = False) -> int:
+        """Seeds all default curated e-books into digital_products table if not already present."""
+        db_path = self.resolve_db_path(db_path)
+        self.init_products_db(db_path)
+        added = 0
+        with sqlite3.connect(db_path, timeout=30.0) as db:
+            for p in DEFAULT_PRODUCTS:
+                cur = db.execute("SELECT count(*) FROM digital_products WHERE id = ?", (p["id"],))
+                if cur.fetchone()[0] == 0:
+                    db.execute("""
+                        INSERT OR IGNORE INTO digital_products (
+                            id, title, subtitle, subject, tier, price_inr, original_price_inr,
+                            badge, rating, reviews_count, pages, description, download_file, icon,
+                            is_active, sales_count
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)
+                    """, (
+                        p["id"],
+                        p.get("title", ""),
+                        p.get("subtitle", "TCS/IBPS परीक्षा विशेष ई-बुक"),
+                        normalize_product_subject(p.get("subject", "General Knowledge")),
+                        p.get("tier", "Manual"),
+                        p.get("price_inr", 19),
+                        p.get("original_price_inr", 99),
+                        p.get("badge", "🔥 लोकप्रिय"),
+                        p.get("rating", 4.9),
+                        p.get("reviews_count", 150),
+                        p.get("pages", 48),
+                        p.get("description", ""),
+                        p.get("download_file", f"{p['id']}.pdf"),
+                        p.get("icon", "📚")
+                    ))
+                    added += 1
+            db.commit()
+        logger.info(f"Seed default products: {added} new products added.")
+        return added
 
     def sync_folder_pdfs_to_products(self, db_path: str = "bot.db") -> int:
         """
