@@ -6903,7 +6903,9 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                     db.row_factory = sqlite3.Row
                     rows = db.execute("SELECT * FROM qbank_questions ORDER BY id DESC").fetchall()
                     q_list = [dict(r) for r in rows]
-                json_bytes = json.dumps(q_list, ensure_ascii=False, indent=2).encode("utf-8")
+                pretty = "pretty" in query_params or query_params.get("format", [""])[0] == "pretty"
+                indent = 2 if pretty else None
+                json_bytes = json.dumps(q_list, ensure_ascii=False, indent=indent).encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Disposition", 'attachment; filename="ExamRankers_QBank_Master.json"')
@@ -7770,9 +7772,18 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                         c_idx = 0
                     exp = (q_row["explanation"] or "अधिकृत उत्तर व विश्लेषण")[:195]
 
+                if len(opts) < 2:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"success": False, "message": "प्रश्नात किमान २ पर्याय असणे आवश्यक आहे."}).encode("utf-8"))
+                    return
+
                 if TOKEN:
+                    api_base = os.getenv("TELEGRAM_BOT_API_URL", "").rstrip("/")
+                    bot_url = f"{api_base}/bot{TOKEN}/sendPoll" if api_base else f"https://api.telegram.org/bot{TOKEN}/sendPoll"
                     poll_res = httpx.post(
-                        f"https://api.telegram.org/bot{TOKEN}/sendPoll",
+                        bot_url,
                         json={
                             "chat_id": target_channel,
                             "question": q_text[:300],

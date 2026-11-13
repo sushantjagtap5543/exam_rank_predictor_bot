@@ -381,12 +381,27 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         raw_subject = data.get("subject", "General Knowledge").strip()
         subject = normalize_product_subject(raw_subject)
         tier = data.get("tier", "Manual").strip()
-        price_inr = int(data.get("price_inr", 19))
-        original_price_inr = int(data.get("original_price_inr") or max(price_inr * 3, 99))
+        try:
+            price_inr = max(1, int(data.get("price_inr", 19)))
+        except Exception:
+            price_inr = 19
+        try:
+            original_price_inr = int(data.get("original_price_inr") or max(price_inr * 3, 99))
+        except Exception:
+            original_price_inr = max(price_inr * 3, 99)
         badge = data.get("badge", "🔥 NEW").strip()
-        rating = float(data.get("rating", 5.0))
-        reviews_count = int(data.get("reviews_count", 50))
-        pages = int(data.get("pages", 40))
+        try:
+            rating = min(5.0, max(1.0, float(data.get("rating", 5.0))))
+        except Exception:
+            rating = 5.0
+        try:
+            reviews_count = max(0, int(data.get("reviews_count", 50)))
+        except Exception:
+            reviews_count = 50
+        try:
+            pages = max(1, int(data.get("pages", 40)))
+        except Exception:
+            pages = 40
         description = data.get("description", "").strip()
         download_file = data.get("download_file", f"{prod_id}.pdf").strip()
         icon = data.get("icon", "📚").strip()
