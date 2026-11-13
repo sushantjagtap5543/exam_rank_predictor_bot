@@ -1481,14 +1481,10 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 sText.innerText = `⏳ फाईल ${{i + 1}} / ${{total}} अपलोड होत आहे: ${{f.name}}...`;
 
                 try {{
-                    const base64Data = await readFileAsBase64(f);
-                    const res = await adminFetch('/api/admin/upload_pdf', {{
-                        method: 'POST',
-                        headers: {{ 'Content-Type': 'application/json' }},
-                        body: JSON.stringify({{ filename: f.name, base64_data: base64Data }})
+                    const data = await uploadFileInChunks(f, (done, totalCh, pct) => {{
+                        sText.innerText = `⏳ फाईल ${{i + 1}} / ${{total}} अपलोड होत आहे: ${{f.name}} (${{pct}}%)...`;
                     }});
-                    const data = await res.json();
-                    if (res.ok && data.success) {{
+                    if (data && data.success) {{
                         successCount++;
                         if (statusBadge) {{
                             statusBadge.className = 'badge badge-green';
@@ -1499,7 +1495,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                         if (statusBadge) {{
                             statusBadge.className = 'badge badge-red';
                             statusBadge.style.color = '#f87171';
-                            statusBadge.innerText = '❌ त्रुटी';
+                            statusBadge.innerText = '❌ त्रुटी: ' + (data && data.message ? data.message : 'त्रुटी');
                         }}
                     }}
                 }} catch (err) {{
@@ -1526,12 +1522,66 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             }}, 1500);
         }}
 
-        // Direct PDF file upload with size validation & progress toast
+        // Resilient Chunked Admin PDF Upload (Bypasses proxy limits, zero memory leaks)
+        async function uploadFileInChunks(file, onProgress) {{
+            const CHUNK_SIZE = 1.5 * 1024 * 1024;
+            const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+            const uploadId = 'adm_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+
+            for (let i = 0; i < totalChunks; i++) {{
+                const start = i * CHUNK_SIZE;
+                const end = Math.min(file.size, start + CHUNK_SIZE);
+                const chunkBlob = file.slice(start, end);
+                const chunkB64 = await readFileAsBase64(chunkBlob);
+
+                let res;
+                let retries = 3;
+                while (retries > 0) {{
+                    try {{
+                        res = await adminFetch('/api/admin/upload_chunk', {{
+                            method: 'POST',
+                            headers: {{ 'Content-Type': 'application/json' }},
+                            body: JSON.stringify({{
+                                upload_id: uploadId,
+                                chunk_index: i,
+                                total_chunks: totalChunks,
+                                filename: file.name,
+                                data: chunkB64
+                            }})
+                        }});
+                        if (res.ok) break;
+                    }} catch (fetchErr) {{
+                        console.warn('Chunk upload retry:', fetchErr);
+                    }}
+                    retries--;
+                    if (retries === 0 && (!res || !res.ok)) {{
+                        let errText = 'तुकडा ' + (i+1) + '/' + totalChunks + ' अपलोड अयशस्वी (Status: ' + (res ? res.status : 'Network Error') + ')';
+                        try {{
+                            const errJson = await res.json();
+                            if (errJson.error || errJson.message) errText = errJson.error || errJson.message;
+                        }} catch(e) {{}}
+                        throw new Error(errText);
+                    }}
+                    await new Promise(r => setTimeout(r, 250));
+                }}
+
+                const data = await res.json();
+                if (onProgress) {{
+                    onProgress(i + 1, totalChunks, Math.round(((i + 1) / totalChunks) * 100));
+                }}
+
+                if (i === totalChunks - 1) {{
+                    return data;
+                }}
+            }}
+        }}
+
+        // Direct PDF file upload with size validation & chunked progress
         async function uploadDirectPdf(input) {{
             if (!input.files || input.files.length === 0) return;
             const file = input.files[0];
-            if (!file.name.toLowerCase().endsWith('.pdf')) {{
-                showToast('⚠️ कृपया फक्त वैध .pdf फाईल निवडा.', 'error');
+            if (!file.name.toLowerCase().endsWith('.pdf') && !file.name.toLowerCase().endsWith('.zip')) {{
+                showToast('⚠️ कृपया फक्त वैध .pdf किंवा .zip फाईल निवडा.', 'error');
                 input.value = '';
                 return;
             }}
@@ -1544,42 +1594,26 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             const fileSizeMb = (file.size / (1024 * 1024)).toFixed(2);
             showToast(`⏳ PDF अपलोड सुरू आहे (${{file.name}}, ${{fileSizeMb}} MB)... कृपया थांबा.`, 'info');
 
-            const reader = new FileReader();
-            reader.onload = async function(e) {{
-                const base64Data = e.target.result.split(',')[1];
-                try {{
-                    const res = await adminFetch('/api/admin/upload_pdf', {{
-                        method: 'POST',
-                        headers: {{ 'Content-Type': 'application/json' }},
-                        body: JSON.stringify({{ filename: file.name, base64_data: base64Data }})
-                    }});
-                    if (!res.ok) {{
-                        const errTxt = await res.text();
-                        let msg = 'सर्व्हर त्रुटी (' + res.status + ')';
-                        try {{ const parsed = JSON.parse(errTxt); if (parsed.error || parsed.message) msg = parsed.error || parsed.message; }} catch(pe) {{}}
-                        showToast('❌ अपलोड त्रुटी: ' + msg, 'error');
-                        return;
+            try {{
+                const data = await uploadFileInChunks(file, (done, total, pct) => {{
+                    showToast(`⏳ PDF अपलोड सुरू आहे (${{file.name}}): ${{pct}}% (तुकडा ${{done}}/${{total}})...`, 'info');
+                }});
+                if (data && data.success) {{
+                    showToast('✅ PDF फाईल यशस्वीरित्या अपलोड झाली: ' + data.filename, 'success');
+                    document.getElementById('add_file').value = data.filename;
+                    document.getElementById('add_title').value = file.name.replace(/\\.pdf$/i, '').replace(/_/g, ' ');
+                    if (data.pages) {{
+                        document.getElementById('add_pages').value = data.pages;
                     }}
-                    const data = await res.json();
-                    if (data.success) {{
-                        showToast('✅ PDF फाईल यशस्वीरित्या अपलोड झाली: ' + data.filename, 'success');
-                        document.getElementById('add_file').value = data.filename;
-                        document.getElementById('add_title').value = file.name.replace(/\\.pdf$/i, '').replace(/_/g, ' ');
-                        openAddModal();
-                    }} else {{
-                        showToast('❌ अपलोड त्रुटी: ' + (data.message || 'Unknown error'), 'error');
-                    }}
-                }} catch(err) {{
-                    showToast('❌ सर्व्हरशी संपर्क होऊ शकला नाही: ' + (err.message || 'Network error'), 'error');
-                }} finally {{
-                    input.value = '';
+                    openAddModal();
+                }} else {{
+                    showToast('❌ अपलोड त्रुटी: ' + (data && data.message ? data.message : 'Unknown error'), 'error');
                 }}
-            }};
-            reader.onerror = function() {{
-                showToast('❌ फाईल वाचताना स्थानिक त्रुटी आली.', 'error');
+            }} catch(err) {{
+                showToast('❌ सर्व्हरशी संपर्क होऊ शकला नाही: ' + (err.message || 'Network error'), 'error');
+            }} finally {{
                 input.value = '';
-            }};
-            reader.readAsDataURL(file);
+            }}
         }}
 
         // Submit New Product

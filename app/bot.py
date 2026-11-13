@@ -6158,11 +6158,26 @@ def cleanup_stale_chunk_uploads():
     with CHUNK_UPLOADS_LOCK:
         stale_ids = [uid for uid, info in CHUNK_UPLOADS.items() if now - info.get("timestamp", 0) > 600]
         for uid in stale_ids:
-            CHUNK_UPLOADS.pop(uid, None)
+            info = CHUNK_UPLOADS.pop(uid, None)
+            if info and isinstance(info, dict) and "dir" in info and os.path.exists(info["dir"]):
+                try:
+                    shutil.rmtree(info["dir"], ignore_errors=True)
+                except Exception:
+                    pass
     with CHUNK_PROCESSING_LOCK:
         stale_proc_ids = [uid for uid, info in CHUNK_PROCESSING_RESULTS.items() if now - info.get("timestamp", 0) > 900]
         for uid in stale_proc_ids:
             CHUNK_PROCESSING_RESULTS.pop(uid, None)
+
+    # Clean up stale temp admin and student chunk directories
+    try:
+        temp_admin_root = STORAGE_DIR / "temp_chunks"
+        if temp_admin_root.exists():
+            for p in temp_admin_root.iterdir():
+                if p.is_dir() and (now - p.stat().st_mtime) > 600:
+                    shutil.rmtree(p, ignore_errors=True)
+    except Exception:
+        pass
 
 def process_sheet_payload(
     file_bytes: Optional[bytes] = None,
@@ -6170,7 +6185,8 @@ def process_sheet_payload(
     filename: str = "response_sheet.pdf",
     user_category: str = "Open",
     exam_override: str = "auto",
-    tg_user_id: int = 0
+    tg_user_id: int = 0,
+    file_path: Optional[str] = None
 ) -> Tuple[int, dict]:
     text = ""
     safe_fn = re.sub(r"[^A-Za-z0-9._-]+", "_", filename) or "sheet.pdf"
@@ -6198,23 +6214,37 @@ def process_sheet_payload(
                     if resp_m.status_code == 200 and len(resp_m.content) > 1000:
                         text = parse_html_response_sheet(resp_m.text)
 
-        # Mode B: Uploaded PDF / HTML File
-        elif file_bytes:
-            # Check if uploaded file is HTML / HTM format
-            if safe_fn.lower().endswith((".html", ".htm")) or b"<html" in file_bytes[:2048].lower():
-                try:
-                    text = parse_html_response_sheet(file_bytes.decode("utf-8", errors="replace"))
-                except Exception as html_err:
-                    logger.warning(f"Error parsing uploaded HTML: {html_err}")
+        # Mode B: Uploaded PDF / HTML File (via file_path or in-memory file_bytes)
+        elif file_path or file_bytes:
+            target_path = file_path
+            temp_cleanup_dir = None
 
-            if not text.strip():
-                with tempfile.TemporaryDirectory() as tmp_dir:
-                    tmp_file = Path(tmp_dir) / safe_fn
-                    tmp_file.write_bytes(file_bytes)
-
-                    # Check if PDF contains embedded DigiALM live web URL
+            if not target_path and file_bytes:
+                # Check if uploaded file is HTML / HTM format
+                if safe_fn.lower().endswith((".html", ".htm")) or b"<html" in file_bytes[:2048].lower():
                     try:
-                        rec_url = recover_digialm_url_from_pdf(str(tmp_file))
+                        text = parse_html_response_sheet(file_bytes.decode("utf-8", errors="replace"))
+                    except Exception as html_err:
+                        logger.warning(f"Error parsing uploaded HTML: {html_err}")
+
+                if not text.strip():
+                    temp_cleanup_dir = tempfile.TemporaryDirectory()
+                    tmp_file = Path(temp_cleanup_dir.name) / safe_fn
+                    tmp_file.write_bytes(file_bytes)
+                    target_path = str(tmp_file)
+
+            if not text.strip() and target_path and os.path.exists(target_path):
+                # Check if HTML file on disk
+                if safe_fn.lower().endswith((".html", ".htm")):
+                    try:
+                        text = parse_html_response_sheet(Path(target_path).read_text(encoding="utf-8", errors="replace"))
+                    except Exception:
+                        pass
+
+                # Check if PDF contains embedded DigiALM live web URL
+                if not text.strip():
+                    try:
+                        rec_url = recover_digialm_url_from_pdf(target_path)
                         if rec_url:
                             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
                             with httpx.Client(timeout=30.0, follow_redirects=True, headers=headers) as client:
@@ -6224,9 +6254,18 @@ def process_sheet_payload(
                     except Exception as rec_err:
                         logger.warning(f"Error fetching live DigiALM URL from web upload: {rec_err}")
 
-                    # Fallback to direct PDF text / RapidOCR extraction
-                    if not text.strip():
-                        text, err_code = extract_pdf_text_with_status(str(tmp_file))
+                # Direct PDF text / RapidOCR extraction
+                if not text.strip():
+                    text, err_code = extract_pdf_text_with_status(target_path)
+
+            if temp_cleanup_dir:
+                try:
+                    temp_cleanup_dir.cleanup()
+                except Exception:
+                    pass
+
+            import gc
+            gc.collect()
 
         if not text.strip():
             return 200, {
@@ -7105,7 +7144,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 max_admin_upload = 524_288_000
 
         # Non-admin endpoints strictly capped at 1 MB except public response sheet upload (up to max_admin_upload e.g. 500 MB)
-        max_allowed_len = max_admin_upload if path in ("/api/admin/upload_pdf", "/api/upload_sheet", "/api/upload_chunk") else 1_048_576
+        max_allowed_len = max_admin_upload if path in ("/api/admin/upload_pdf", "/api/admin/upload_chunk", "/api/upload_sheet", "/api/upload_chunk") else 1_048_576
         if content_len > max_allowed_len:
             self.send_response(413)
             self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -7333,47 +7372,69 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             chunk_bytes = base64.b64decode(chunk_data_b64)
             del chunk_data_b64
 
+            safe_fn = re.sub(r"[^A-Za-z0-9._-]+", "_", filename) or "response_sheet.pdf"
+            if not safe_fn.lower().endswith((".pdf", ".html", ".htm")):
+                safe_fn += ".pdf"
+
+            chunk_dir = Path(tempfile.gettempdir()) / f"chunk_uploads_{upload_id}"
+            chunk_dir.mkdir(parents=True, exist_ok=True)
+            chunk_file = chunk_dir / f"chunk_{chunk_index:05d}"
+            chunk_file.write_bytes(chunk_bytes)
+            del chunk_bytes
+
             is_complete = False
-            all_bytes = None
+            assembled_file_path = None
             entry_meta = {}
 
             with CHUNK_UPLOADS_LOCK:
                 if upload_id not in CHUNK_UPLOADS:
                     CHUNK_UPLOADS[upload_id] = {
-                        "chunks": {},
                         "total_chunks": total_chunks,
                         "filename": filename,
                         "category": user_category,
                         "exam": exam_override,
                         "telegram_user_id": tg_user_id,
-                        "timestamp": time.time()
+                        "timestamp": time.time(),
+                        "dir": str(chunk_dir)
                     }
                 entry = CHUNK_UPLOADS[upload_id]
                 entry["timestamp"] = time.time()
-                entry["chunks"][chunk_index] = chunk_bytes
 
-                if len(entry["chunks"]) == total_chunks:
-                    is_complete = True
-                    all_bytes = b"".join(entry["chunks"][i] for i in range(total_chunks))
-                    entry_meta = {
-                        "filename": entry["filename"],
-                        "category": entry["category"],
-                        "exam": entry["exam"],
-                        "telegram_user_id": entry["telegram_user_id"]
-                    }
-                    del CHUNK_UPLOADS[upload_id]
+            saved_chunks = list(chunk_dir.glob("chunk_*"))
+            if len(saved_chunks) == total_chunks:
+                is_complete = True
+                entry_meta = {
+                    "filename": entry["filename"],
+                    "category": entry["category"],
+                    "exam": entry["exam"],
+                    "telegram_user_id": entry["telegram_user_id"]
+                }
+                assembled_file = chunk_dir / safe_fn
+                with open(assembled_file, "wb") as out_f:
+                    for i in range(total_chunks):
+                        part = chunk_dir / f"chunk_{i:05d}"
+                        if part.exists():
+                            with open(part, "rb") as in_f:
+                                shutil.copyfileobj(in_f, out_f)
+                            try:
+                                part.unlink()
+                            except Exception:
+                                pass
+                assembled_file_path = str(assembled_file)
+                with CHUNK_UPLOADS_LOCK:
+                    CHUNK_UPLOADS.pop(upload_id, None)
 
-            if is_complete:
+            if is_complete and assembled_file_path:
                 with CHUNK_PROCESSING_LOCK:
                     CHUNK_PROCESSING_RESULTS[upload_id] = {
                         "status": "processing",
                         "timestamp": time.time()
                     }
 
-                def _bg_process(uid, bts, meta):
+                def _bg_process(uid, fpath, meta):
                     try:
                         sc, res = process_sheet_payload(
-                            file_bytes=bts,
+                            file_path=fpath,
                             filename=meta["filename"],
                             user_category=meta["category"],
                             exam_override=meta["exam"],
@@ -7394,8 +7455,19 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                                 "error": f"प्रक्रिया त्रुटी: {exc}",
                                 "timestamp": time.time()
                             }
+                    finally:
+                        try:
+                            if fpath and os.path.exists(fpath):
+                                os.unlink(fpath)
+                            parent_d = os.path.dirname(fpath)
+                            if parent_d and os.path.exists(parent_d) and "chunk_uploads_" in parent_d:
+                                shutil.rmtree(parent_d, ignore_errors=True)
+                        except Exception:
+                            pass
+                        import gc
+                        gc.collect()
 
-                threading.Thread(target=_bg_process, args=(upload_id, all_bytes, entry_meta), daemon=True).start()
+                threading.Thread(target=_bg_process, args=(upload_id, assembled_file_path, entry_meta), daemon=True).start()
 
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -7725,7 +7797,191 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
                 return
 
-        # Admin API: Upload PDF directly from browser
+        # Admin API: Chunked PDF/ZIP Upload & Direct Browser Upload (Zero memory pressure, resilient to timeouts)
+        if path == "/api/admin/upload_chunk" or (path == "/api/admin/upload_pdf" and "chunk_index" in data):
+            try:
+                upload_id = str(data.get("upload_id") or "").strip()
+                chunk_data_b64 = data.get("data", "")
+                filename = data.get("filename", "uploaded.pdf").strip()
+                try:
+                    chunk_index = int(data.get("chunk_index", 0))
+                    total_chunks = int(data.get("total_chunks", 1))
+                except (ValueError, TypeError):
+                    chunk_index, total_chunks = 0, 1
+
+                if not upload_id or not chunk_data_b64 or total_chunks < 1:
+                    self.send_response(400)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"success": False, "message": "Invalid chunk payload"}).encode("utf-8"))
+                    return
+
+                if "," in chunk_data_b64:
+                    chunk_data_b64 = chunk_data_b64.split(",", 1)[1]
+                chunk_bytes = base64.b64decode(chunk_data_b64)
+                del chunk_data_b64
+
+                safe_fn = os.path.basename(filename)
+                is_zip = safe_fn.lower().endswith(".zip")
+                if not is_zip and not safe_fn.lower().endswith(".pdf"):
+                    safe_fn += ".pdf"
+
+                temp_admin_dir = STORAGE_DIR / "temp_chunks" / upload_id
+                temp_admin_dir.mkdir(parents=True, exist_ok=True)
+                chunk_file = temp_admin_dir / f"part_{chunk_index:05d}"
+                chunk_file.write_bytes(chunk_bytes)
+                del chunk_bytes
+
+                saved_chunks = list(temp_admin_dir.glob("part_*"))
+                if len(saved_chunks) == total_chunks:
+                    dest_dir = STORAGE_DIR / "products"
+                    dest_dir.mkdir(parents=True, exist_ok=True)
+                    dest_path = dest_dir / safe_fn
+
+                    # Assemble chunks directly to disk with zero RAM pressure
+                    with open(dest_path, "wb") as out_f:
+                        for i in range(total_chunks):
+                            part = temp_admin_dir / f"part_{i:05d}"
+                            if part.exists():
+                                with open(part, "rb") as in_f:
+                                    shutil.copyfileobj(in_f, out_f)
+                                try:
+                                    part.unlink()
+                                except Exception:
+                                    pass
+
+                    try:
+                        shutil.rmtree(temp_admin_dir, ignore_errors=True)
+                    except Exception:
+                        pass
+
+                    if is_zip:
+                        extracted_count = 0
+                        try:
+                            with zipfile.ZipFile(dest_path, "r") as zf:
+                                for item in zf.infolist():
+                                    if item.filename.startswith("__MACOSX") or item.is_dir():
+                                        continue
+                                    if item.filename.lower().endswith(".pdf"):
+                                        sub_data = zf.read(item.filename)
+                                        sub_fn = re.sub(r"[^A-Za-z0-9._-]+", "_", os.path.basename(item.filename))
+                                        if not sub_fn.lower().endswith(".pdf"):
+                                            sub_fn += ".pdf"
+                                        sub_dest = dest_dir / sub_fn
+                                        sub_dest.write_bytes(sub_data)
+
+                                        actual_p = 1
+                                        try:
+                                            import pymupdf as fitz
+                                            with fitz.open(str(sub_dest)) as dt:
+                                                actual_p = max(1, len(dt))
+                                        except Exception:
+                                            actual_p = 1
+
+                                        clean_title = os.path.splitext(sub_fn)[0].replace("_", " ").strip()
+                                        clean_title = re.sub(r"\s+", " ", clean_title).title()
+                                        packaging_agent.register_pdf_file_as_product(
+                                            sub_dest,
+                                            title=f"{clean_title} (अधिकृत ई-बुक प्रश्नसंच)",
+                                            pages=actual_p,
+                                            price=49,
+                                            db_path=DB_PATH
+                                        )
+                                        extracted_count += 1
+                        except Exception as zerr:
+                            self.send_response(400)
+                            self.send_header("Content-Type", "application/json; charset=utf-8")
+                            self.end_headers()
+                            self.wfile.write(json.dumps({"success": False, "message": f"अवैध ZIP फाईल: {zerr}"}).encode("utf-8"))
+                            return
+
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json; charset=utf-8")
+                        self.end_headers()
+                        self.wfile.write(json.dumps({
+                            "success": True,
+                            "status": "completed",
+                            "message": f"ZIP यशस्वीरित्या अनपॅक झाली! {extracted_count} PDFs सिस्टीममध्ये समाविष्ट केले.",
+                            "count": extracted_count
+                        }, ensure_ascii=False).encode("utf-8"))
+                        return
+
+                    # Verify PDF header
+                    with open(dest_path, "rb") as check_f:
+                        header = check_f.read(5)
+                        if header != b"%PDF-":
+                            dest_path.unlink(missing_ok=True)
+                            self.send_response(400)
+                            self.send_header("Content-Type", "application/json; charset=utf-8")
+                            self.end_headers()
+                            self.wfile.write(json.dumps({"success": False, "message": "अवैध PDF फाईल: केवळ खरी PDF फाईल (%PDF- हेडर असलेली) अपलोड करता येईल."}, ensure_ascii=False).encode("utf-8"))
+                            return
+
+                    actual_pages = 1
+                    try:
+                        import pymupdf as fitz
+                        with fitz.open(str(dest_path)) as d_tmp:
+                            actual_pages = max(1, len(d_tmp))
+                    except Exception:
+                        actual_pages = 1
+
+                    clean_title = os.path.splitext(safe_fn)[0].replace("_", " ").strip()
+                    clean_title = re.sub(r"\s+", " ", clean_title).title()
+                    packaging_agent.register_pdf_file_as_product(
+                        dest_path,
+                        title=f"{clean_title} (अधिकृत ई-बुक प्रश्नसंच)",
+                        pages=actual_pages,
+                        price=49,
+                        db_path=DB_PATH
+                    )
+
+                    try:
+                        RESPONSE_DIR.mkdir(parents=True, exist_ok=True)
+                        resp_copy_path = RESPONSE_DIR / f"admin_upload_{safe_fn}"
+                        shutil.copy2(dest_path, resp_copy_path)
+                        with get_connection() as db:
+                            db.execute(
+                                """INSERT INTO uploads(
+                                    telegram_user_id, filename, storage_path, exam_key, category, post_name,
+                                    score, correct_count, incorrect_count, unanswered_count, status
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                (0, safe_fn, str(resp_copy_path), "admin_portal_upload", "Open", "Admin Uploaded Book",
+                                 0.0, 0, 0, 0, "admin_bulk")
+                            )
+                    except Exception as sync_e:
+                        logger.warning(f"Error registering web upload in uploads DB: {sync_e}")
+
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "success": True,
+                        "status": "completed",
+                        "filename": safe_fn,
+                        "pages": actual_pages,
+                        "size": dest_path.stat().st_size
+                    }, ensure_ascii=False).encode("utf-8"))
+                    return
+                else:
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "success": True,
+                        "status": "chunk_saved",
+                        "chunk_index": chunk_index,
+                        "total_chunks": total_chunks
+                    }).encode("utf-8"))
+                    return
+            except Exception as e:
+                logger.error(f"Error uploading admin PDF chunk: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
+                return
+
+        # Admin API: Upload PDF directly from browser (Single shot fallback for small files)
         if path == "/api/admin/upload_pdf":
             try:
                 fn = data.get("filename", "uploaded.pdf").strip()
@@ -7814,8 +8070,8 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                     f.write(pdf_bytes)
 
                 # Immediately register uploaded PDF as active digital store product with exact page count
+                actual_pages = 1
                 try:
-                    actual_pages = 1
                     try:
                         import pymupdf as fitz
                     except ImportError:
@@ -7855,7 +8111,7 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.end_headers()
-                self.wfile.write(json.dumps({"success": True, "filename": safe_fn, "size": len(pdf_bytes)}).encode("utf-8"))
+                self.wfile.write(json.dumps({"success": True, "filename": safe_fn, "pages": actual_pages, "size": len(pdf_bytes)}).encode("utf-8"))
                 return
             except Exception as e:
                 logger.error(f"Error uploading PDF: {e}")
