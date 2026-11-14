@@ -53,179 +53,7 @@ def normalize_product_subject(raw_subject: Optional[str]) -> str:
     # Full Admin Control: Preserve any custom subject or product type specified by the administrator
     return s
 
-MONTHS_2026_DATA = [
-    ("prod_ca_2026_11", "नोव्हेंबर २०२६ चालू घडामोडी Top 200 MCQs (Live Daily Edition)", "नोव्हेंबर २०२६ मधील सर्व चालू घडामोडी + दैनंदिन अद्ययावत प्रश्न", "⚡ LIVE DAILY UPDATED (₹19)", 52, "current_affairs_2026_11_top200.pdf", "दररोज अद्ययावत होणारे चालू घडामोडींचे २०० दर्जेदार बहुपर्यायी प्रश्न, सविस्तर स्पष्टीकरणे आणि स्मरण क्लृप्त्या."),
-    ("prod_ca_2026_10", "ऑक्टोबर २०२६ चालू घडामोडी Top 200 MCQs (TCS/IBPS स्पेशल)", "ऑक्टोबर २०२६ संपूर्ण महिना कव्हर - सविस्तर स्पष्टीकरण व ट्रिक्स", "🔥 BESTSELLER (₹19)", 50, "current_affairs_2026_10_top200.pdf", "ऑक्टोबर २०२६ मधील राष्ट्रीय व राज्यस्तरीय सर्व महत्त्वपूर्ण घडामोडी, योजना व नियुक्त्यांचा २०० प्रश्नसंच."),
-    ("prod_ca_2026_09", "सप्टेंबर २०२६ चालू घडामोडी Top 200 MCQs", "सप्टेंबर २०२६ राष्ट्रीय, आंतरराष्ट्रीय व महाराष्ट्र घडामोडी", "⭐ TOP RATED (₹19)", 48, "current_affairs_2026_09_top200.pdf", "सप्टेंबर २०२६ मधील चालू घडामोडी, पॅरालिम्पिक पुरस्कार व राज्य मंत्रिमंडळ निर्णय."),
-    ("prod_ca_2026_08", "ऑगस्ट २०२६ चालू घडामोडी Top 200 MCQs", "ऑगस्ट २०२६ क्रीडा, पुरस्कार, नियुक्त्या व योजना", "🎯 TCS SPECIAL (₹19)", 48, "current_affairs_2026_08_top200.pdf", "ऑगस्ट २०२६ मधील स्वातंत्र्य दिन विशेष घोषणा, क्रीडा पुरस्कार व महत्त्वाचे कायदे."),
-    ("prod_ca_2026_07", "जुलै २०२६ चालू घडामोडी Top 200 MCQs", "जुलै २०२६ अर्थसंकल्प व शासकीय निर्णय", "💡 HIGH RECALL (₹19)", 48, "current_affairs_2026_07_top200.pdf", "जुलै २०२६ मधील केंद्रीय व राज्य अर्थसंकल्प तरतुदी, आर्थिक पाहणी अहवाल व योजना."),
-    ("prod_ca_2026_06", "जून २०२६ चालू घडामोडी Top 200 MCQs", "जून २०२६ चालू घडामोडी रिव्हिजन प्रश्नसंच", "📘 EXAM CAPSULE (₹19)", 48, "current_affairs_2026_06_top200.pdf", "जून २०२६ मधील पर्यावरण दिन, आंतरराष्ट्रीय योग दिन आणि शासकीय नियुक्त्या."),
-    ("prod_ca_2026_05", "मे २०२६ चालू घडामोडी Top 200 MCQs", "मे २०२६ मधील महत्त्वाच्या घडामोडी व कायदे", "🏆 TOP SELLER (₹19)", 48, "current_affairs_2026_05_top200.pdf", "मे २०२६ मधील महाराष्ट्र दिन विशेष, जागतिक अहवाल व निर्देशांकांवर आधारित २०० MCQs."),
-    ("prod_ca_2026_04", "एप्रिल २०२६ चालू घडामोडी Top 200 MCQs", "एप्रिल २०२६ चालू घडामोडी व विज्ञान तंत्रज्ञान", "⚡ SPEED BOOSTER (₹19)", 48, "current_affairs_2026_04_top200.pdf", "एप्रिल २०२६ मधील इस्रो मोहिमा, संरक्षण करार व राज्य शासन निर्णय."),
-    ("prod_ca_2026_03", "मार्च २०२६ चालू घडामोडी Top 200 MCQs", "मार्च २०२६ अर्थसंकल्प व राज्य योजना", "📊 BUDGET SPECIAL (₹19)", 48, "current_affairs_2026_03_top200.pdf", "मार्च २०२६ मधील महिला दिन, राज्य अर्थसंकल्प व पुरस्कारांचे संकलन."),
-    ("prod_ca_2026_02", "फेब्रुवारी २०२६ चालू घडामोडी Top 200 MCQs", "फेब्रुवारी २०२६ राष्ट्रीय व आंतरराष्ट्रीय घडामोडी", "⭐ RATED 4.9 (₹19)", 48, "current_affairs_2026_02_top200.pdf", "फेब्रुवारी २०२६ मधील केंद्रीय अंतरिम बजेट, भारत रत्न व पद्म पुरस्कार विश्लेषण."),
-    ("prod_ca_2026_01", "जानेवारी २०२६ चालू घडामोडी Top 200 MCQs", "जानेवारी २०२६ नवीन वर्षाचा पहिला १००% दर्जेदार प्रश्नसंच", "🎯 MUST REVISE (₹19)", 48, "current_affairs_2026_01_top200.pdf", "जानेवारी २०२६ मधील प्रजासत्ताक दिन प्रमुख पाहुणे, महत्त्वाच्या नियुक्त्या व क्रीडा स्पर्धा.")
-]
-
 DEFAULT_PRODUCTS = [
-    # 2026 Month-Wise Top 200 MCQs Current Affairs
-    *[
-        {
-            "id": pid,
-            "title": title,
-            "subtitle": subtitle,
-            "subject": "Current Affairs",
-            "tier": "Monthly",
-            "price_inr": 19,
-            "original_price_inr": 99,
-            "badge": badge,
-            "rating": 4.9,
-            "reviews_count": 1350 + (i * 45),
-            "pages": pages,
-            "sample_questions_count": 5,
-            "description": desc,
-            "download_file": dl_file,
-            "icon": "📰"
-        }
-        for i, (pid, title, subtitle, badge, pages, dl_file, desc) in enumerate(MONTHS_2026_DATA)
-    ],
-    # Default alias for backwards compatibility
-    {
-        "id": "prod_ca_monthly_top200",
-        "title": "मासिक चालू घडामोडी Top 200 MCQs (सविस्तर स्पष्टीकरणासह)",
-        "subtitle": "TCS & IBPS पॅटर्ननुसार निवडक २०० प्रश्न + इन्फोग्राफिक्स व ट्रिक्स",
-        "subject": "Current Affairs",
-        "tier": "Monthly",
-        "price_inr": 19,
-        "original_price_inr": 99,
-        "badge": "🔥 MOST POPULAR (₹19)",
-        "rating": 4.9,
-        "reviews_count": 1420,
-        "pages": 48,
-        "sample_questions_count": 5,
-        "description": "चालू महिन्यातील महाराष्ट्र व राष्ट्रीय स्तरावरील सर्व महत्त्वाच्या घडामोडींचे २०० दर्जेदार बहुपर्यायी प्रश्न, सविस्तर स्पष्टीकरणे आणि रिव्हिजन चार्ट्स.",
-        "download_file": "current_affairs_monthly_top200.pdf",
-        "icon": "📰"
-    },
-    {
-        "id": "prod_ca_half_yearly",
-        "title": "सहामाही चालू घडामोडी मेगा कॅप्सूल (६ महिने - ६०० प्रश्न)",
-        "subtitle": "जानेवारी ते जून / जुलै ते डिसेंबर संपूर्ण चालू घडामोडी वन-स्टॉप रिव्हिजन",
-        "subject": "Current Affairs",
-        "tier": "Half-Yearly",
-        "price_inr": 49,
-        "original_price_inr": 199,
-        "badge": "⚡ BEST VALUE (₹49)",
-        "rating": 4.9,
-        "reviews_count": 890,
-        "pages": 130,
-        "sample_questions_count": 8,
-        "description": "मागील ६ महिन्यांतील सर्व शासकीय योजना, पुरस्कार, नियुक्त्या, क्रीडा व अर्थसंकल्पाचे परिपूर्ण संकलन. सरळसेवा परीक्षांसाठी १००% खात्रीशीर रिव्हिजन बुक.",
-        "download_file": "current_affairs_half_yearly_mega.pdf",
-        "icon": "🌟"
-    },
-    {
-        "id": "prod_ca_yearly_master",
-        "title": "वार्षिक चालू घडामोडी मास्टर डायजेस्ट (१ वर्ष - १२००+ प्रश्न)",
-        "subtitle": "संपूर्ण वर्षाचा महासंग्रह: TCS/IBPS सर्व चालू परीक्षांसाठी सुवर्णसंधी",
-        "subject": "Current Affairs",
-        "tier": "Yearly",
-        "price_inr": 49,
-        "original_price_inr": 199,
-        "badge": "👑 MASTER COMPENDIUM (₹49)",
-        "rating": 5.0,
-        "reviews_count": 2150,
-        "pages": 260,
-        "sample_questions_count": 12,
-        "description": "वर्षभरातील सर्व महत्त्वाच्या घडामोडींचे महिनानिहाय वर्गीकरण, ५०+ इन्फोग्राफिक्स, टेबल व चालू परीक्षांमध्ये विचारलेले प्रश्न.",
-        "download_file": "current_affairs_yearly_master.pdf",
-        "icon": "📚"
-    },
-    {
-        "id": "prod_tcs_response_sheet_qbank",
-        "title": "TCS/IBPS सर्व रिस्पॉन्स शीट्स वनलायनर मास्टर प्रश्नसंच",
-        "subtitle": "चालू परीक्षांमध्ये विचारलेले १०००+ ओरिजिनल प्रश्न व अधिकृत उत्तरे",
-        "subject": "PYQ & Response Sheets",
-        "tier": "Special",
-        "price_inr": 29,
-        "original_price_inr": 149,
-        "badge": "🎯 100% REAL EXAM QUESTIONS",
-        "rating": 4.9,
-        "reviews_count": 3410,
-        "pages": 75,
-        "sample_questions_count": 10,
-        "description": "विद्यार्थ्यांनी पाठवलेल्या DigiALM रिस्पॉन्स शीट्समधून काढलेले ओरिजिनल प्रश्न, सामान्य ज्ञान, मराठी व इंग्रजीचे थेट वनलायनर संकलन.",
-        "download_file": "tcs_ibps_real_response_qbank.pdf",
-        "icon": "📑"
-    },
-    {
-        "id": "prod_marathi_vyakaran_rules",
-        "title": "मराठी व्याकरण ५००+ ट्रिक्स, नियम व वारंवार विचारलेले प्रश्न",
-        "subtitle": "संधी, समास, प्रयोग, काळ व वाक्यरूपांतर - पैकीच्या पैकी गुण हमी",
-        "subject": "Marathi",
-        "tier": "Subject Master",
-        "price_inr": 29,
-        "original_price_inr": 129,
-        "badge": "🏆 25/25 MARKS BOOSTER",
-        "rating": 4.8,
-        "reviews_count": 1240,
-        "pages": 65,
-        "sample_questions_count": 5,
-        "description": "मराठी व्याकरणातील सर्वात किचकट संकल्पना सोप्या भाषेत, TCS च्या ट्रॅप प्रश्नांची उत्तरे आणि आक्षेप (Objection) नोंदवण्याचे संदर्भ.",
-        "download_file": "marathi_vyakaran_master_guide.pdf",
-        "icon": "✍️"
-    },
-    {
-        "id": "prod_english_vocab_error_spotting",
-        "title": "TCS/IBPS English 500+ Error Spotting & Vocab Mnemonics",
-        "subtitle": "Score 20+ Marks in English Without Rote Memorization",
-        "subject": "English",
-        "tier": "Subject Master",
-        "price_inr": 29,
-        "original_price_inr": 149,
-        "badge": "🎯 TOP SCORER PICK",
-        "rating": 4.8,
-        "reviews_count": 980,
-        "pages": 60,
-        "sample_questions_count": 5,
-        "description": "Rules of Subject-Verb Agreement, Prepositions, Cloze Tests, and Visual Idioms/Phrases asked in recent TCS & IBPS exam shifts.",
-        "download_file": "english_error_spotting_mastery.pdf",
-        "icon": "📖"
-    },
-    {
-        "id": "prod_maharashtra_gk_gs_1000",
-        "title": "महाराष्ट्र सामान्य ज्ञान व GS १०००+ वनलायनर रामबाण बुलेटिन",
-        "subtitle": "इतिहास, भूगोल, समाजसुधारक, राज्यघटना व आर्थिक पाहणी अहवाल",
-        "subject": "General Knowledge",
-        "tier": "Subject Master",
-        "price_inr": 39,
-        "original_price_inr": 149,
-        "badge": "💡 HIGH REPETITION RATE",
-        "rating": 4.9,
-        "reviews_count": 1820,
-        "pages": 92,
-        "sample_questions_count": 8,
-        "description": "महाराष्ट्राचा भूगोल, नद्या, किल्ले, समाजसुधारक, आरटीआय २००५, लोकसेवा हक्क २०१५ आणि चालू योजनांचे सुपर-फास्ट रिव्हिजन नोट्स.",
-        "download_file": "maharashtra_gk_1000_oneliner.pdf",
-        "icon": "🗺️"
-    },
-    {
-        "id": "prod_maths_reasoning_shortcuts",
-        "title": "गणित व बुद्धिमत्ता १५-सेकंद शॉर्टकट ट्रिक्स व फॉर्म्युला बुक",
-        "subtitle": "वेळ वाचवून अचूक उत्तर काढण्याचे सुपरफॉस्ट फॉर्म्युले व ट्रिक्स",
-        "subject": "Maths & Reasoning",
-        "tier": "Subject Master",
-        "price_inr": 39,
-        "original_price_inr": 169,
-        "badge": "⚡ SPEED BOOSTER",
-        "rating": 4.9,
-        "reviews_count": 1650,
-        "pages": 80,
-        "sample_questions_count": 6,
-        "description": "अंकगणित व बुद्धिमत्ता चाचणीतील कठीण गणिते अवघ्या १५ सेकंदात सोडवण्याच्या क्लृप्त्या, दिशाज्ञान, नातेसंबंध व सिटिंग अरेंजमेंट ग्रिड्स.",
-        "download_file": "maths_reasoning_shortcuts_handbook.pdf",
-        "icon": "🔢"
-    },
     {
         "id": "prod_gmc_master_2024",
         "title": "GMC लातूर भरती अधिकृत मास्टर प्रश्नसंच (TCS पॅटर्न)",
@@ -242,23 +70,6 @@ DEFAULT_PRODUCTS = [
         "description": "शासकीय वैद्यकीय महाविद्यालय (GMC) लातूर भरती परीक्षेतील TCS अधिकृत प्रश्नपत्रिका, तांत्रिक व अतांत्रिक विषयांचे १००% अधिकृत उत्तरे व सविस्तर स्पष्टीकरणे (४२७ पृष्ठे).",
         "download_file": "gmc.pdf",
         "icon": "📑"
-    },
-    {
-        "id": "prod_52e8ee13",
-        "title": "GMC लातूर भरती अधिकृत मास्टर प्रश्नसंच (TCS पॅटर्न)",
-        "subtitle": "१००% अधिकृत प्रश्नोत्तरे, रिस्पॉन्स शीट्स व सविस्तर तांत्रिक विश्लेषण",
-        "subject": "PYQ & Response Sheets",
-        "tier": "Master",
-        "price_inr": 49,
-        "original_price_inr": 199,
-        "badge": "🔥 GMC भरती विशेष",
-        "rating": 5.0,
-        "reviews_count": 2450,
-        "pages": 427,
-        "sample_questions_count": 15,
-        "description": "शासकीय वैद्यकीय महाविद्यालय (GMC) लातूर भरती परीक्षेतील TCS अधिकृत प्रश्नपत्रिका, तांत्रिक व अतांत्रिक विषयांचे १००% अधिकृत उत्तरे व सविस्तर स्पष्टीकरणे (४२७ पृष्ठे).",
-        "download_file": "gmc.pdf",
-        "icon": "📚"
     },
     {
         "id": "prod_peon_full_2024",
@@ -429,6 +240,20 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             # Clean/normalize any historical non-canonical subjects in digital_products table
             db.execute("UPDATE digital_products SET subject = 'PYQ & Response Sheets' WHERE subject IN ('Comprehensive', 'Response Sheets', 'PYQ')")
             db.execute("UPDATE digital_products SET subject = 'General Knowledge' WHERE subject IN ('General Studies', 'General', 'GS', 'GK')")
+
+            # Purge all autogenerated / dummy products from catalog
+            autogen_ids = [
+                'prod_ca_2026_11', 'prod_ca_2026_10', 'prod_ca_2026_09', 'prod_ca_2026_08',
+                'prod_ca_2026_07', 'prod_ca_2026_06', 'prod_ca_2026_05', 'prod_ca_2026_04',
+                'prod_ca_2026_03', 'prod_ca_2026_02', 'prod_ca_2026_01', 'prod_ca_monthly_top200',
+                'prod_ca_half_yearly', 'prod_ca_yearly_master', 'prod_tcs_response_sheet_qbank',
+                'prod_marathi_vyakaran_rules', 'prod_english_vocab_error_spotting',
+                'prod_maharashtra_gk_gs_1000', 'prod_maths_reasoning_shortcuts'
+            ]
+            placeholders = ",".join(["?"] * len(autogen_ids))
+            db.execute(f"DELETE FROM digital_products WHERE id IN ({placeholders}) OR download_file LIKE 'current_affairs_%'", autogen_ids)
+            db.execute("DELETE FROM digital_products WHERE download_file IN ('marathi_vyakaran_master_guide.pdf', 'english_error_spotting_mastery.pdf', 'maharashtra_gk_1000_oneliner.pdf', 'maths_reasoning_shortcuts_handbook.pdf', 'tcs_ibps_real_response_qbank.pdf', 'test_admin_upload.pdf')")
+
 
             # Auto-seed any missing default products so store & admin are immediately populated
             for p in DEFAULT_PRODUCTS:
@@ -610,6 +435,58 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             db.commit()
             logger.info(f"👁️ Toggled product status {product_id} (rows: {cur.rowcount})")
             return cur.rowcount > 0
+
+
+    def purge_autogenerated_products(self, db_path: str = "bot.db") -> int:
+        """Removes all auto-generated current affairs and dummy synthetic e-books from the catalog and disk."""
+        db_path = self.resolve_db_path(db_path)
+        with sqlite3.connect(db_path, timeout=30.0) as db:
+            cur = db.execute("""
+                DELETE FROM digital_products
+                WHERE id LIKE 'prod_ca_%'
+                   OR download_file LIKE 'current_affairs_%'
+                   OR id IN (
+                       'prod_tcs_response_sheet_qbank',
+                       'prod_marathi_vyakaran_rules',
+                       'prod_english_vocab_error_spotting',
+                       'prod_maharashtra_gk_gs_1000',
+                       'prod_maths_reasoning_shortcuts'
+                   )
+                   OR download_file IN (
+                       'marathi_vyakaran_master_guide.pdf',
+                       'english_error_spotting_mastery.pdf',
+                       'maharashtra_gk_1000_oneliner.pdf',
+                       'maths_reasoning_shortcuts_handbook.pdf',
+                       'tcs_ibps_real_response_qbank.pdf',
+                       'test_admin_upload.pdf'
+                   )
+            """)
+            deleted_cnt = cur.rowcount
+            db.commit()
+
+        # Also purge physical auto-generated PDFs from admin_storage/products/
+        root_dir = Path(__file__).resolve().parent.parent.parent
+        target_dir = root_dir / "admin_storage" / "products"
+        if target_dir.exists():
+            for p in target_dir.glob("*.pdf"):
+                if (
+                    p.name.startswith("current_affairs_")
+                    or p.name in (
+                        "marathi_vyakaran_master_guide.pdf",
+                        "english_error_spotting_mastery.pdf",
+                        "maharashtra_gk_1000_oneliner.pdf",
+                        "maths_reasoning_shortcuts_handbook.pdf",
+                        "tcs_ibps_real_response_qbank.pdf",
+                        "test_admin_upload.pdf"
+                    )
+                ):
+                    try:
+                        p.unlink()
+                    except Exception:
+                        pass
+
+        logger.info(f"🧹 Purged {deleted_cnt} autogenerated products from catalog and disk.")
+        return deleted_cnt
 
     def purge_all_products(self, db_path: str = "bot.db") -> int:
         """Removes all products from the store so admin has a 100% clean slate for manual control."""
@@ -853,23 +730,15 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             db.commit()
 
         logger.info(f"✅ Registered PDF '{filename}' in store as '{final_title}' (₹{price_inr}, ID: {prod_id})")
-        ret_product = {
+        return {
             "id": prod_id,
             "title": final_title,
-            "subtitle": final_subtitle,
-            "subject": final_subject,
+            "subject": subject,
             "price_inr": price_inr,
             "original_price_inr": original_price_inr,
             "pages": pages,
-            "badge": final_badge,
-            "description": final_desc,
-            "download_file": filename,
-            "icon": final_icon,
-            "tier": "E-Book",
-            "is_active": 1
+            "download_file": filename
         }
-        self.save_product_to_manifest(ret_product)
-        return ret_product
 
     def seed_default_products(self, db_path: str = "bot.db", force: bool = False) -> int:
         """Seeds all default curated e-books into digital_products table if not already present."""
@@ -927,8 +796,25 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             if s_dir.exists() and s_dir.is_dir():
                 for pdf_file in s_dir.glob("*.pdf"):
                     fn = pdf_file.name
-                    # Never register candidate response sheets as store products
-                    if fn.startswith("user_") or re.match(r"^\d+_AgAD", fn) or "admin_upload_user_" in fn:
+                    fn_lower = fn.lower()
+                    # Never register autogenerated files or candidate response sheets
+                    if (
+                        fn.startswith("user_")
+                        or re.match(r"^\d+_AgAD", fn)
+                        or "admin_upload_user_" in fn
+                        or fn_lower.startswith("current_affairs_")
+                        or fn_lower.startswith("test_")
+                        or fn_lower.startswith("temp_")
+                        or fn_lower.startswith("tmp")
+                        or "sample" in fn_lower
+                        or fn_lower in (
+                            "marathi_vyakaran_master_guide.pdf",
+                            "english_error_spotting_mastery.pdf",
+                            "maharashtra_gk_1000_oneliner.pdf",
+                            "maths_reasoning_shortcuts_handbook.pdf",
+                            "tcs_ibps_real_response_qbank.pdf"
+                        )
+                    ):
                         continue
                     if fn in seen_filenames:
                         continue
@@ -1009,11 +895,11 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
                             pass
                         return cand if cand.exists() else target_path
 
-        # Only suppress auto eBook generation if explicitly disabled
-        if not force_rebuild and os.getenv("ENABLE_AUTO_EBOOK_GENERATION", "true").lower() in ("false", "0", "no"):
+        # Check if automatic eBook generation is disabled
+        if not force_rebuild and os.getenv("ENABLE_AUTO_EBOOK_GENERATION", "").lower() not in ("true", "1", "yes"):
             if target_path.exists():
                 return target_path
-            logger.info(f"Auto eBook generation disabled: not generating auto PDF for '{product_id}'.")
+            logger.info(f"Auto eBook generation disabled: not generating dummy/auto PDF for '{product_id}'.")
             return None
 
         # If product is Current Affairs, use Chalu Ghadamodi specification layout
