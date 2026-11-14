@@ -1884,7 +1884,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             try {{
                 const res = await adminFetch('/api/admin/sync_products', {{ method: 'POST', body: JSON.stringify({{}}) }});
                 const data = await res.json();
-                alert('✅ कॅटलॉग सिंक यशस्वी!\n• नवीन ई-बुक्स: ' + (data.seeded || 0) + '\n• एकूण उपलब्ध ई-बुक्स: ' + (data.total || 0) + '\n• सक्रिय ई-बुक्स: ' + (data.active || 0));
+                alert('✅ कॅटलॉग सिंक यशस्वी!\\n• नवीन ई-बुक्स: ' + (data.seeded || 0) + '\\n• एकूण उपलब्ध ई-बुक्स: ' + (data.total || 0) + '\\n• सक्रिय ई-बुक्स: ' + (data.active || 0));
                 location.reload();
             }} catch(e) {{
                 alert('❌ सिंक अयशस्वी: ' + e.message);

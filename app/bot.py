@@ -9109,6 +9109,7 @@ def dispatch_single_quiz_to_channel(target_channel: Optional[str] = None) -> dic
     formats it as a native Telegram Quiz poll, sends it to the target channel (is_anonymous=True),
     and records it in posted_quizzes table so no duplicate quiz is ever posted.
     """
+    import random
     channel = (
         target_channel
         or os.getenv("PAID_CHANNEL_ID")
