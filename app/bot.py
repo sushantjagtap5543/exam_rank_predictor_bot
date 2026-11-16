@@ -6587,6 +6587,19 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(resp_bytes)
             return
 
+        # API: Build & Deployment Version Check
+        if path == "/api/version":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "version": "2026.11.16_clean_slate_0_books",
+                "status": "ready",
+                "default_products": len(DEFAULT_PRODUCTS)
+            }).encode("utf-8"))
+            return
+
         # 1. API: Products list
         if path == "/api/products":
             self.send_response(200)

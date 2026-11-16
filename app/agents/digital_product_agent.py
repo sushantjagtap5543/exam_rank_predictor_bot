@@ -853,13 +853,13 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
     def get_all_products(self, db_path: str = "bot.db", include_inactive: bool = False) -> List[Dict[str, Any]]:
         """Returns digital products from SQLite database under 100% manual admin control."""
         db_path = self.resolve_db_path(db_path)
-        self.init_products_db(db_path)
         with sqlite3.connect(db_path, timeout=30.0) as db:
             db.row_factory = sqlite3.Row
-            if include_inactive:
-                rows = db.execute("SELECT * FROM digital_products ORDER BY rowid DESC").fetchall()
-            else:
-                rows = db.execute("SELECT * FROM digital_products WHERE is_active = 1 ORDER BY rowid DESC").fetchall()
+            where_clauses = ["id NOT IN ('prod_gmc_master_2024', 'prod_peon_full_2024', 'prod_file_0169460b0a')"]
+            if not include_inactive:
+                where_clauses.append("is_active = 1")
+            sql = f"SELECT * FROM digital_products WHERE {' AND '.join(where_clauses)} ORDER BY rowid DESC"
+            rows = db.execute(sql).fetchall()
             products = [dict(r) for r in rows]
             return products
 
