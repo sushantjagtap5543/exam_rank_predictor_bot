@@ -6867,6 +6867,30 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        # OpenClaw Autonomous Multi-Agent Team Status API
+        if path == "/api/admin/openclaw/status":
+            query_params = urllib.parse.parse_qs(parsed.query)
+            if not is_admin_request_authenticated(self.headers, query_params):
+                self.send_response(403)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": "Unauthorized"}).encode("utf-8"))
+                return
+            try:
+                from app.agents.openclaw_orchestrator import openclaw_team
+                team_data = openclaw_team.get_team_status()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": True, "data": team_data}, ensure_ascii=False).encode("utf-8"))
+                return
+            except Exception as e:
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
+                return
+
         # 4. Admin Store Visitors API Endpoint: /api/admin/visitors
         if path == "/api/admin/visitors":
             query_params = urllib.parse.parse_qs(parsed.query)
@@ -7534,16 +7558,16 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
                 return
 
-        # Admin API: Update product price (₹10 - ₹100)
+        # Admin API: Update product price (Unlocked Flexible Pricing: ₹1 - ₹9999)
         if path == "/api/admin/update_price":
             try:
                 prod_id = data.get("product_id")
                 new_price = int(data.get("price_inr") or data.get("price") or 19)
-                if not prod_id or new_price < 5 or new_price > 500:
+                if not prod_id or new_price < 1 or new_price > 9999:
                     self.send_response(400)
                     self.send_header("Content-Type", "application/json; charset=utf-8")
                     self.end_headers()
-                    self.wfile.write(json.dumps({"success": False, "message": "Invalid product or price."}).encode("utf-8"))
+                    self.wfile.write(json.dumps({"success": False, "message": "Invalid product or price (Must be ₹1 to ₹9999)."}).encode("utf-8"))
                     return
 
                 with sqlite3.connect(DB_PATH, timeout=30.0) as db:
@@ -8155,6 +8179,27 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 return
             except Exception as e:
                 logger.error(f"Error uploading PDF: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
+                return
+
+        # OpenClaw Autonomous Multi-Agent Cycle Runner (Market Intel -> Product Creation -> Store Listing)
+        if path == "/api/admin/openclaw/run_cycle":
+            try:
+                from app.agents.openclaw_orchestrator import openclaw_team
+                store_url = get_store_web_url()
+                loop = asyncio.new_event_loop()
+                cycle_res = loop.run_until_complete(openclaw_team.execute_autonomous_product_cycle(store_url=store_url))
+                loop.close()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps(cycle_res, ensure_ascii=False).encode("utf-8"))
+                return
+            except Exception as e:
+                logger.error(f"Error executing OpenClaw cycle: {e}")
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.end_headers()

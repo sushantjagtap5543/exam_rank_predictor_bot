@@ -161,7 +161,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 <td>
                     <div style="display:flex; align-items:center; gap:6px;">
                         <span>₹</span>
-                        <input type="number" id="price_{safe_pid}" value="{price}" min="10" max="100" class="input-mini">
+                        <input type="number" id="price_{safe_pid}" value="{price}" min="1" max="9999" class="input-mini">
                         <button class="btn-sm btn-action" onclick="updateProductPrice('{safe_pid}')">💾</button>
                     </div>
                 </td>
@@ -861,6 +861,44 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             </div>
         </div>
 
+        <!-- OpenClaw Autonomous AI Enterprise Team Panel -->
+        <div class="section-box" style="border: 1px solid rgba(99, 102, 241, 0.4); background: linear-gradient(180deg, rgba(30, 41, 59, 0.8), rgba(15, 23, 42, 0.95)); margin-bottom: 25px;">
+            <div class="section-header" style="border-bottom: 1px solid rgba(99, 102, 241, 0.2); padding-bottom: 12px;">
+                <div>
+                    <span style="font-size:16px; font-weight:800; color:#818cf8;">🤖 OPENCLAW स्वायत्त AI टीम (Autonomous Multi-Agent Enterprise Suite)</span>
+                    <span class="badge badge-sub" style="margin-left:10px; background:#4338ca; color:#fff;">CEO Vikramaditya Deshmukh</span>
+                    <span class="badge badge-green" style="margin-left:6px;">🛡️ Anti-Ban Protected</span>
+                    <span class="badge badge-gold" style="margin-left:6px;">🔓 अनलॉक्ड प्राईसिंग (₹१ ते ₹९९९९)</span>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button class="btn btn-sm btn-gold" onclick="runOpenClawCycle()" style="background:linear-gradient(135deg, #f59e0b, #d97706); color:#fff; border:none; font-weight:700;">🚀 AI उत्पादन चक्र चालवा (Auto-Build & Sell)</button>
+                    <button class="btn btn-sm btn-outline" onclick="viewOpenClawStatus()">👁️ टीम स्थिती पहा (Team Status)</button>
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-top:14px;">
+                <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
+                    <div style="font-size:12px; font-weight:700; color:#818cf8;">👔 १. CEO & Executive Lead</div>
+                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">NEXUS एंटरप्राइज स्ट्रॅटेजी, महसूल उद्दिष्टे व सर्व विभागांचे स्वायत्त समन्वय.</div>
+                </div>
+                <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
+                    <div style="font-size:12px; font-weight:700; color:#10b981;">🛡️ २. Telegram Policy Guardian</div>
+                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">Anti-Ban, FloodWait 429 बॅकऑफ, Jitter डिल्स व स्पॅम-मुक्त सुरक्षित मेसेजिंग.</div>
+                </div>
+                <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
+                    <div style="font-size:12px; font-weight:700; color:#38bdf8;">🧠 ३. Market Demand Harvester</div>
+                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">महाराष्ट्र TCS/IBPS परीक्षा ट्रेंड्स, विद्यार्थी गरजा व उच्च-मागणी विषयांचा शोध.</div>
+                </div>
+                <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
+                    <div style="font-size:12px; font-weight:700; color:#facc15;">🏭 ४. AI Product Factory</div>
+                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">ReportLab द्वारे कव्हर, वॉटरमार्क व स्पष्टीकरणांसह ५ मिनिटांत PDF निर्मिती.</div>
+                </div>
+                <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
+                    <div style="font-size:12px; font-weight:700; color:#f43f5e;">🚀 ५. Viral Growth & Sales Lead</div>
+                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">Force-Join चॅनेल गेट, Share-to-Unlock रेफरल लूप व तात्काळ विक्री.</div>
+                </div>
+            </div>
+        </div>
+
         <!-- Manual Control & Studio Action Center -->
         <div class="toolbar">
             <div style="font-size:14px; font-weight:700; color:#fff;">
@@ -1163,11 +1201,11 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 <div class="form-row">
                     <div class="form-group">
                         <label class="form-label">किंमत (Price INR) *</label>
-                        <input type="number" id="add_price" class="form-input" value="19" min="10" max="100" required>
+                        <input type="number" id="add_price" class="form-input" value="29" min="1" max="9999" required>
                     </div>
                     <div class="form-group">
                         <label class="form-label">मूळ किंमत (Original Price)</label>
-                        <input type="number" id="add_orig_price" class="form-input" value="99" min="10" max="500">
+                        <input type="number" id="add_orig_price" class="form-input" value="99" min="1" max="9999">
                     </div>
                     <div class="form-group">
                         <label class="form-label">एकूण पृष्ठे (Pages)</label>
@@ -1235,11 +1273,11 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 <div class="form-row">
                     <div class="form-group">
                         <label class="form-label">किंमत (Price INR) *</label>
-                        <input type="number" id="edit_price" class="form-input" min="10" max="100" required>
+                        <input type="number" id="edit_price" class="form-input" min="1" max="9999" required>
                     </div>
                     <div class="form-group">
                         <label class="form-label">मूळ किंमत (Original Price)</label>
-                        <input type="number" id="edit_orig_price" class="form-input" min="10" max="500">
+                        <input type="number" id="edit_orig_price" class="form-input" min="1" max="9999">
                     </div>
                     <div class="form-group">
                         <label class="form-label">एकूण पृष्ठे (Pages)</label>
@@ -1859,8 +1897,8 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         async function updateProductPrice(prodId) {{
             const input = document.getElementById('price_' + prodId);
             const newPrice = parseInt(input.value);
-            if (!newPrice || newPrice < 5 || newPrice > 500) {{
-                alert('कृपया वैध किंमत टाका (₹१० ते ₹१००)');
+            if (!newPrice || newPrice < 1 || newPrice > 9999) {{
+                alert('कृपया वैध किंमत टाका (₹१ ते ₹९९९९)');
                 return;
             }}
             try {{
@@ -1877,6 +1915,49 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 }}
             }} catch(e) {{
                 alert('❌ सर्व्हरशी संपर्क होऊ शकला नाही.');
+            }}
+        }}
+
+        async function runOpenClawCycle() {{
+            if (!confirm('🤖 OpenClaw स्वायत्त उत्पादन व विक्री चक्र चालवायचे का?\\n\\nयाने:\\n१. मार्केट ट्रेंड शोधून नवीन विषयाची निवड होईल.\\n२. ५० पानांचे व्यावसायिक ई-बुक (PDF) तयार होईल.\\n३. स्टोअरवर अनलॉक्ड किमतीत लिस्ट होईल.')) return;
+            showToast("⏳ OpenClaw AI टीम कार्यरत आहे... PDF निर्मिती व स्टोअर लिस्टिंग सुरू आहे...", "info");
+            try {{
+                const res = await adminFetch('/api/admin/openclaw/run_cycle', {{ method: 'POST' }});
+                const data = await res.json();
+                if (data.success) {{
+                    showToast('🎉 ' + data.message, 'success');
+                    alert('🎉 OpenClaw AI चक्र यशस्वीरित्या पूर्ण झाले!\\n\\n' + data.message + '\\n\\nउत्पादनाचे नाव: ' + (data.product ? data.product.title : ''));
+                    location.reload();
+                }} else {{
+                    showToast('❌ त्रुटी: ' + data.message, 'error');
+                    alert('❌ त्रुटी: ' + data.message);
+                }}
+            }} catch(e) {{
+                showToast('❌ सर्व्हर त्रुटी: ' + e.message, 'error');
+                alert('❌ सर्व्हर त्रुटी: ' + e.message);
+            }}
+        }}
+
+        async function viewOpenClawStatus() {{
+            try {{
+                const res = await adminFetch('/api/admin/openclaw/status');
+                const data = await res.json();
+                if (data.success && data.data) {{
+                    const d = data.data;
+                    let msg = "🤖 OPENCLAW स्वायत्त AI टीम स्थिती:\\n";
+                    msg += "━━━━━━━━━━━━━━━━━━━━━━\\n";
+                    msg += "👔 CEO: " + d.ceo.name + " (" + d.ceo.role + ")\\n";
+                    msg += "💰 प्राईसिंग: " + d.pricing_engine + "\\n\\n";
+                    msg += "कार्यरत एजंट्स:\\n";
+                    d.agents.forEach((a, i) => {{
+                        msg += (i+1) + ". " + a.agent + " (" + a.status + ")\\n   प्रमुख: " + a.lead + "\\n";
+                    }});
+                    alert(msg);
+                }} else {{
+                    alert('❌ टीम स्थिती मिळवण्यात अडचण आली.');
+                }}
+            }} catch(e) {{
+                alert('❌ सर्व्हर त्रुटी: ' + e.message);
             }}
         }}
 

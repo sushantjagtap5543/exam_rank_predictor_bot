@@ -1,1 +1,20 @@
-[]
+[
+  {
+    "id": "prod_tcs_marathi_vyakaran_top300",
+    "title": "TCS/IBPS मराठी व्याकरण Top 300 सर्वाधिक विचारलेले MCQs",
+    "subtitle": "TCS/IBPS परीक्षा विशेष अधिकृत ई-बुक",
+    "subject": "Marathi",
+    "price_inr": 29,
+    "original_price_inr": 99,
+    "pages": 42,
+    "rating": 5.0,
+    "reviews_count": 1274,
+    "badge": "🔥 TCS मोस्ट रिपीटेड (₹29)",
+    "description": "प्रयोग, समास, समानार्थी, विरुद्धार्थी व म्हणी यांवर TCS शिफ्ट्समध्ये विचारलेले ३०० प्रमाणित प्रश्न.",
+    "download_file": "tcs_marathi_vyakaran_top300.pdf",
+    "tier": "Master E-Book",
+    "icon": "📚",
+    "is_active": 1,
+    "sales_count": 0
+  }
+]
