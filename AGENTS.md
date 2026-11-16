@@ -19,3 +19,4 @@ OpenClaw coordinates 12 Senior Faculty and Operational Agents (all with >= 20 ye
 10. **Mechanical Engineering Faculty Chair**: Dr. Amit Sharma (21+ Yrs) — MPSC MES, Otto cycle P-V thermodynamics.
 11. **Market Demand Harvester**: Prof. Ananya Patil (20+ Yrs) — Maharashtra curriculum shift tracking.
 12. **Autonomous Product Factory**: Eng. Rohan Kulkarni (20+ Yrs) — ReportLab automated publication-grade PDF authoring.
+

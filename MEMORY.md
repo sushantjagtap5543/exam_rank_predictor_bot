@@ -11,3 +11,4 @@
 - Free AI Inference: OpenRouter `:free` models + Offline fallback engine
 - Competitor Brand Filtering: 35+ brands scrubbed in real-time
 - Multi-page Safe Viewer: Activated with download lock
+
