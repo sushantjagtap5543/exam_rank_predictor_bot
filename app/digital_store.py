@@ -1459,7 +1459,7 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None, db_path: Op
             const ind = document.getElementById('pageIndicator');
             if (prevBtn) prevBtn.disabled = (currentSamplePage <= 0);
             if (nextBtn) nextBtn.disabled = (currentSamplePage >= currentSampleTotalPages - 1);
-            if (ind) ind.innerText = `पृष्ठ ${currentSamplePage + 1} / ${currentSampleTotalPages}`;
+            if (ind) ind.innerText = 'पृष्ठ ' + (currentSamplePage + 1) + ' / ' + currentSampleTotalPages;
         }}
 
         function changeSamplePage(delta) {{
@@ -1476,21 +1476,21 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None, db_path: Op
             container.innerHTML = `
                 <div id="sampleLoadingBox" style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:35px 20px; background:rgba(15,23,42,0.6); border-radius:12px; border:1px dashed rgba(56,189,248,0.3); text-align:center;">
                     <div style="width:34px; height:34px; border:3px solid #334155; border-top-color:#38bdf8; border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:12px;"></div>
-                    <div style="font-size:13px; color:#cbd5e1; font-weight:600;">पृष्ठ ${pageNum + 1} लोड होत आहे...</div>
+                    <div style="font-size:13px; color:#cbd5e1; font-weight:600;">पृष्ठ ` + (pageNum + 1) + ` लोड होत आहे...</div>
                 </div>
             `;
 
-            const imgUrl = `/api/sample_image?id=${encodeURIComponent(id)}&page=${pageNum}&t=${Date.now()}`;
+            const imgUrl = '/api/sample_image?id=' + encodeURIComponent(id) + '&page=' + pageNum + '&t=' + Date.now();
             const img = new Image();
             img.onload = function() {{
                 container.innerHTML = `
                     <div style="background:rgba(15, 23, 42, 0.7); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:12px; text-align:center;">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-size:12px; color:#94a3b8; padding:0 4px;">
-                            <span>📄 <b>पृष्ठ ${pageNum + 1} / ${currentSampleTotalPages}</b></span>
+                            <span>📄 <b>पृष्ठ ` + (pageNum + 1) + ` / ` + currentSampleTotalPages + `</b></span>
                             <span style="background:rgba(56,189,248,0.15); color:#38bdf8; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:600;">अस्सल PDF पूर्वावलोकन</span>
                         </div>
                         <div style="position:relative; display:inline-block; max-width:100%; border-radius:8px; overflow:hidden; box-shadow:0 12px 30px rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.08); background:#1e293b;" oncontextmenu="return false;">
-                            <img src="${imgUrl}" alt="Page ${pageNum + 1} Preview" style="display:block; max-width:100%; max-height:55vh; width:auto; height:auto; object-fit:contain; margin:0 auto; user-select:none; -webkit-user-drag:none; pointer-events:none;" draggable="false" />
+                            <img src="` + imgUrl + `" alt="Page Preview" style="display:block; max-width:100%; max-height:55vh; width:auto; height:auto; object-fit:contain; margin:0 auto; user-select:none; -webkit-user-drag:none; pointer-events:none;" draggable="false" />
                             <div style="position:absolute; bottom:0; left:0; right:0; background:linear-gradient(to top, rgba(15,23,42,0.95), transparent); padding:20px 10px 8px; color:#f8fafc; font-size:11.5px; text-align:center; font-weight:500;">
                                 🔒 संपूर्ण फाईल सुरक्षित पूर्वावलोकन • डाऊनलोड केवळ खरेदीनंतर उपलब्ध
                             </div>
@@ -1499,17 +1499,17 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None, db_path: Op
                 `;
             }};
             img.onerror = function() {{
-                fetch(`/api/sample_preview?id=${encodeURIComponent(id)}`)
+                fetch('/api/sample_preview?id=' + encodeURIComponent(id))
                     .then(r => r.json())
                     .then(meta => {{
                         let textContent = (meta && meta.page_text) ? meta.page_text : 'या फाईलचे पृष्ठ उपलब्ध आहे. संपूर्ण ई-बुक मिळवण्यासाठी खरेदी करा.';
                         container.innerHTML = `
                             <div class="sample-item" style="background:#1e293b; border-color:rgba(56,189,248,0.3);">
                                 <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
-                                    <span style="font-weight:700; color:#38bdf8;">📄 पृष्ठ ${pageNum + 1}</span>
-                                    <span style="font-size:11px; color:#94a3b8;">एकूण पृष्ठे: ${currentSampleTotalPages}</span>
+                                    <span style="font-weight:700; color:#38bdf8;">📄 पृष्ठ ` + (pageNum + 1) + `</span>
+                                    <span style="font-size:11px; color:#94a3b8;">एकूण पृष्ठे: ` + currentSampleTotalPages + `</span>
                                 </div>
-                                <pre style="white-space:pre-wrap; font-family:inherit; font-size:12.5px; color:#cbd5e1; line-height:1.6; max-height:45vh; overflow-y:auto; background:rgba(0,0,0,0.25); padding:10px; border-radius:6px;">${escapeHtml(textContent)}</pre>
+                                <pre style="white-space:pre-wrap; font-family:inherit; font-size:12.5px; color:#cbd5e1; line-height:1.6; max-height:45vh; overflow-y:auto; background:rgba(0,0,0,0.25); padding:10px; border-radius:6px;">` + escapeHtml(textContent) + `</pre>
                             </div>
                         `;
                     }});
@@ -1529,23 +1529,24 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None, db_path: Op
             document.getElementById('sampleModalTitle').innerText = title;
             const subEl = document.getElementById('sampleModalSub');
             if (subEl) {{
-                subEl.innerHTML = `${subject ? '<b>विषय:</b> ' + escapeHtml(subject) + ' • ' : ''}<b>संपूर्ण दस्तऐवज पूर्वावलोकन (Full Preview - Download Disabled)</b>`;
+                const subjPrefix = subject ? ('<b>विषय:</b> ' + escapeHtml(subject) + ' • ') : '';
+                subEl.innerHTML = subjPrefix + '<b>संपूर्ण दस्तऐवज पूर्वावलोकन (Full Preview - Download Disabled)</b>';
             }}
             const pagesBadge = document.getElementById('sampleBadgePages');
             if (pagesBadge) {{
-                pagesBadge.innerText = `📄 एकूण ${approxPages} पृष्ठे`;
+                pagesBadge.innerText = '📄 एकूण ' + approxPages + ' पृष्ठे';
             }}
 
-            document.getElementById('sampleBuyBtn').innerText = `👉 संपूर्ण ई-बुक खरेदी करा (₹${price})`;
+            document.getElementById('sampleBuyBtn').innerText = '👉 संपूर्ण ई-बुक खरेदी करा (₹' + price + ')';
             document.getElementById('sampleModal').classList.add('active');
 
             // Fetch metadata to sync total pages
-            fetch(`/api/sample_preview?id=${encodeURIComponent(id)}`)
+            fetch('/api/sample_preview?id=' + encodeURIComponent(id))
                 .then(r => r.json())
                 .then(meta => {{
                     if (meta && meta.total_pages) {{
                         currentSampleTotalPages = meta.total_pages;
-                        if (pagesBadge) pagesBadge.innerText = `📄 एकूण ${meta.total_pages} पृष्ठे`;
+                        if (pagesBadge) pagesBadge.innerText = '📄 एकूण ' + meta.total_pages + ' पृष्ठे';
                         updateSampleNav();
                     }}
                 }}).catch(() => {{}});

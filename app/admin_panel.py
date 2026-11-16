@@ -150,6 +150,8 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         safe_pid = html_lib.escape(p_id)
         safe_dl_file = html_lib.escape(dl_file)
 
+        pdf_btn_html = f'<a href="javascript:void(0)" onclick="downloadAdminFile(\'/admin/download_pdf?file={safe_dl_file}\')" class="btn-sm btn-link">📥 {safe_dl_file[:14]}...</a>' if safe_dl_file else '<span style="color:#64748b; font-size:11px;">PDF नाही</span>'
+
         product_rows_html.append(f"""
             <tr id="row_{safe_pid}">
                 <td style="font-size:18px; text-align:center;">{icon}</td>
@@ -166,7 +168,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                     </div>
                 </td>
                 <td style="text-align:center;">
-                    {f'<a href="javascript:void(0)" onclick="downloadAdminFile(\'/admin/download_pdf?file={safe_dl_file}\')" class="btn-sm btn-link">📥 {safe_dl_file[:14]}...</a>' if safe_dl_file else '<span style="color:#64748b; font-size:11px;">PDF नाही</span>'}
+                    {pdf_btn_html}
                 </td>
                 <td style="text-align:center;">
                     <span class="status-pill {'status-active' if is_active else 'status-inactive'}">
