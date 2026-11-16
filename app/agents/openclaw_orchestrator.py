@@ -44,7 +44,7 @@ class TelegramPolicyComplianceAgent(BaseSeniorAgent):
         super().__init__(
             name="Adv. Shrikant Joshi (Anti-Ban & Telegram Policy Guardian)",
             role="Chief Compliance Officer — Telegram Bot & Community Safety",
-            seniority="Senior Legal & Platform Policy Architect (12+ Years)",
+            seniority="Senior Legal & Platform Policy Architect (20+ Years)",
             core_competencies=[
                 "Telegram Terms of Service (ToS) & Anti-Spam Protocol Compliance",
                 "Dynamic Rate Limiting (FloodWait & 429 Exponential Backoff)",
@@ -140,7 +140,7 @@ class MarketDemandAnalyzerAgent(BaseSeniorAgent):
         super().__init__(
             name="Prof. Ananya Patil (Market Intelligence & Demand Harvester)",
             role="Chief Research Analyst — Maharashtra Competitive Exam Trends",
-            seniority="Senior Exam Curriculum & Trend Strategist (10+ Years)",
+            seniority="Senior Exam Curriculum & Trend Strategist (20+ Years)",
             core_competencies=[
                 "Maharashtra Saralsewa, TCS/IBPS & MPSC Syllabus Tracking",
                 "Student Response-Sheet Deficit & Error-Spotting Analysis",
@@ -409,7 +409,7 @@ class PublicationQualityDesignAgent(BaseSeniorAgent):
         super().__init__(
             name="Dr. Prachi Kulkarni (Chief Publication Designer & Accuracy Auditor)",
             role="Chief Publication Designer & Academic Quality Auditor",
-            seniority="Senior Document Systems Architect & Devanagari Linguistic Auditor (15+ Years)",
+            seniority="Senior Document Systems Architect & Devanagari Linguistic Auditor (20+ Years)",
             core_competencies=[
                 "Devanagari Orthography & High-Precision Grammar Auditing",
                 "TCS/IBPS Question & Official Answer Key Verification",
@@ -531,7 +531,7 @@ class AutonomousProductFactoryAgent(BaseSeniorAgent):
         super().__init__(
             name="Eng. Rohan Kulkarni (Autonomous Product Factory)",
             role="Lead Digital Product Architect & Publication Synthesizer",
-            seniority="Senior Computational Typesetting & Document Systems Architect (14+ Years)",
+            seniority="Senior Computational Typesetting & Document Systems Architect (20+ Years)",
             core_competencies=[
                 "Automated PDF Book Authoring via ReportLab Flowables",
                 "Devanagari (Marathi/Hindi) Typography & Formatting",
@@ -885,7 +885,7 @@ class ViralGrowthMarketingAgent(BaseSeniorAgent):
         super().__init__(
             name="Mr. Sameer Inamdar (Viral Growth & High-Conversion Sales Director)",
             role="Director of Enterprise Growth & Telegram Conversion Marketing",
-            seniority="Growth Hacking & Direct Response Copywriting Strategist (10+ Years)",
+            seniority="Growth Hacking & Direct Response Copywriting Strategist (20+ Years)",
             core_competencies=[
                 "High-Conversion Direct Response Copywriting for Competitive Exams",
                 "Psychological Sales Frameworks (Scarcity, FOMO, Social Proof, Loss Aversion)",
@@ -989,7 +989,7 @@ class CommunityIntelligenceHarvesterAgent(BaseSeniorAgent):
         super().__init__(
             name="Ms. Supriya Sawant (Community Intelligence & Student Needs Harvester)",
             role="Lead Community Intelligence & Product Requirements Engineer",
-            seniority="Student Community Research & Academic Needs Analyst (8+ Years)",
+            seniority="Senior Academic Community Director & Student Needs Analyst (20+ Years)",
             core_competencies=[
                 "Study Group Discussion Analysis & Pain-Point Extraction",
                 "Exam Notification & Syllabus Change Radar",
@@ -1079,7 +1079,7 @@ class ConversationalSalesCounselorAgent(BaseSeniorAgent):
         super().__init__(
             name="Mr. Nilesh Dada (Senior Student Counselor & Exam Mentor)",
             role="Chief Student Counselor & Conversational Sales Closer",
-            seniority="Senior Maharashtra Competitive Exams Mentor & Student Counselor (12+ Years)",
+            seniority="Chief Maharashtra Competitive Exams Mentor & Senior Student Counselor (20+ Years)",
             core_competencies=[
                 "Empathetic, Human-Like 1-on-1 Marathi Student Mentorship",
                 "Exam Anxiety Reduction & Weak-Area Diagnostic Counseling",
