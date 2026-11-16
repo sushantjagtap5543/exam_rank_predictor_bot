@@ -889,16 +889,24 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                     <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">महाराष्ट्र TCS/IBPS परीक्षा ट्रेंड्स, विद्यार्थी गरजा व उच्च-मागणी विषयांचा शोध.</div>
                 </div>
                 <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
-                    <div style="font-size:12px; font-weight:700; color:#facc15;">🏭 ४. AI Product Factory</div>
-                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">ReportLab द्वारे कव्हर, वॉटरमार्क व स्पष्टीकरणांसह ५ मिनिटांत PDF निर्मिती.</div>
+                    <div style="font-size:12px; font-weight:700; color:#06b6d4;">📡 ४. Community Needs Harvester</div>
+                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">स्टडी ग्रुप्स व चॅटमधील विद्यार्थी अडचणींचा अभ्यास करून तत्काळ पुस्तकाची मागणी नोंदवणे.</div>
                 </div>
                 <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
-                    <div style="font-size:12px; font-weight:700; color:#a855f7;">✨ ५. Publication Design & Accuracy Auditor</div>
+                    <div style="font-size:12px; font-weight:700; color:#a855f7;">✨ ५. Publication Design & Accuracy</div>
                     <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">मराठी शुद्धलेखन, TCS/IBPS अचूक उत्तरे, सुवाच्य फॉन्ट व उच्च दर्जाची PDF मांडणी.</div>
                 </div>
                 <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
-                    <div style="font-size:12px; font-weight:700; color:#f43f5e;">🚀 ६. Viral Growth & Sales Lead</div>
-                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">Force-Join चॅनेल गेट, Share-to-Unlock रेफरल लूप व तात्काळ विक्री.</div>
+                    <div style="font-size:12px; font-weight:700; color:#facc15;">🏭 ६. AI Product Factory</div>
+                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">ReportLab द्वारे कव्हर, वॉटरमार्क व स्पष्टीकरणांसह ५ मिनिटांत PDF निर्मिती.</div>
+                </div>
+                <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
+                    <div style="font-size:12px; font-weight:700; color:#f43f5e;">🚀 ७. High-Conversion Sales & Viral Growth</div>
+                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">Scarcity, Social Proof, चॅनेल फोर्स-जॉइन व ॲबंडन कार्ट रिकव्हरी.</div>
+                </div>
+                <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
+                    <div style="font-size:12px; font-weight:700; color:#ec4899;">💬 ८. Human-Like Student Counselor</div>
+                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">मोठ्या भावाप्रमाणे (निलेश दादा) वैयक्तिक DM व चॅटमधून आपुलकीने शंका निरसन व विक्री.</div>
                 </div>
             </div>
         </div>

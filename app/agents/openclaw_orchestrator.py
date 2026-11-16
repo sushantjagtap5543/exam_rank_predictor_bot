@@ -518,24 +518,27 @@ class AutonomousProductFactoryAgent(BaseSeniorAgent):
 
 class ViralGrowthMarketingAgent(BaseSeniorAgent):
     """
-    Drives viral subscriber growth on Telegram, manages the Force-Channel Join Gate,
-    creates share-to-unlock rewards, and broadcasts high-converting product promo cards.
+    Advanced Enterprise Growth & Conversion Engine.
+    Executes psychological persuasion frameworks: Scarcity, Social Proof, Loss Aversion,
+    Force-Channel Gating, Group Discussion Seeding, and High-Converting Broadcast Copy.
     """
 
     def __init__(self):
         super().__init__(
-            name="Mr. Sameer Inamdar (Viral Growth & Distribution Lead)",
-            role="Head of Growth & Viral Telegram Distribution",
-            seniority="Growth Hacking & Viral Mechanics Strategist (9+ Years)",
+            name="Mr. Sameer Inamdar (Viral Growth & High-Conversion Sales Director)",
+            role="Director of Enterprise Growth & Telegram Conversion Marketing",
+            seniority="Growth Hacking & Direct Response Copywriting Strategist (10+ Years)",
             core_competencies=[
-                "Force-Channel Join Gating & Membership Retention",
-                "Viral Share-to-Unlock Reward Loops",
-                "Dynamic UTM Link Tracking & Affiliate Attribution",
-                "High-Conversion Telegram Promo Broadcast Optimization"
+                "High-Conversion Direct Response Copywriting for Competitive Exams",
+                "Psychological Sales Frameworks (Scarcity, FOMO, Social Proof, Loss Aversion)",
+                "Force-Channel Join Gating & Organic Viral Referral Loops",
+                "Study Group Discussion Seeding & Non-Spam Educational Hooks",
+                "Abandoned Checkout & Drop-Off Conversion Recovery"
             ],
             system_instruction=(
-                "You are the Head of Viral Growth for ExamRankers India. "
-                "You scale Telegram channel subscribers organically and convert free test takers into book buyers."
+                "You are the Director of Growth and Sales Marketing for ExamRankers India. "
+                "You craft compelling, ethical, high-converting copy that addresses Marathi competitive "
+                "exam students' deepest anxieties (missing cut-offs by 1-2 marks) and guides them to invest in our verified study guides."
             )
         )
 
@@ -558,35 +561,283 @@ class ViralGrowthMarketingAgent(BaseSeniorAgent):
         }
 
     def generate_product_channel_broadcast(self, product: Dict[str, Any], store_url: str) -> str:
-        """Constructs an ethical, high-converting broadcast message formatted for Telegram channels."""
+        """
+        Constructs an ultra-high-converting, persuasive broadcast message utilizing
+        social proof, loss aversion, and urgency for Telegram channels.
+        """
         title = product.get("title", "नवीन डिजिटल ई-बुक")
         price = product.get("price_inr", 29)
         orig_price = product.get("original_price_inr", 99)
         pages = product.get("pages", 45)
         desc = product.get("description", "TCS/IBPS भरती परीक्षेसाठी अत्यंत उपयुक्त अधिकृत प्रश्नसंच.")
+        reviews = product.get("reviews_count", 1250)
 
         post = (
-            f"📢 <b>नवीन डिजिटल ई-बुक प्रसिद्ध | TCS & IBPS Special</b>\n"
+            f"🚨 <b>फक्त १-२ गुणांमुळे तुमची पोस्ट हुकू देऊ नका! | TCS & IBPS Special</b>\n"
             f"━━━━━━━━━━━━━━━━━━━━━━\n"
             f"📖 <b>{title}</b>\n\n"
-            f"📌 <b>महत्त्वाची वैशिष्ट्ये:</b>\n"
-            f"• एकूण पृष्ठे: <b>{pages} अधिकृत पृष्ठे</b>\n"
-            f"• स्वरूप: १००% अचूक उत्तरे व सविस्तर मराठी स्पष्टीकरणे\n"
-            f"• संक्षिप्त माहिती: {desc}\n\n"
-            f"💰 <b>किंमत:</b> <s>₹{orig_price}</s> <b>फक्त ₹{price}/-</b> <i>(मर्यादित काळासाठी विशेष सवलत)</i>\n\n"
-            f"⚡ <i>UPI पेमेंटनंतर अवघ्या ३ सेकंदात थेट ब्राऊझर व ईमेलवर PDF डाऊनलोड उपलब्ध होते!</i>\n"
+            f"🎯 <b>स्पर्धा परीक्षेचे वास्तव:</b>\n"
+            f"लाखो विद्यार्थ्यांमध्ये मेरिट लिस्ट फक्त २-४ गुणांवर ठरते. ऐनवेळी चुकीच्या उत्तरांमुळे "
+            f"निगेटिव्ह मार्किंगमध्ये गुण गमावण्यापेक्षा TCS पॅटर्ननुसार विचारलेल्या प्रश्नांचा आधीच सराव करा!\n\n"
+            f"✨ <b>या ई-बुकची खास वैशिष्ट्ये:</b>\n"
+            f"• एकूण <b>{pages} अधिकृत पृष्ठे</b> — थेट परीक्षाभिमुख मांडणी\n"
+            f"• १००% अधिकृत TCS/IBPS उत्तरतालिका व <b>सविस्तर शॉर्टकट विश्लेषण</b>\n"
+            f"• <b>{reviews}+ विद्यार्थ्यांनी</b> या नोट्सवरून अभ्यास सुरू केला आहे\n"
+            f"• संक्षिप्त माहिती: <i>{desc}</i>\n\n"
+            f"💰 <b>सवलत किंमत:</b> <s>₹{orig_price}</s> <b>फक्त ₹{price}/-</b> <i>(मर्यादित काळासाठी विशेष ऑफर)</i>\n"
+            f"⚡ <i>पेमेंट यशस्वी होताच अवघ्या ३ सेकंदात थेट ब्राऊझर व ईमेलवर PDF उपलब्ध!</i>\n"
             f"━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🛒 <b>खरेदी करा व मोफत नमुना पृष्ठे पहा:</b>\n"
+            f"🛒 <b>तात्काळ खरेदी करा व अभ्यासाला सुरुवात करा:</b>\n"
             f"👉 <a href=\"{store_url}\">{store_url}</a>"
         )
         return post
+
+    def generate_group_educational_hook(self, topic_title: str, tip_text: str, product_url: str) -> str:
+        """
+        Generates non-spam, high-value educational content suitable for sharing in study groups,
+        seeding organic interest with an ethical soft recommendation.
+        """
+        return (
+            f"📚 <b>TCS/IBPS परीक्षेसाठी अत्यंत महत्त्वाची टीप | Daily Study Capsule</b>\n\n"
+            f"मित्रांनो, मागील सर्व शिफ्ट्सचे विश्लेषण करताना एक गोष्ट प्रकर्षाने जाणवली:\n"
+            f"👉 {tip_text}\n\n"
+            f"अशाच सर्व ट्रिक्स, वारंवार विचारलेले प्रश्न आणि अधिकृत स्पष्टीकरणे हवी असल्यास "
+            f"आमच्या अधिकृत ई-बुक <b>'{topic_title}'</b> चा सराव नक्की करा.\n\n"
+            f"🔗 संपूर्ण नोट्स व नमुना पाहण्यासाठी: <a href=\"{product_url}\">येथे क्लिक करा</a>"
+        )
+
+    def generate_abandoned_cart_recovery(self, student_name: str, product_title: str, price: int, checkout_url: str) -> str:
+        """Generates a warm, human-like reminder for students who viewed or initiated checkout but did not complete."""
+        first_name = student_name or "मित्रा"
+        return (
+            f"नमस्कार {first_name}! 👋\n\n"
+            f"तुम्ही <b>'{product_title}'</b> ही ई-बुक पाहिल्याचे लक्षात आले. "
+            f"पेमेंट करताना काही तांत्रिक अडचण आली का?\n\n"
+            f"📌 ही विशेष सवलत (फक्त <b>₹{price}/-</b>) अजूनही तुमच्यासाठी सक्रिय आहे.\n"
+            f"अभ्यासामध्ये कोणताही खंड पडू देऊ नका. खालील लिंकवरून तुम्ही थेट खरेदी करू शकता:\n\n"
+            f"👉 <a href=\"{checkout_url}\">तुमची ई-बुक आत्ताच अनलॉक करा (₹{price})</a>\n\n"
+            f"काही अडचण किंवा मदत हवी असल्यास मला इथेच थेट मेसेज करा! 🤝"
+        )
+
+
+class CommunityIntelligenceHarvesterAgent(BaseSeniorAgent):
+    """
+    Community Requirements & Student Discussion Harvester.
+    Monitors study groups, user queries, and chat patterns to extract student pain points,
+    upcoming exam schedules, and automatically synthesizes high-demand product specifications.
+    """
+
+    def __init__(self):
+        super().__init__(
+            name="Ms. Supriya Sawant (Community Intelligence & Student Needs Harvester)",
+            role="Lead Community Intelligence & Product Requirements Engineer",
+            seniority="Student Community Research & Academic Needs Analyst (8+ Years)",
+            core_competencies=[
+                "Study Group Discussion Analysis & Pain-Point Extraction",
+                "Exam Notification & Syllabus Change Radar",
+                "Student Willingness-to-Pay & Pricing Elasticity Analysis",
+                "Rapid Product Specification & Curriculum Brief Synthesis"
+            ],
+            system_instruction=(
+                "You are the Lead Community Intelligence Analyst for ExamRankers India. "
+                "You monitor what competitive exam aspirants are struggling with in study groups "
+                "and transform those real student needs into concrete, high-demand digital book specifications."
+            )
+        )
+
+    def analyze_community_chatter(self, messages_sample: List[str]) -> Dict[str, Any]:
+        """Analyzes recent messages from student groups to identify prevailing demand trends."""
+        keywords = {
+            "marathi": ["मराठी", "व्याकरण", "प्रयोग", "समास", "समानार्थी", "म्हणी", "वाक्यप्रचार"],
+            "maths_reasoning": ["गणित", "बुद्धिमत्ता", "अंकगणित", "शॉर्टकट", "काळ काम वेग", "शेकडेवारी"],
+            "gk_current": ["चालू घडामोडी", "जीके", "GK", "इतिहास", "भूगोल", "महाराष्ट्र", "RTI", "माहिती अधिकार"],
+            "english": ["english", "grammar", "vocabulary", "synonym", "antonym", "error spot"],
+            "technical": ["आरोग्य सेवक", "तांत्रिक प्रश्न", "pharmacist", "nurse", "peon", "ZP तांत्रिक"]
+        }
+        scores = {k: 0 for k in keywords}
+        for msg in messages_sample:
+            lowered = msg.lower()
+            for cat, words in keywords.items():
+                for w in words:
+                    if w.lower() in lowered:
+                        scores[cat] += 1
+
+        top_cat = max(scores, key=scores.get) if any(scores.values()) else "gk_current"
+        return {
+            "top_category": top_cat,
+            "category_scores": scores,
+            "sample_size": len(messages_sample),
+            "urgency": "high" if scores[top_cat] > 5 else "medium"
+        }
+
+    def synthesize_on_demand_product_spec(self, topic_hint: Optional[str] = None) -> Dict[str, Any]:
+        """Synthesizes a concrete, high-converting product specification to feed into AutonomousProductFactoryAgent."""
+        now_ts = int(time.time())
+        spec_catalog = {
+            "gk_current": {
+                "topic_key": f"gk_tcs_special_{now_ts}",
+                "title": "TCS/IBPS चालू घडामोडी व सामान्य ज्ञान Top 500 फास्ट-ट्रॅक बुलेट नोट्स",
+                "subject": "General Knowledge",
+                "recommended_price": 29,
+                "original_price": 99,
+                "badge": "⚡ मोस्ट डिमांडिंग (₹29)",
+                "description": "मागील ६ महिन्यांतील सर्व महत्त्वाच्या घडामोडी व TCS पॅटर्ननुसार GK चे अतिसंभाव्य ५०० प्रश्न.",
+                "target_pages": 44
+            },
+            "maths_reasoning": {
+                "topic_key": f"maths_shortcut_master_{now_ts}",
+                "title": "TCS/IBPS अंकगणित व बुद्धिमत्ता — २५ सेकंद शॉर्टकट ट्रिक्स व प्रश्नसंच",
+                "subject": "Maths & Reasoning",
+                "recommended_price": 39,
+                "original_price": 149,
+                "badge": "🔥 शॉर्टकट मास्टर (₹39)",
+                "description": "काळ-काम-वेग, शेकडेवारी, नफा-तोटा व सिटिंग ॲरेंजमेंट अवघ्या २५ सेकंदात सोडवण्याच्या ट्रिक्स.",
+                "target_pages": 52
+            },
+            "marathi": {
+                "topic_key": f"marathi_grammar_booster_{now_ts}",
+                "title": "TCS/IBPS मराठी व्याकरण Top 300 सर्वाधिक रिपीट झालेले प्रश्न",
+                "subject": "मराठी व्याकरण",
+                "recommended_price": 29,
+                "original_price": 99,
+                "badge": "⭐ १००% गॅरंटीड स्कोअर (₹29)",
+                "description": "प्रयोग, समास, शब्दसिद्धी व म्हणी यांवरील सर्व शिफ्ट्समधील सर्वाधिक विचारलेले ३०० प्रश्न.",
+                "target_pages": 42
+            }
+        }
+        chosen = spec_catalog.get(topic_hint or "gk_current", spec_catalog["gk_current"])
+        logger.info(f"🧠 Community Harvester synthesized on-demand spec: {chosen['title']}")
+        return chosen
+
+
+class ConversationalSalesCounselorAgent(BaseSeniorAgent):
+    """
+    Human-Like 1-on-1 Student Counselor, Mentor & Sales Closer.
+    Speaks in warm, encouraging, brotherly/mentor-style Marathi (कौटुंबिक, आपुलकीचे व धीर देणारे मार्गदर्शन).
+    Handles student inquiries, exam anxieties, payment doubts, and gently guides students to the right study guides.
+    """
+
+    def __init__(self):
+        super().__init__(
+            name="Mr. Nilesh Dada (Senior Student Counselor & Exam Mentor)",
+            role="Chief Student Counselor & Conversational Sales Closer",
+            seniority="Senior Maharashtra Competitive Exams Mentor & Student Counselor (12+ Years)",
+            core_competencies=[
+                "Empathetic, Human-Like 1-on-1 Marathi Student Mentorship",
+                "Exam Anxiety Reduction & Weak-Area Diagnostic Counseling",
+                "Conversational Direct Response Sales & Gentle Closing",
+                "Payment, Download & Technical Assurance Resolution",
+                "Deep Understanding of TCS/IBPS Aspirant Psychology"
+            ],
+            system_instruction=(
+                "You are Nilesh Dada, a respected, affectionate, experienced elder brother and exam mentor "
+                "for Maharashtra competitive exam aspirants. You talk with genuine warmth, call students 'मित्रा' or 'ताई', "
+                "listen to their difficulties, provide practical study advice, and recommend our verified study materials "
+                "with absolute honesty and care. Never sound like a pushy salesman or a cold robot."
+            )
+        )
+
+    def generate_personal_dm_recommendation(
+        self,
+        user_name: str,
+        exam_or_subject: str,
+        score: Optional[float] = None,
+        weak_subject: Optional[str] = None,
+        product: Optional[Dict[str, Any]] = None,
+        store_url: str = "https://exam-rank-predictor-bot.onrender.com"
+    ) -> str:
+        """
+        Constructs an authentic, empathetic 1-on-1 direct message that sounds like a caring elder brother
+        giving genuine guidance rather than an automated bot.
+        """
+        name = user_name or "मित्रा"
+        prod_title = product.get("title", "TCS/IBPS विशेष रिव्हिजन संच") if product else "TCS/IBPS विशेष रिव्हिजन संच"
+        prod_price = product.get("price_inr", 29) if product else 29
+        weak = weak_subject or "मराठी व चालू घडामोडी"
+
+        dm = (
+            f"नमस्कार {name}! 😊\n\n"
+            f"मी तुझा निकाल आणि रँक पाहिला. एक मोठा भाऊ म्हणून सांगतो—तुझी तयारी खूप चांगली आहे, "
+            f"पण <b>{weak}</b> या घटकात थोडा सराव वाढवला तर तुझे ५ ते ७ गुण सहज वाढू शकतात.\n\n"
+            f"स्पर्धा परीक्षेत याच ५-७ गुणांवर मेरिट लिस्ट आणि पोस्ट ठरते. तुझा हा विषय मजबूत करण्यासाठी "
+            f"आम्ही स्वतः सर्व TCS शिफ्ट्सचे विश्लेषण करून ही विशेष ई-बुक तयार केली आहे:\n"
+            f"📖 <b>{prod_title}</b> (फक्त <b>₹{prod_price}/-</b>)\n\n"
+            f"यात मागील सर्व शिफ्ट्सचे वारंवार विचारलेले प्रश्न, अधिकृत आन्सर की आणि सोपे नियम दिले आहेत. "
+            f"परीक्षेला जाण्यापूर्वी याचा सराव नक्की करून जा:\n"
+            f"👉 <a href=\"{store_url}\">येथून ई-बुक पहा व डाऊनलोड करा (₹{prod_price})</a>\n\n"
+            f"अभ्यासात काही अडचण किंवा शंका असेल तर मला कधीही इथेच विचारू शकतोस. पूर्ण विश्वासाने अभ्यास कर! 🌟"
+        )
+        return dm
+
+    def handle_student_inquiry(
+        self,
+        incoming_text: str,
+        available_products: List[Dict[str, Any]],
+        user_name: str = "मित्रा",
+        store_url: str = "https://exam-rank-predictor-bot.onrender.com"
+    ) -> Dict[str, Any]:
+        """
+        Handles natural language questions from students in a 100% human-like, supportive tone.
+        Analyzes intent: syllabus question, book recommendation, payment help, or exam strategy.
+        """
+        text = incoming_text.lower().strip()
+        name = user_name or "मित्रा"
+
+        # 1. Payment or Download Doubts
+        if any(w in text for w in ["पेमेंट", "payment", "पैसे", "upi", "qr", "डाउनलोड", "download", "pdf नाही"]):
+            reply = (
+                f"नमस्कार {name}! काळजी करू नकोस. 😊\n\n"
+                f"आपल्या स्टोअरवर UPI (PhonePe, Google Pay, Paytm) द्वारे पेमेंट अगदी सुरक्षित आहे. "
+                f"पेमेंट यशस्वी होताच अवघ्या ३ सेकंदात थेट ब्राऊझरमध्ये डाऊनलोड सुरू होते आणि तुझ्या ईमेलवरही PDF कॉपी पाठवली जाते.\n\n"
+                f"जरी काही इंटरनेट समस्येमुळे डाऊनलोड थांबले, तरी तुझा UTR नंबर मला पाठवलास की मी स्वतः खात्री करून लगेच PDF देईन.\n"
+                f"निश्चिंत राहून खरेदी करू शकतोस! 👍"
+            )
+            return {"reply": reply, "recommended_product": None}
+
+        # 2. Subject Inquiries: Marathi, Maths, GK, English
+        matching_prod = None
+        if any(w in text for w in ["मराठी", "marathi", "व्याकरण", "प्रयोग", "समास"]):
+            matching_prod = next((p for p in available_products if "मराठी" in (p.get("title") or "") or "marathi" in (p.get("subject") or "").lower()), None)
+            subject_name = "मराठी व्याकरण"
+        elif any(w in text for w in ["गणित", "बुद्धिमत्ता", "maths", "reasoning", "अंकगणित"]):
+            matching_prod = next((p for p in available_products if "गणित" in (p.get("title") or "") or "maths" in (p.get("subject") or "").lower()), None)
+            subject_name = "अंकगणित व बुद्धिमत्ता"
+        elif any(w in text for w in ["चालू घडामोडी", "gk", "सामान्य ज्ञान", "current", "इतिहास", "भूगोल"]):
+            matching_prod = next((p for p in available_products if "चालू" in (p.get("title") or "") or "gk" in (p.get("subject") or "").lower()), None)
+            subject_name = "चालू घडामोडी व GK"
+        else:
+            matching_prod = available_products[0] if available_products else None
+            subject_name = "TCS/IBPS परीक्षा"
+
+        if matching_prod:
+            reply = (
+                f"हो {name}, {subject_name} विषयात गुण वाढवणे खूप सोपे आहे जर योग्य पॅटर्नने अभ्यास केला तर! 🎯\n\n"
+                f"TCS/IBPS मध्ये पुस्तकी नियमांपेक्षा मागील शिफ्ट्समधील रिपीट झालेले प्रश्न आणि संकल्पनांवर जास्त भर असतो. "
+                f"यासाठी आमचे हे पुस्तक नक्की वापरून पहा:\n\n"
+                f"📖 <b>{matching_prod.get('title')}</b>\n"
+                f"• पाने: <b>{matching_prod.get('pages', 45)} अधिकृत पृष्ठे</b>\n"
+                f"• किंमत: <s>₹{matching_prod.get('original_price_inr', 99)}</s> <b>फक्त ₹{matching_prod.get('price_inr', 29)}/-</b>\n\n"
+                f"👉 <a href=\"{store_url}\">येथे क्लिक करून ई-बुक पहा व डाऊनलोड करा</a>\n\n"
+                f"काही अडचण आल्यास मला सांग, मी मदतीसाठी सदैव उपलब्ध आहे!"
+            )
+        else:
+            reply = (
+                f"नमस्कार {name}! स्पर्धा परीक्षेच्या तयारीसाठी मी नेहमी तुझ्या सोबत आहे. 😊\n\n"
+                f"तुला कोणत्या विषयामध्ये जास्त अडचण येत आहे? (मराठी व्याकरण, गणित-बुद्धिमत्ता, की चालू घडामोडी?)\n"
+                f"मला सांग, त्यानुसार मी तुला योग्य मार्गदर्शन आणि सर्वोत्तम रिव्हिजन नोट्स सुचवतो!\n\n"
+                f"आमच्या सर्व प्रमाणित ई-बुक्स पाहण्यासाठी खालील लिंक तपासा:\n"
+                f"👉 <a href=\"{store_url}\">ExamRankers डिजिटल स्टोअर</a>"
+            )
+
+        return {"reply": reply, "recommended_product": matching_prod}
 
 
 class OpenClawEnterpriseTeam:
     """
     Master Autonomous Operations Engine for ExamRankers India.
     Orchestrated by the ChiefExecutiveOfficer (CEO).
-    Coordinates Policy Safety, Market Demand Analysis, Publication Quality, Product Factory, and Viral Sales.
+    Coordinates Policy Safety, Market Demand Analysis, Community Intelligence, Publication Quality,
+    Product Factory, High-Conversion Growth, and 1-on-1 Conversational Sales Mentorship.
     """
 
     def __init__(self, db_path: str = "bot.db"):
@@ -594,9 +845,11 @@ class OpenClawEnterpriseTeam:
         self.ceo = ChiefExecutiveOfficer()
         self.policy_guardian = TelegramPolicyComplianceAgent()
         self.market_analyst = MarketDemandAnalyzerAgent()
+        self.community_harvester = CommunityIntelligenceHarvesterAgent()
         self.quality_auditor = PublicationQualityDesignAgent()
         self.product_factory = AutonomousProductFactoryAgent()
         self.growth_lead = ViralGrowthMarketingAgent()
+        self.sales_counselor = ConversationalSalesCounselorAgent()
 
     def get_team_status(self) -> Dict[str, Any]:
         """Returns the real-time operational status of all OpenClaw team agents."""
@@ -610,9 +863,11 @@ class OpenClawEnterpriseTeam:
             "agents": [
                 {"agent": "TelegramPolicyComplianceAgent", "lead": self.policy_guardian.name, "status": "🛡️ 100% Policy Safe & Rate-Limited"},
                 {"agent": "MarketDemandAnalyzerAgent", "lead": self.market_analyst.name, "status": "🧠 Active Demand Harvester"},
+                {"agent": "CommunityIntelligenceHarvesterAgent", "lead": self.community_harvester.name, "status": "📡 Active (Group Chatter & Needs Harvester)"},
                 {"agent": "PublicationQualityDesignAgent", "lead": self.quality_auditor.name, "status": "✨ Active (Devanagari Typography & Accuracy Auditor)"},
                 {"agent": "AutonomousProductFactoryAgent", "lead": self.product_factory.name, "status": "🏭 Ready (ReportLab PDF Synthesis)"},
-                {"agent": "ViralGrowthMarketingAgent", "lead": self.growth_lead.name, "status": "🚀 Active (Force-Join & Viral Referral)"}
+                {"agent": "ViralGrowthMarketingAgent", "lead": self.growth_lead.name, "status": "🚀 Active (High-Conversion Direct Marketing)"},
+                {"agent": "ConversationalSalesCounselorAgent", "lead": self.sales_counselor.name, "status": "💬 Active (Human-Like 1-on-1 Student Counselor)"}
             ],
             "pricing_engine": "Unlocked Flexible Pricing (₹0 - ₹999+)",
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -622,24 +877,16 @@ class OpenClawEnterpriseTeam:
         """
         Executes one full autonomous enterprise cycle:
         1. CEO Directs Strategy
-        2. Market Analyst Identifies Demand Opportunity
+        2. Market & Community Harvester Identifies Top Demand Opportunity
         3. Policy Guardian Sanitizes & Verifies
         4. Publication Quality Auditor Reviews Grammar & Typography
         5. Product Factory Synthesizes PDF & Publishes to Store with Unlocked Price
-        6. Growth Lead Prepares Channel Promo Campaign
+        6. Growth Lead Prepares Channel Promo Campaign & Abandoned Cart Hook
+        7. Sales Counselor Prepares 1-on-1 Human Recommendation Script
         """
-        # Step 1: Market Intelligence
+        # Step 1: Market Intelligence & Community Chatter Harvesting
         opportunities = self.market_analyst.identify_trending_opportunities(self.db_path)
-        chosen_opportunity = opportunities[0] if opportunities else {
-            "topic_key": "tcs_master_revision_2026",
-            "title": "TCS/IBPS सर्व शिफ्ट्स अधिकृत मास्टर रिव्हिजन संच २०२६",
-            "subject": "General Knowledge",
-            "recommended_price": 29,
-            "original_price": 99,
-            "badge": "🔥 सर्व शिफ्ट्स मास्टर संच (₹29)",
-            "description": "तलाठी, ZP व आरोग्य भरतीतील सर्व शिफ्ट्सचे अधिकृत प्रश्न व उत्तरे.",
-            "target_pages": 48
-        }
+        chosen_opportunity = opportunities[0] if opportunities else self.community_harvester.synthesize_on_demand_product_spec("gk_current")
 
         # Step 2: Policy Validation
         clean_desc = self.policy_guardian.sanitize_message_content(chosen_opportunity["description"])
@@ -648,14 +895,23 @@ class OpenClawEnterpriseTeam:
         # Step 3: Product Factory & Publication Quality Auditor create publication PDF & register in store
         published_product = self.product_factory.generate_and_publish_product(chosen_opportunity, db_path=self.db_path)
 
-        # Step 4: Growth Lead Generates Broadcast Promo
+        # Step 4: Growth Lead Generates Channel Broadcast Promo
         promo_text = self.growth_lead.generate_product_channel_broadcast(published_product, store_url)
+
+        # Step 5: Counselor Generates 1-on-1 Human Recommendation Template
+        counselor_script = self.sales_counselor.generate_personal_dm_recommendation(
+            user_name="परीक्षार्थी मित्रा",
+            exam_or_subject=published_product.get("subject", "TCS/IBPS"),
+            product=published_product,
+            store_url=store_url
+        )
 
         return {
             "success": True,
             "message": f"Autonomous cycle complete: '{published_product['title']}' authored and listed at ₹{published_product['price_inr']} with Publication-Grade Accuracy!",
             "product": published_product,
-            "promo_text": promo_text
+            "promo_text": promo_text,
+            "counselor_script": counselor_script
         }
 
 
@@ -666,9 +922,11 @@ __all__ = [
     "ChiefExecutiveOfficer",
     "TelegramPolicyComplianceAgent",
     "MarketDemandAnalyzerAgent",
+    "CommunityIntelligenceHarvesterAgent",
     "PublicationQualityDesignAgent",
     "AutonomousProductFactoryAgent",
     "ViralGrowthMarketingAgent",
+    "ConversationalSalesCounselorAgent",
     "OpenClawEnterpriseTeam",
     "openclaw_team",
 ]

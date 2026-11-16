@@ -2883,7 +2883,38 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         return
 
-    # Default fallback: If user sends ANY text message, greeting, or unhandled text
+    # -------------------------------------------------------------
+    # Case 4: Human-Like 1-on-1 Student Mentorship & Conversational Counseling (OpenClaw)
+    # -------------------------------------------------------------
+    if raw_text and len(raw_text) > 2 and not raw_text.startswith("/"):
+        try:
+            from app.agents.openclaw_orchestrator import openclaw_team
+            all_prods = packaging_agent.get_all_products(DB_PATH)
+            counselor_res = openclaw_team.sales_counselor.handle_student_inquiry(
+                incoming_text=raw_text,
+                available_products=all_prods,
+                user_name=user.first_name or "मित्रा"
+            )
+            reply_text = counselor_res.get("reply")
+            rec_prod = counselor_res.get("recommended_product")
+
+            keyboard = []
+            if rec_prod:
+                keyboard.append([InlineKeyboardButton(f"🛒 {rec_prod.get('title', 'ई-बुक')} खरेदी करा (₹{rec_prod.get('price_inr', 29)})", callback_data=f"buy_prod:{rec_prod.get('id')}")])
+            keyboard.append([InlineKeyboardButton("📚 सर्व डिजिटल पुस्तके पहा", callback_data="store")])
+            keyboard.append([InlineKeyboardButton("🔙 मुख्य मेनू", callback_data="main_menu")])
+
+            await msg.reply_text(
+                reply_text,
+                parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                disable_web_page_preview=True
+            )
+            return
+        except Exception as e:
+            logger.error(f"Error in conversational counselor: {e}")
+
+    # Default fallback: If user sends ANY greeting or unhandled text
     await start(update, context)
 
 # ----------------- ADMIN COMMANDS ----------------- #
