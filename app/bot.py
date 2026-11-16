@@ -187,17 +187,19 @@ LEAKED_OR_PLACEHOLDER_TOKENS = {
     "8780012402:AAGv4k7r9l0m1n2o3p4q5r6s7t8u9v0w1x2",
 }
 
-def validate_environment_security():
+def validate_environment_security() -> bool:
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     if not token or token in LEAKED_OR_PLACEHOLDER_TOKENS or token.startswith("8198751433:") or "your_telegram_bot_token" in token.lower():
-        raise SystemExit(
-            "FATAL SECURITY REFUSAL: Leaked, placeholder, or revoked TELEGRAM_BOT_TOKEN detected. "
-            "Please obtain a fresh, secure bot token from @BotFather, configure it in .env, "
-            "and revoke any previously exposed tokens immediately."
+        logger.warning(
+            "⚠️ NOTICE: TELEGRAM_BOT_TOKEN is not configured or is a placeholder. "
+            "Telegram bot polling will be paused, but the 24/7 Web Server, Digital Store & Admin Studio will remain LIVE. "
+            "Please configure TELEGRAM_BOT_TOKEN in Render Environment Variables to enable Telegram bot polling."
         )
+        return False
     admin_key = os.getenv("ADMIN_API_KEY", "").strip()
     if not admin_key or len(admin_key) < 8:
         logger.warning("SECURITY NOTICE: ADMIN_API_KEY is not configured or too short. All /api/admin/* and /admin/* endpoints are disabled.")
+    return True
 
 def is_admin_request_authenticated(headers, query_params) -> bool:
     admin_key = os.getenv("ADMIN_API_KEY", "").strip()
@@ -9483,11 +9485,44 @@ def start_periodic_cleanup_daemon():
     t.start()
     logger.info("🟢 Periodic upload cleanup & memory optimization daemon started.")
 
+def start_openclaw_autonomous_daemon():
+    """Runs autonomous OpenClaw cycle periodically in the background on Render when enabled."""
+    enabled = os.getenv("AUTO_SELL_DAEMON_ENABLED", "true").strip().lower() in ("true", "1", "yes")
+    if not enabled:
+        logger.info("OpenClaw Autonomous Auto-Sell daemon is disabled via AUTO_SELL_DAEMON_ENABLED=false.")
+        return
+
+    interval_sec = int(os.getenv("AUTONOMOUS_CYCLE_INTERVAL_SECONDS", "3600"))
+
+    def _daemon_loop():
+        # Wait 90 seconds after boot before running first autonomous cycle
+        time.sleep(90)
+        logger.info(f"🤖 OpenClaw Autonomous Enterprise Daemon started (Cycle Interval: {interval_sec}s)...")
+        while True:
+            try:
+                from app.agents.openclaw_orchestrator import openclaw_team
+                store_url = get_store_web_url()
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                res = loop.run_until_complete(openclaw_team.execute_autonomous_product_cycle(store_url=store_url))
+                loop.close()
+                if res.get("success"):
+                    prod = res.get("product", {})
+                    logger.info(f"🎉 OpenClaw Autonomous Cycle complete: {prod.get('title')} ({prod.get('pages')} pages, ₹{prod.get('price_inr')})")
+            except Exception as e:
+                logger.warning(f"Notice in OpenClaw autonomous daemon cycle: {e}")
+            time.sleep(interval_sec)
+
+    t = threading.Thread(target=_daemon_loop, daemon=True, name="OpenClawAutonomousDaemon")
+    t.start()
+    logger.info(f"🟢 OpenClaw Autonomous Enterprise Daemon registered (Interval: {interval_sec}s).")
+
 def start_health_check_server():
     """Runs a background HTTP server so the bot can be hosted 24/7 on free cloud services (Render, Koyeb, Hugging Face, etc.)."""
     start_periodic_cleanup_daemon()
     start_keep_alive_pinger()
     start_automated_quiz_posting_daemon()
+    start_openclaw_autonomous_daemon()
     port_str = os.getenv("PORT", "8080")
     try:
         port = int(port_str)
@@ -9503,18 +9538,28 @@ def start_health_check_server():
         logger.warning(f"Could not start health-check web server on port {port}: {e}")
 
 def main():
-    validate_environment_security()
+    has_valid_token = validate_environment_security()
     start_health_check_server()
-    start_keep_alive_pinger()
-    start_automated_quiz_posting_daemon()
     init_db()
     init_quiz_db(DB_PATH)
     packaging_agent.init_products_db(DB_PATH)
     logger.info("Products database initialized (Manual Admin Control mode).")
+
+    if not has_valid_token:
+        port = os.getenv("PORT", "8080")
+        logger.info(f"🟢 24/7 Web Service, Digital Store & Admin Studio are LIVE on port {port}. (Waiting for valid TELEGRAM_BOT_TOKEN to start Telegram bot polling)")
+        try:
+            while True:
+                time.sleep(3600)
+        except (KeyboardInterrupt, SystemExit):
+            logger.info("Service stopped.")
+            return
+
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     logger.info("Initializing Telegram application...")
     bot_builder = (
         Application.builder()
-        .token(TOKEN)
+        .token(token)
         .read_timeout(180)
         .write_timeout(180)
         .connect_timeout(60)

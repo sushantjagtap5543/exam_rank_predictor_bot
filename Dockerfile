@@ -29,13 +29,14 @@ RUN pip install --no-cache-dir --root-user-action=ignore -r requirements.txt
 
 COPY . .
 
-# Ensure appuser owns runtime directories
-RUN chown -R ${APP_USER}:${APP_USER} /app
+# Ensure appuser owns runtime directories and pre-create storage paths
+RUN mkdir -p /app/admin_storage/products /app/data /app/products && \
+    chown -R ${APP_USER}:${APP_USER} /app
 
 USER ${APP_USER}
 
 # Expose web ports for 24/7 cloud health checks
-EXPOSE 8080
+EXPOSE 8080 10000
 
 # Health check to ensure service is responding
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
