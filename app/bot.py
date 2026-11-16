@@ -4557,6 +4557,24 @@ async def continuous_autonomous_agency_orchestrator(application: Application):
             except Exception as e:
                 logger.warning(f"Product catalog auto-sync warning: {e}")
 
+            # 4. OpenClaw Autonomous Multi-Agent Cycle (Real-World Autonomous Worker Execution)
+            try:
+                from app.agents.openclaw_orchestrator import openclaw_team
+                store_url = get_store_web_url()
+                cycle_res = await openclaw_team.execute_autonomous_product_cycle(store_url=store_url)
+                if cycle_res.get("success"):
+                    logger.info(f"🤖 OpenClaw Autonomous Cycle Success: {cycle_res.get('message')}")
+                    # Update MEMORY.md with heartbeat telemetry
+                    try:
+                        mem_path = Path("MEMORY.md")
+                        if mem_path.exists():
+                            with open(mem_path, "a", encoding="utf-8") as mf:
+                                mf.write(f"\n- Auto-Cycle Heartbeat [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]: {cycle_res.get('message')}\n")
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.warning(f"OpenClaw autonomous cycle warning: {e}")
+
         except Exception as e:
             logger.error(f"Error in continuous_autonomous_agency_orchestrator: {e}", exc_info=True)
 
