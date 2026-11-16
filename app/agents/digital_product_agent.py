@@ -220,6 +220,18 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
             db.execute(f"DELETE FROM digital_products WHERE id IN ({placeholders}) OR download_file LIKE 'current_affairs_%'", legacy_ids)
             db.execute("DELETE FROM digital_products WHERE download_file IN ('gmc.pdf', 'peon.pdf', 'talathi_special_revision_notes.pdf', 'marathi_vyakaran_master_guide.pdf', 'english_error_spotting_mastery.pdf', 'maharashtra_gk_1000_oneliner.pdf', 'maths_reasoning_shortcuts_handbook.pdf', 'tcs_ibps_real_response_qbank.pdf', 'test_admin_upload.pdf')")
 
+            # Remove physical obsolete/legacy PDFs from disk
+            root_dir = Path(__file__).resolve().parent.parent.parent
+            for d in [root_dir / "admin_storage" / "products", root_dir / "products"]:
+                if d.exists():
+                    for obsolete_name in ("gmc.pdf", "peon.pdf", "talathi_special_revision_notes.pdf"):
+                        try:
+                            f = d / obsolete_name
+                            if f.exists():
+                                f.unlink()
+                        except Exception:
+                            pass
+
 
             # Auto-seed any missing default products so store & admin are immediately populated
             for p in DEFAULT_PRODUCTS:
@@ -492,6 +504,16 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
                 manifest_file.write_text("[]", encoding="utf-8")
         except Exception as e:
             logger.debug(f"Manifest purge notice: {e}")
+
+        # Wipe physical PDF products from storage directories so store is truly empty
+        root_dir = Path(__file__).resolve().parent.parent.parent
+        for d in [root_dir / "admin_storage" / "products", root_dir / "products"]:
+            if d.exists():
+                for f in d.glob("*.pdf"):
+                    try:
+                        f.unlink()
+                    except Exception:
+                        pass
 
         return cur.rowcount
 
@@ -805,6 +827,9 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
                         or fn_lower.startswith("tmp")
                         or "sample" in fn_lower
                         or fn_lower in (
+                            "gmc.pdf",
+                            "peon.pdf",
+                            "talathi_special_revision_notes.pdf",
                             "marathi_vyakaran_master_guide.pdf",
                             "english_error_spotting_mastery.pdf",
                             "maharashtra_gk_1000_oneliner.pdf",
