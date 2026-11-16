@@ -1415,7 +1415,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("buy:") or data.startswith("buy_prod:"):
         prod_id = data.split(":", 1)[1]
-        prod = packaging_agent.get_product_by_id(prod_id, DB_PATH) or DEFAULT_PRODUCTS[0]
+        prod = packaging_agent.get_product_by_id(prod_id, DB_PATH) or (DEFAULT_PRODUCTS[0] if DEFAULT_PRODUCTS else {"id": prod_id, "title": "डिजिटल ई-बुक", "price_inr": 19})
         context.user_data["buying_product_id"] = prod_id
         context.user_data["buying_product_price"] = prod.get("price_inr", 19)
         context.user_data["awaiting_store_utr"] = True
@@ -8895,6 +8895,9 @@ async def post_store_promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYP
     target_chat = int(channel) if channel.lstrip("-").isdigit() else channel
     store_url = get_store_web_url()
     products = packaging_agent.get_all_products(DB_PATH)
+    if not products and not DEFAULT_PRODUCTS:
+        await update.message.reply_text("⚠️ सध्या स्टोअरमध्ये कोणतीही सक्रिय पुस्तके उपलब्ध नाहीत.")
+        return
     target_prod = products[0] if products else DEFAULT_PRODUCTS[0]
 
     sample_q = SAMPLE_PREVIEWS.get(target_prod["id"], {}).get("samples", [None])[0]
