@@ -1502,6 +1502,16 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
     </div>
 
     <script>
+        function escapeHtml(str) {{
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }}
+
         function getAdminKey() {{
             const urlParams = new URLSearchParams(window.location.search);
             const keyFromUrl = urlParams.get('key') || urlParams.get('token') || urlParams.get('admin_key');
@@ -2221,7 +2231,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                             html += '  </div>';
                             html += '  <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:8px; border-top:1px solid #334155;">';
                             html += '    <span style="font-size:10px; color:#64748b;">' + (a.last_active ? 'अद्यतन: ' + a.last_active.split(' ')[1] : '') + '</span>';
-                            html += '    <button class="btn btn-sm btn-outline" onclick="testIndividualAgent(\'' + a.id + '\')" style="font-size:10.5px; padding:3px 8px;">⚡ थेट चाचणी</button>';
+                            html += '    <button class="btn btn-sm btn-outline" onclick="testIndividualAgent(\\\'' + a.id + '\\\')" style="font-size:10.5px; padding:3px 8px;">⚡ थेट चाचणी</button>';
                             html += '  </div>';
                             html += '</div>';
                         }});
@@ -2487,7 +2497,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
     return html
 
 def render_admin_login_html(error_msg: str = "") -> str:
-    err_html = f'<div style="background:rgba(239,68,68,0.15); border:1px solid #ef4444; border-radius:8px; padding:10px; color:#fca5a5; font-size:12.5px; margin-bottom:16px;">❌ {html.escape(error_msg)}</div>' if error_msg else ''
+    err_html = f'<div style="background:rgba(239,68,68,0.15); border:1px solid #ef4444; border-radius:8px; padding:10px; color:#fca5a5; font-size:12.5px; margin-bottom:16px;">❌ {html_lib.escape(error_msg)}</div>' if error_msg else ''
     return f"""<!DOCTYPE html>
 <html lang="mr">
 <head>

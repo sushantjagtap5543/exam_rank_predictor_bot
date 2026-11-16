@@ -499,9 +499,14 @@ class PublicationQualityDesignAgent(BaseSeniorAgent):
             })
         return enriched
 
-    def audit_publication_quality(self, questions: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    def audit_publication_quality(self, questions: Optional[Any] = None) -> Dict[str, Any]:
         """Performs a comprehensive quality, typography, and answer key audit."""
-        qs = questions or []
+        if isinstance(questions, str):
+            qs = [{"q": questions}]
+        elif isinstance(questions, list):
+            qs = [item if isinstance(item, dict) else {"q": str(item)} for item in questions]
+        else:
+            qs = []
         enriched = self.audit_and_enrich_questions(qs) if qs else []
         return {
             "passed": True,

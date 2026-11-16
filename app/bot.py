@@ -7036,6 +7036,13 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(dash_bytes)))
+                key_val = (
+                    query_params.get("key", [""])[0].strip()
+                    or query_params.get("token", [""])[0].strip()
+                    or query_params.get("admin_key", [""])[0].strip()
+                )
+                if key_val:
+                    self.send_header("Set-Cookie", f"admin_key={urllib.parse.quote(key_val)}; Path=/; Max-Age=86400; SameSite=Lax")
                 self.send_security_headers(is_admin=True)
                 self.end_headers()
                 self.wfile.write(dash_bytes)
