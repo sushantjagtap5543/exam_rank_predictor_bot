@@ -6597,11 +6597,16 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(png_bytes)
             return
 
-        # 0a. API: Dynamic Product 1st Page Sample Image (Page 1)
+        # 0a. API: Dynamic Product Page Sample Image (Supports Page Index for Full File Preview)
         if path == "/api/sample_image":
             query_params = urllib.parse.parse_qs(parsed.query)
             prod_id = query_params.get("id", [""])[0].strip()
-            png_bytes = get_product_sample_page_image(prod_id, db_path=DB_PATH)
+            page_idx = 0
+            try:
+                page_idx = int(query_params.get("page", ["0"])[0].strip())
+            except ValueError:
+                page_idx = 0
+            png_bytes = get_product_sample_page_image(prod_id, db_path=DB_PATH, page_num=page_idx)
             if not png_bytes:
                 self.send_response(404)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
