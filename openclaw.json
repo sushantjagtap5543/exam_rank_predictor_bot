@@ -1,111 +1,138 @@
 {
   "$schema": "https://openclaw.ai/schema/openclaw.json",
   "gateway": {
-    "port": 8080,
-    "host": "0.0.0.0",
-    "channel": "telegram"
+    "port": 18789,
+    "bind": "loopback"
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true
+    }
   },
   "agents": {
+    "ownership": "explicit",
     "defaults": {
+      "systemAgent": {
+        "agentId": "ceo"
+      },
       "workspace": ".",
-      "soul": "SOUL.md",
-      "agents": "AGENTS.md",
-      "memory": "MEMORY.md",
       "subagents": {
         "maxConcurrent": 8,
-        "model": "nvidia/nemotron-3.5-lightning:free",
-        "announce": {
-          "showStats": true
-        }
+        "model": "nvidia/nemotron-3.5-lightning:free"
       }
     },
-    "list": [
-      {
-        "id": "ceo",
+    "entries": {
+      "ceo": {
         "name": "Dr. Vikramaditya Deshmukh (CEO)",
-        "role": "Chief Executive Officer & Enterprise Orchestrator",
-        "seniority": "25+ Years Experience",
-        "tools": { "profile": "full", "allow": ["sessions_spawn", "sessions_yield", "subagents"] },
-        "subagents": { "allowAgents": ["policy", "market", "community_harvest", "community_engage", "mpsc_dean", "civil_faculty", "mech_faculty", "quality_auditor", "product_factory", "growth", "counselor"] }
+        "description": "Chief Executive Officer & Enterprise Orchestrator | 25+ Years Experience",
+        "tools": {
+          "profile": "full",
+          "allow": ["sessions_spawn", "sessions_yield", "subagents"]
+        },
+        "subagents": {
+          "allowAgents": [
+            "policy",
+            "market",
+            "community_harvest",
+            "community_engage",
+            "mpsc_dean",
+            "civil_faculty",
+            "mech_faculty",
+            "quality_auditor",
+            "product_factory",
+            "growth",
+            "counselor"
+          ]
+        }
       },
-      {
-        "id": "policy",
+      "policy": {
         "name": "Adv. Shrikant Joshi",
-        "role": "Anti-Ban & Policy Guardian",
-        "seniority": "20+ Years Experience",
-        "tools": { "profile": "compliance", "allow": ["rate_limit", "jitter", "floodwait_backoff"] }
+        "description": "Anti-Ban & Policy Guardian | 20+ Years Experience",
+        "tools": {
+          "profile": "minimal",
+          "allow": ["rate_limit", "jitter", "floodwait_backoff"]
+        }
       },
-      {
-        "id": "market",
+      "market": {
         "name": "Prof. Ananya Patil",
-        "role": "Market Intelligence & Demand Harvester",
-        "seniority": "20+ Years Experience",
-        "tools": { "profile": "research", "allow": ["trend_harvest", "syllabus_tracker"] }
+        "description": "Market Intelligence & Demand Harvester | 20+ Years Experience",
+        "tools": {
+          "profile": "coding",
+          "allow": ["trend_harvest", "syllabus_tracker"]
+        }
       },
-      {
-        "id": "community_harvest",
+      "community_harvest": {
         "name": "Ms. Supriya Sawant",
-        "role": "Community Intelligence & Student Needs Harvester",
-        "seniority": "20+ Years Experience",
-        "tools": { "profile": "harvest", "allow": ["pain_point_extractor", "spec_synthesizer"] }
+        "description": "Community Intelligence & Student Needs Harvester | 20+ Years Experience",
+        "tools": {
+          "profile": "messaging",
+          "allow": ["pain_point_extractor", "spec_synthesizer"]
+        }
       },
-      {
-        "id": "community_engage",
+      "community_engage": {
         "name": "Mr. Swapnil Salunkhe",
-        "role": "Community Engagement & News Brand Shield",
-        "seniority": "20+ Years Experience",
-        "tools": { "profile": "community", "allow": ["group_chat", "brand_filter", "news_curate"] }
+        "description": "Community Engagement & News Brand Shield | 20+ Years Experience",
+        "tools": {
+          "profile": "messaging",
+          "allow": ["group_chat", "brand_filter", "news_curate"]
+        }
       },
-      {
-        "id": "mpsc_dean",
+      "mpsc_dean": {
         "name": "Dr. Ravindra Deshmukh",
-        "role": "MPSC Academic Dean",
-        "seniority": "22+ Years Experience",
-        "tools": { "profile": "academic", "allow": ["mpsc_curriculum", "gs_benchmarking"] }
+        "description": "MPSC Academic Dean | 22+ Years Experience",
+        "tools": {
+          "profile": "full",
+          "allow": ["mpsc_curriculum", "gs_benchmarking"]
+        }
       },
-      {
-        "id": "civil_faculty",
+      "civil_faculty": {
         "name": "Prof. Rajesh K. Joshi, FIE",
-        "role": "Civil Engineering Faculty Chair",
-        "seniority": "24+ Years Experience",
-        "tools": { "profile": "engineering", "allow": ["is456_schematics", "som_rcc_design"] }
+        "description": "Civil Engineering Faculty Chair | 24+ Years Experience",
+        "tools": {
+          "profile": "full",
+          "allow": ["is456_schematics", "som_rcc_design"]
+        }
       },
-      {
-        "id": "mech_faculty",
+      "mech_faculty": {
         "name": "Dr. Amit Sharma",
-        "role": "Mechanical Engineering Faculty Chair",
-        "seniority": "21+ Years Experience",
-        "tools": { "profile": "engineering", "allow": ["otto_pv_cycle", "thermodynamics"] }
+        "description": "Mechanical Engineering Faculty Chair | 21+ Years Experience",
+        "tools": {
+          "profile": "full",
+          "allow": ["otto_pv_cycle", "thermodynamics"]
+        }
       },
-      {
-        "id": "quality_auditor",
+      "quality_auditor": {
         "name": "Dr. Prachi Kulkarni",
-        "role": "Chief Publication Designer & Accuracy Auditor",
-        "seniority": "20+ Years Experience",
-        "tools": { "profile": "quality", "allow": ["devanagari_lint", "answer_key_audit"] }
+        "description": "Chief Publication Designer & Accuracy Auditor | 20+ Years Experience",
+        "tools": {
+          "profile": "full",
+          "allow": ["devanagari_lint", "answer_key_audit"]
+        }
       },
-      {
-        "id": "product_factory",
+      "product_factory": {
         "name": "Eng. Rohan Kulkarni",
-        "role": "Autonomous Product Factory",
-        "seniority": "20+ Years Experience",
-        "tools": { "profile": "publication", "allow": ["reportlab_pdf_synthesis", "vector_drawing", "catalog_publish"] }
+        "description": "Autonomous Product Factory | 20+ Years Experience",
+        "tools": {
+          "profile": "full",
+          "allow": ["reportlab_pdf_synthesis", "vector_drawing", "catalog_publish"]
+        }
       },
-      {
-        "id": "growth",
+      "growth": {
         "name": "Mr. Sameer Inamdar",
-        "role": "Viral Growth & Conversion Director",
-        "seniority": "20+ Years Experience",
-        "tools": { "profile": "marketing", "allow": ["channel_broadcast", "scarcity_copy"] }
+        "description": "Viral Growth & Conversion Director | 20+ Years Experience",
+        "tools": {
+          "profile": "messaging",
+          "allow": ["channel_broadcast", "scarcity_copy"]
+        }
       },
-      {
-        "id": "counselor",
+      "counselor": {
         "name": "Mr. Nilesh Dada",
-        "role": "Senior Student Counselor & Mentor",
-        "seniority": "20+ Years Experience",
-        "tools": { "profile": "counseling", "allow": ["human_empathy_dm", "weak_area_diagnostic"] }
+        "description": "Senior Student Counselor & Mentor | 20+ Years Experience",
+        "tools": {
+          "profile": "messaging",
+          "allow": ["human_empathy_dm", "weak_area_diagnostic"]
+        }
       }
-    ]
+    }
   }
 }
-

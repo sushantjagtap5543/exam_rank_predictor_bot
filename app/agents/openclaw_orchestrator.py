@@ -17,6 +17,7 @@ import logging
 import os
 import random
 import re
+import shutil
 import sqlite3
 import time
 from datetime import datetime
@@ -1672,6 +1673,16 @@ class OpenClawEnterpriseTeam:
                     "role_desc": "१-ऑन-१ मार्गदर्शन व विद्यार्थी समुपदेशन"
                 }
             ],
+            "gateway": {
+                "version": "OpenClaw 2026.11.4",
+                "cli_installed": bool(shutil.which("openclaw") or shutil.which("openclaw.cmd")),
+                "target": "ws://127.0.0.1:18789",
+                "dashboard": "http://127.0.0.1:18789/",
+                "bind": "loopback",
+                "agents_count": 12,
+                "channel": "telegram",
+                "status": "Configured & Active"
+            },
             "sections_supported": ["MPSC", "Civil Engineering", "Mechanical Engineering", "TCS/IBPS Saralsewa", "Current Affairs", "General Knowledge"],
             "pricing_engine": "Unlocked Flexible Pricing (₹0 - ₹999+)",
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")

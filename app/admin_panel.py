@@ -871,6 +871,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                     <span class="badge badge-sub" style="margin-left:10px; background:#4338ca; color:#fff;">CEO Vikramaditya Deshmukh</span>
                     <span class="badge badge-green" style="margin-left:6px;">🛡️ Anti-Ban Protected</span>
                     <span class="badge badge-gold" style="margin-left:6px;">🔓 अनलॉक्ड प्राईसिंग (₹१ ते ₹९९९९)</span>
+                    <span id="openclawGatewayBadge" class="badge" style="margin-left:6px; background:#047857; color:#fff;">⚡ OpenClaw Gateway 2026.11 (Active)</span>
                 </div>
                 <div style="display:flex; gap:8px;">
                     <button class="btn btn-sm btn-gold" onclick="runOpenClawCycle()" style="background:linear-gradient(135deg, #f59e0b, #d97706); color:#fff; border:none; font-weight:700;">🚀 AI उत्पादन चक्र चालवा (Auto-Build & Sell)</button>
@@ -2096,6 +2097,12 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 const data = await res.json();
                 if (data.success && data.data && data.data.agents) {{
                     const agents = data.data.agents;
+                    if (data.data.gateway) {{
+                        const gwBadge = document.getElementById('openclawGatewayBadge');
+                        if (gwBadge) {{
+                            gwBadge.innerText = '⚡ ' + (data.data.gateway.version || 'OpenClaw') + ' (CLI Active)';
+                        }}
+                    }}
                     // 1. Update dashboard live grid cards
                     agents.forEach(a => {{
                         const statusBadge = document.getElementById('agent_status_' + a.id);

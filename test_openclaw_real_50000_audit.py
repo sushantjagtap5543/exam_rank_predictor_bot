@@ -29,15 +29,18 @@ class OpenClawRealAutonomousFrameworkAudit(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.team = openclaw_team
-        cls.soul_path = Path("SOUL.md")
-        cls.agents_path = Path("AGENTS.md")
-        cls.memory_path = Path("MEMORY.md")
+        cls.base_dir = Path(__file__).resolve().parent
+        cls.soul_path = cls.base_dir / "SOUL.md"
+        cls.agents_path = cls.base_dir / "AGENTS.md"
+        cls.memory_path = cls.base_dir / "MEMORY.md"
+        cls.openclaw_path = cls.base_dir / "openclaw.json"
 
     def test_01_workspace_filesystem_memory_parity_10000_scenarios(self):
         """Suite 1: Validate SOUL.md, AGENTS.md and MEMORY.md adherence (10,000 checks)."""
         self.assertTrue(self.soul_path.exists(), "SOUL.md missing")
         self.assertTrue(self.agents_path.exists(), "AGENTS.md missing")
         self.assertTrue(self.memory_path.exists(), "MEMORY.md missing")
+        self.assertTrue(self.openclaw_path.exists(), "openclaw.json missing")
 
         soul_content = self.soul_path.read_text(encoding="utf-8")
         agents_content = self.agents_path.read_text(encoding="utf-8")
