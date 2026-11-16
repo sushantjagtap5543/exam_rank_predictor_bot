@@ -22,7 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     && curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
-    && npm install -g openclaw@latest --allow-scripts=openclaw \
+    && npm install -g openclaw@latest --allow-scripts=openclaw,@google/genai,esbuild,protobufjs \
     && npm cache clean --force \
     && rm -rf /var/lib/apt/lists/*
 
