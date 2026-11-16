@@ -46,6 +46,7 @@ from .openclaw_orchestrator import (
     AutonomousProductFactoryAgent,
     MarketDemandAnalyzerAgent,
     OpenClawEnterpriseTeam,
+    PublicationQualityDesignAgent,
     TelegramPolicyComplianceAgent,
     ViralGrowthMarketingAgent,
     openclaw_team,
@@ -82,4 +83,12 @@ __all__ = [
     "DigitalProductPackagingAgent",
     "MarketingSalesAgent",
     "FulfillmentEmailAgent",
+    # OpenClaw Autonomous Enterprise
+    "openclaw_team",
+    "OpenClawEnterpriseTeam",
+    "TelegramPolicyComplianceAgent",
+    "MarketDemandAnalyzerAgent",
+    "PublicationQualityDesignAgent",
+    "AutonomousProductFactoryAgent",
+    "ViralGrowthMarketingAgent",
 ]

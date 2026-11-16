@@ -893,7 +893,11 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                     <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">ReportLab द्वारे कव्हर, वॉटरमार्क व स्पष्टीकरणांसह ५ मिनिटांत PDF निर्मिती.</div>
                 </div>
                 <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
-                    <div style="font-size:12px; font-weight:700; color:#f43f5e;">🚀 ५. Viral Growth & Sales Lead</div>
+                    <div style="font-size:12px; font-weight:700; color:#a855f7;">✨ ५. Publication Design & Accuracy Auditor</div>
+                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">मराठी शुद्धलेखन, TCS/IBPS अचूक उत्तरे, सुवाच्य फॉन्ट व उच्च दर्जाची PDF मांडणी.</div>
+                </div>
+                <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
+                    <div style="font-size:12px; font-weight:700; color:#f43f5e;">🚀 ६. Viral Growth & Sales Lead</div>
                     <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">Force-Join चॅनेल गेट, Share-to-Unlock रेफरल लूप व तात्काळ विक्री.</div>
                 </div>
             </div>
