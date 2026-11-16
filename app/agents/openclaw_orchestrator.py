@@ -1164,7 +1164,7 @@ class ConversationalSalesCounselorAgent(BaseSeniorAgent):
     def handle_student_inquiry(
         self,
         incoming_text: str,
-        available_products: List[Dict[str, Any]],
+        available_products: Optional[List[Dict[str, Any]]] = None,
         user_name: str = "मित्रा",
         store_url: str = "https://exam-rank-predictor-bot.onrender.com"
     ) -> Dict[str, Any]:
@@ -1172,6 +1172,7 @@ class ConversationalSalesCounselorAgent(BaseSeniorAgent):
         Handles natural language questions from students in a 100% human-like, supportive tone.
         Analyzes intent: syllabus question, book recommendation, payment help, or exam strategy.
         """
+        available_products = available_products or []
         text = incoming_text.lower().strip()
         name = user_name or "मित्रा"
 

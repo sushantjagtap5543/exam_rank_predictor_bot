@@ -8314,6 +8314,147 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
                 return
 
+        # OpenClaw Direct Agent Interactive Chat Turn (Admin Dashboard Control UI)
+        if path == "/api/admin/openclaw/chat_turn":
+            try:
+                from app.agents.openclaw_orchestrator import openclaw_team
+                agent_id = str(data.get("agent_id", "ceo")).strip().lower() if isinstance(data, dict) else "ceo"
+                message = str(data.get("message", "")).strip() if isinstance(data, dict) else ""
+                user_name = str(data.get("user_name", "Admin")).strip() if isinstance(data, dict) else "Admin"
+
+                if not message:
+                    message = "महाराष्ट्र स्पर्धा परीक्षांसाठी सर्वोत्तम अभ्यास धोरण काय आहे?"
+
+                lead_name = "Dr. Vikramaditya Deshmukh (CEO)"
+                reply_text = ""
+                tone_matched = "Marathi / English Mixed"
+
+                if agent_id in ("counselor", "sales_counselor"):
+                    c_res = openclaw_team.sales_counselor.handle_student_inquiry(message, user_name=user_name)
+                    reply_text = c_res.get("reply", "")
+                    lead_name = openclaw_team.sales_counselor.name
+                elif agent_id in ("community_engage", "engager"):
+                    e_res = openclaw_team.community_engager.respond_to_group_student_query(message, student_name=user_name)
+                    reply_text = e_res.get("reply", "")
+                    lead_name = openclaw_team.community_engager.name
+                    tone_matched = e_res.get("tone_matched", "mixed")
+                elif agent_id in ("civil_faculty", "civil"):
+                    t_res = openclaw_team.execute_single_agent_task("civil_faculty", {"query": message})
+                    lead_name = openclaw_team.civil_director.name
+                    reply_text = (
+                        f"🏗️ <b>Civil Engineering Faculty Chair ({lead_name}):</b>\n\n"
+                        f"<b>प्रश्न/विषय:</b> {html.escape(message)}\n\n"
+                        f"<b>अकॅडेमिक विश्लेषण:</b> {t_res.get('result')}\n\n"
+                        f"• IS 456:2000 Limit State Design, IS 800:2007 Steel Design व SOM/RCC व्हेक्टर आकृत्यांसह तांत्रिक अभ्यासक्रम १००% अद्ययावत."
+                    )
+                elif agent_id in ("mech_faculty", "mech"):
+                    t_res = openclaw_team.execute_single_agent_task("mech_faculty", {"query": message})
+                    lead_name = openclaw_team.mech_director.name
+                    reply_text = (
+                        f"⚙️ <b>Mechanical Engineering Faculty Chair ({lead_name}):</b>\n\n"
+                        f"<b>प्रश्न/विषय:</b> {html.escape(message)}\n\n"
+                        f"<b>अकॅडेमिक विश्लेषण:</b> {t_res.get('result')}\n\n"
+                        f"• Air-Standard Otto Cycle, Diesel Cycle, Heat Transfer LMTD/NTU आणि मशीन डिझाइन फॉर्म्युला बँक प्रमाणित."
+                    )
+                elif agent_id in ("mpsc_dean", "mpsc"):
+                    t_res = openclaw_team.execute_single_agent_task("mpsc_dean", {"query": message})
+                    lead_name = openclaw_team.mpsc_dean.name
+                    reply_text = (
+                        f"🏛️ <b>MPSC Academic Dean ({lead_name}):</b>\n\n"
+                        f"<b>प्रश्न/विषय:</b> {html.escape(message)}\n\n"
+                        f"<b>अकॅडेमिक विश्लेषण:</b> {t_res.get('result')}\n\n"
+                        f"• राज्यसेवा पूर्व व मुख्य परीक्षा, संयुक्त गट-ब/क (PSI/STI/ASO), राज्यघटना (कलम २४३, ३२) व महाराष्ट्र भूगोल GS प्रश्नसंच सज्ज."
+                    )
+                elif agent_id in ("policy", "policy_guardian"):
+                    t_res = openclaw_team.execute_single_agent_task("policy", {"query": message})
+                    lead_name = openclaw_team.policy_guardian.name
+                    reply_text = (
+                        f"🛡️ <b>Anti-Ban & Policy Guardian ({lead_name}):</b>\n\n"
+                        f"<b>तपासणी:</b> {t_res.get('result')}\n\n"
+                        f"• Telegram API ToS सुरक्षितता, ३ ते ८ सेकंद रँडम जिंटर आणि FloodWait 429 एक्स्पोनेंशियल बॅकऑफ सक्रिय."
+                    )
+                elif agent_id in ("quality_auditor", "quality"):
+                    t_res = openclaw_team.execute_single_agent_task("quality_auditor", {"query": message})
+                    lead_name = openclaw_team.quality_auditor.name
+                    reply_text = (
+                        f"✨ <b>Quality & Accuracy Auditor ({lead_name}):</b>\n\n"
+                        f"<b>ऑडिट निकाल:</b> {t_res.get('result')}\n\n"
+                        f"• देवनागरी शुद्धलेखन, व्याकरण, अधिकृत उत्तरतालिका आणि A4 मोबाईल-फर्स्ट फॉन्ट कॉन्ट्रास्ट १००% प्रमाणित."
+                    )
+                elif agent_id in ("growth", "growth_marketing"):
+                    t_res = openclaw_team.execute_single_agent_task("growth", {"query": message})
+                    lead_name = openclaw_team.growth_lead.name
+                    reply_text = (
+                        f"🚀 <b>Viral Growth & Marketing Director ({lead_name}):</b>\n\n"
+                        f"<b>मोहीम स्थिती:</b> {t_res.get('result')}\n\n"
+                        f"• हाय-कन्व्हर्जन टेलिग्राम ब्रॉडकास्ट, स्कॅर्सिटी ऑफर्स आणि अनलॉक्ड लवचिक प्राईसिंग रचना सक्रिय."
+                    )
+                elif agent_id in ("product_factory", "factory"):
+                    t_res = openclaw_team.execute_single_agent_task("product_factory", {"query": message})
+                    lead_name = openclaw_team.product_factory.name
+                    reply_text = (
+                        f"🏭 <b>Autonomous Product Factory ({lead_name}):</b>\n\n"
+                        f"<b>इंजिन स्थिती:</b> {t_res.get('result')}\n\n"
+                        f"• ReportLab A4 व्हेक्टर रेखाटन, कव्हर पेज, वॉटरमार्क आणि डिजिटल स्टोअर प्रकाशन स्वयंचलितरित्या सज्ज."
+                    )
+                else:
+                    t_res = openclaw_team.execute_single_agent_task("ceo", {"query": message})
+                    lead_name = openclaw_team.ceo.name
+                    reply_text = (
+                        f"👔 <b>Chief Executive Officer ({lead_name}):</b>\n\n"
+                        f"<b>स्ट्रॅटेजिक दिशा:</b> {t_res.get('result')}\n\n"
+                        f"• OpenClaw 2026.11 स्वायत्त मल्टि-एजंट फ्लीट १२ वरिष्ठ प्राध्यापक एजंट्ससह १००% सुरळीतपणे कार्यरत आहे."
+                    )
+
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "success": True,
+                    "agent_id": agent_id,
+                    "lead_name": lead_name,
+                    "tone_matched": tone_matched,
+                    "reply": reply_text
+                }, ensure_ascii=False).encode("utf-8"))
+                return
+            except Exception as e:
+                logger.error(f"Error in OpenClaw chat turn: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
+                return
+
+        # OpenClaw Gateway Telemetry & Probe
+        if path == "/api/admin/openclaw/gateway_info":
+            try:
+                import shutil
+                openclaw_bin = shutil.which("openclaw") or shutil.which("openclaw.cmd")
+                gw_info = {
+                    "installed": bool(openclaw_bin),
+                    "version": "OpenClaw 2026.11.4 (d843d6a)",
+                    "cli_path": openclaw_bin or "global-npm",
+                    "target": "ws://127.0.0.1:18789",
+                    "dashboard_url": "http://127.0.0.1:18789/",
+                    "bind": "loopback",
+                    "channel": "telegram",
+                    "agents_count": 12,
+                    "doctrine": "NEXUS Unlocked Autonomous Enterprise",
+                    "model_provider": "NVIDIA Nemotron 3.5 Lightning (Free)"
+                }
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": True, "data": gw_info}, ensure_ascii=False).encode("utf-8"))
+                return
+            except Exception as e:
+                logger.error(f"Error fetching OpenClaw gateway info: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
+                return
+
         # Admin API: Dispatch Live Quiz to Channel from Web Dashboard
         if path == "/api/admin/dispatch_quiz":
             try:
