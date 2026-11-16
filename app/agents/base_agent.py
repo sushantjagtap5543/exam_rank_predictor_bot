@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import time
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -47,6 +48,26 @@ class BaseSeniorAgent:
         self.core_competencies = core_competencies or []
         self.system_instruction = system_instruction
         self.api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+        self.current_task: str = "सज्ज (Ready & Standing By)"
+        self.live_status: str = "🟢 सक्रिय (Active)"
+        self.last_active: str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.completed_tasks_count: int = 0
+        self.recent_actions: List[Dict[str, Any]] = []
+
+    def set_activity(self, task: str, status: Optional[str] = None):
+        """Updates agent's real-time current task and telemetry."""
+        self.current_task = task
+        if status:
+            self.live_status = status
+        self.last_active = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.completed_tasks_count += 1
+        self.recent_actions.insert(0, {
+            "task": task,
+            "status": self.live_status,
+            "timestamp": self.last_active
+        })
+        if len(self.recent_actions) > 10:
+            self.recent_actions.pop()
 
     def _build_system_prompt(self) -> str:
         competencies_str = "\n".join([f"- {c}" for c in self.core_competencies])

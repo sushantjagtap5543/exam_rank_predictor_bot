@@ -874,57 +874,93 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 </div>
                 <div style="display:flex; gap:8px;">
                     <button class="btn btn-sm btn-gold" onclick="runOpenClawCycle()" style="background:linear-gradient(135deg, #f59e0b, #d97706); color:#fff; border:none; font-weight:700;">🚀 AI उत्पादन चक्र चालवा (Auto-Build & Sell)</button>
-                    <button class="btn btn-sm btn-outline" onclick="viewOpenClawStatus()">👁️ टीम स्थिती पहा (Team Status)</button>
+                    <button class="btn btn-sm btn-outline" onclick="viewOpenClawStatus()">👁️ टीम थेट स्थिती (Live Task Status)</button>
                 </div>
             </div>
-            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-top:14px;">
+            <div id="openclawLiveGrid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:12px; margin-top:14px;">
                 <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
-                    <div style="font-size:12px; font-weight:700; color:#818cf8;">👔 १. CEO & Executive Lead</div>
-                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">NEXUS एंटरप्राइज स्ट्रॅटेजी, महसूल उद्दिष्टे व सर्व विभागांचे स्वायत्त समन्वय.</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:12px; font-weight:700; color:#818cf8;">👔 १. CEO & Executive Lead</span>
+                        <span id="agent_status_ceo" class="badge badge-green" style="font-size:10px;">🟢 सक्रिय</span>
+                    </div>
+                    <div id="agent_task_ceo" style="font-size:11px; color:#cbd5e1; margin-top:4px;"><b>सध्याचे कार्य:</b> ऑटो-सायकल रणनीती, महसूल व्यवस्थापन व प्राईसिंग मॉडेलचे स्वायत्त संचलन.</div>
                 </div>
                 <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
-                    <div style="font-size:12px; font-weight:700; color:#10b981;">🛡️ २. Telegram Policy Guardian</div>
-                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">Anti-Ban, FloodWait 429 बॅकऑफ, Jitter डिल्स व स्पॅम-मुक्त सुरक्षित मेसेजिंग.</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:12px; font-weight:700; color:#10b981;">🛡️ २. Telegram Policy Guardian</span>
+                        <span id="agent_status_policy" class="badge badge-green" style="font-size:10px;">🛡️ सुरक्षित</span>
+                    </div>
+                    <div id="agent_task_policy" style="font-size:11px; color:#cbd5e1; margin-top:4px;"><b>सध्याचे कार्य:</b> FloodWait 429 बॅकऑफ आणि ३-८ सेकंद जिंटरचे रिअल-टाइम सनियंत्रण.</div>
                 </div>
                 <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
-                    <div style="font-size:12px; font-weight:700; color:#38bdf8;">🧠 ३. Market Demand Harvester</div>
-                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">महाराष्ट्र TCS/IBPS परीक्षा ट्रेंड्स, विद्यार्थी गरजा व उच्च-मागणी विषयांचा शोध.</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:12px; font-weight:700; color:#38bdf8;">🧠 ३. Market Demand Harvester</span>
+                        <span id="agent_status_market" class="badge badge-green" style="font-size:10px;">🧠 कार्यरत</span>
+                    </div>
+                    <div id="agent_task_market" style="font-size:11px; color:#cbd5e1; margin-top:4px;"><b>सध्याचे कार्य:</b> TCS/IBPS व MPSC अभ्यासक्रमातील हाय-यील्ड विषयांचे ट्रेंड स्कॅनिंग.</div>
                 </div>
                 <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
-                    <div style="font-size:12px; font-weight:700; color:#06b6d4;">📡 ४. Community Needs Harvester</div>
-                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">स्टडी ग्रुप्स व चॅटमधील विद्यार्थी अडचणींचा अभ्यास करून तत्काळ पुस्तकाची मागणी नोंदवणे.</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:12px; font-weight:700; color:#06b6d4;">📡 ४. Community Needs Harvester</span>
+                        <span id="agent_status_community_harvest" class="badge badge-green" style="font-size:10px;">📡 कार्यरत</span>
+                    </div>
+                    <div id="agent_task_community_harvest" style="font-size:11px; color:#cbd5e1; margin-top:4px;"><b>सध्याचे कार्य:</b> विद्यार्थ्यांच्या अडचणी व कठीण विषयांवरून नवीन ई-बुकच्या मागण्यांची नोंद घेणे.</div>
                 </div>
                 <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
-                    <div style="font-size:12px; font-weight:700; color:#a855f7;">✨ ५. Publication Design & Accuracy</div>
-                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">मराठी शुद्धलेखन, TCS/IBPS अचूक उत्तरे, सुवाच्य फॉन्ट व उच्च दर्जाची PDF मांडणी.</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:12px; font-weight:700; color:#a855f7;">✨ ५. Publication Quality & Accuracy</span>
+                        <span id="agent_status_quality_auditor" class="badge badge-green" style="font-size:10px;">✨ सज्ज</span>
+                    </div>
+                    <div id="agent_task_quality_auditor" style="font-size:11px; color:#cbd5e1; margin-top:4px;"><b>सध्याचे कार्य:</b> मराठी शुद्धलेखन, अधिकृत उत्तरतालिका आणि फॉन्ट मांडणीचे १००% अचूकता ऑडिट.</div>
                 </div>
                 <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
-                    <div style="font-size:12px; font-weight:700; color:#facc15;">🏭 ६. AI Product Factory</div>
-                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">ReportLab द्वारे कव्हर, वॉटरमार्क व स्पष्टीकरणांसह ५ मिनिटांत PDF निर्मिती.</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:12px; font-weight:700; color:#facc15;">🏭 ६. AI Product Factory</span>
+                        <span id="agent_status_product_factory" class="badge badge-green" style="font-size:10px;">🏭 सज्ज</span>
+                    </div>
+                    <div id="agent_task_product_factory" style="font-size:11px; color:#cbd5e1; margin-top:4px;"><b>सध्याचे कार्य:</b> कव्हर, वॉटरमार्क, व्हेक्टर आकृत्यांसह ५०+ पानी व्यावसायिक PDF ची निर्मिती.</div>
                 </div>
                 <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
-                    <div style="font-size:12px; font-weight:700; color:#f43f5e;">🚀 ७. High-Conversion Sales & Viral Growth</div>
-                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">Scarcity, Social Proof, चॅनेल फोर्स-जॉइन व ॲबंडन कार्ट रिकव्हरी.</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:12px; font-weight:700; color:#f43f5e;">🚀 ७. High-Conversion Sales & Viral Growth</span>
+                        <span id="agent_status_growth" class="badge badge-green" style="font-size:10px;">🚀 सक्रिय</span>
+                    </div>
+                    <div id="agent_task_growth" style="font-size:11px; color:#cbd5e1; margin-top:4px;"><b>सध्याचे कार्य:</b> टेलिग्राम चॅनेलवर उच्च-रूपांतरण पोस्ट्स, क्विझ व स्पेशल ऑफर्सचे प्रसारण.</div>
                 </div>
                 <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
-                    <div style="font-size:12px; font-weight:700; color:#ec4899;">💬 ८. Human-Like Student Counselor</div>
-                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">मोठ्या भावाप्रमाणे (निलेश दादा) वैयक्तिक DM व चॅटमधून आपुलकीने शंका निरसन व विक्री.</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:12px; font-weight:700; color:#ec4899;">💬 ८. Human-Like Student Counselor</span>
+                        <span id="agent_status_counselor" class="badge badge-green" style="font-size:10px;">💬 कार्यरत</span>
+                    </div>
+                    <div id="agent_task_counselor" style="font-size:11px; color:#cbd5e1; margin-top:4px;"><b>सध्याचे कार्य:</b> विद्यार्थ्यांशी आपुलकीने १-ऑन-१ चॅट करून त्यांच्या कमकुवत घटकांनुसार ई-बुक सुचवणे.</div>
                 </div>
                 <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
-                    <div style="font-size:12px; font-weight:700; color:#fbbf24;">🏛️ ९. MPSC Academic Dean</div>
-                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">डॉ. रवींद्र देशमुख (२२+ वर्षे अनुभव): राज्यसेवा व गट-ब/क समग्र GS व ॲनालिटिकल प्रश्न.</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:12px; font-weight:700; color:#fbbf24;">🏛️ ९. MPSC Academic Dean</span>
+                        <span id="agent_status_mpsc_dean" class="badge badge-green" style="font-size:10px;">🏛️ कार्यरत</span>
+                    </div>
+                    <div id="agent_task_mpsc_dean" style="font-size:11px; color:#cbd5e1; margin-top:4px;"><b>सध्याचे कार्य:</b> राज्यसेवा व संयुक्त गट-ब/क च्या GS व कायदेविषयक अचूक प्रश्नांचे संकलन.</div>
                 </div>
                 <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
-                    <div style="font-size:12px; font-weight:700; color:#34d399;">🏗️ १०. Civil Engineering Chief Faculty</div>
-                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">प्रा. राजेश जोशी (२४+ वर्षे अनुभव): SOM, RCC (IS 456), Steel, Soil व तांत्रिक आकृत्या.</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:12px; font-weight:700; color:#34d399;">🏗️ १०. Civil Engineering Chief Faculty</span>
+                        <span id="agent_status_civil_faculty" class="badge badge-green" style="font-size:10px;">🏗️ कार्यरत</span>
+                    </div>
+                    <div id="agent_task_civil_faculty" style="font-size:11px; color:#cbd5e1; margin-top:4px;"><b>सध्याचे कार्य:</b> PWD/WRD/BMC साठी IS 456 व्हेक्टर आकृत्या व SOM/RCC फॉर्म्युला ऑडिट.</div>
                 </div>
                 <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
-                    <div style="font-size:12px; font-weight:700; color:#60a5fa;">⚙️ ११. Mechanical Engineering Chief Faculty</div>
-                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">डॉ. अमित शर्मा (२१+ वर्षे अनुभव): थर्मोडायनॅमिक्स, P-V सायकल, IC इंजिन, SOM व मॅन्युफॅक्चरिंग.</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:12px; font-weight:700; color:#60a5fa;">⚙️ ११. Mechanical Engineering Chief Faculty</span>
+                        <span id="agent_status_mech_faculty" class="badge badge-green" style="font-size:10px;">⚙️ कार्यरत</span>
+                    </div>
+                    <div id="agent_task_mech_faculty" style="font-size:11px; color:#cbd5e1; margin-top:4px;"><b>सध्याचे कार्य:</b> Otto cycle P-V डायग्राम, थर्मोडायनॅमिक्स व MES फॉर्म्युला बँक पडताळणी.</div>
                 </div>
                 <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
-                    <div style="font-size:12px; font-weight:700; color:#e879f9;">🛡️ १२. Group Chatting & News Brand Shield</div>
-                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">स्वप्नील साळुंखे (२०+ वर्षे अनुभव): २४/७ ग्रुप सहभाग, इतर चॅनेलमधील बातम्यांचे पुनर्लेखन व ब्रँड/क्लास नावे फिल्टर.</div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:12px; font-weight:700; color:#e879f9;">🛡️ १२. Group Chatting & News Brand Shield</span>
+                        <span id="agent_status_community_engage" class="badge badge-green" style="font-size:10px;">🛡️ सक्रिय</span>
+                    </div>
+                    <div id="agent_task_community_engage" style="font-size:11px; color:#cbd5e1; margin-top:4px;"><b>सध्याचे कार्य:</b> ग्रुपमधील शंकांचे बहुभाषिक निरसन व ३५+ स्पर्धात्मक क्लास नावांचे कायदेशीर फिल्टरिंग.</div>
                 </div>
             </div>
         </div>
@@ -1166,6 +1202,55 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         </div>
     </div>
 
+    <!-- Modal: OpenClaw Autonomous Multi-Agent Team Detail & Telemetry -->
+    <div class="modal-overlay" id="openclawDetailModal" style="display:none;">
+        <div class="modal" style="max-width:960px; width:95%; max-height:88vh; overflow-y:auto; background:#0b1120; border:1px solid #4338ca;">
+            <button class="modal-close" onclick="closeModal('openclawDetailModal')">&times;</button>
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155; padding-bottom:12px; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+                <div>
+                    <h2 style="color:#ffffff; font-size:18px; font-weight:800; margin:0; display:flex; align-items:center; gap:8px;">
+                        <span>🤖</span> OPENCLAW स्वायत्त AI टीम थेट संनियंत्रण (Live Control & Telemetry)
+                    </h2>
+                    <p style="font-size:12px; color:#94a3b8; margin:4px 0 0 0;">
+                        सर्व १२ वरिष्ठ एजंट्स (२०+ वर्षे अनुभव) थेट कार्यरत आहेत. रिअल-टाइम टास्क, कार्यक्षमता व स्वायत्त उत्पादन स्थिती.
+                    </p>
+                </div>
+                <div style="display:flex; gap:8px;">
+                    <button class="btn btn-sm btn-gold" onclick="runOpenClawCycle()" style="background:linear-gradient(135deg, #f59e0b, #d97706); color:#fff; font-weight:700;">🚀 उत्पादन चक्र चालवा</button>
+                    <button class="btn btn-sm btn-outline" onclick="fetchOpenClawStatus(true)">🔄 रिफ्रेश करा</button>
+                </div>
+            </div>
+
+            <!-- Subject-Specific Quick Selector -->
+            <div style="background:#1e293b; padding:12px 16px; border-radius:8px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border:1px solid #334155;">
+                <div style="font-size:13px; color:#e2e8f0; font-weight:700;">
+                    🎯 <b>विशिष्ट विषयाचे ई-बुक त्वरित तयार करा (Instant Subject PDF Generation):</b>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                    <select id="openclawSubjectSelect" style="background:#0f172a; color:#fff; border:1px solid #475569; padding:6px 12px; border-radius:6px; font-size:12.5px;">
+                        <option value="">🔄 ऑटो फिरता क्रम (Round Robin All Subjects)</option>
+                        <option value="Civil Engineering">🏗️ Civil Engineering (PWD/WRD/BMC)</option>
+                        <option value="Mechanical Engineering">⚙️ Mechanical Engineering (MES/BMC)</option>
+                        <option value="MPSC">🏛️ MPSC राज्यसेवा व संयुक्त गट-ब/क</option>
+                        <option value="Marathi">🔥 TCS/IBPS मराठी व्याकरण</option>
+                        <option value="General Knowledge">⚡ महाराष्ट्र GK व चालू घडामोडी</option>
+                        <option value="Maths & Reasoning">🎯 अंकगणित व बुद्धिमत्ता शॉर्टकट्स</option>
+                    </select>
+                    <button class="btn btn-sm btn-blue" onclick="triggerSelectedSubjectBuild()" style="background:#3b82f6; color:#fff; font-weight:700;">निर्मिती सुरू करा</button>
+                </div>
+            </div>
+
+            <!-- Live Agent Cards Grid (Dynamically Populated) -->
+            <div id="openclawModalAgentsGrid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:12px;">
+                <div style="color:#94a3b8; font-size:12px; padding:20px; text-align:center; grid-column:1/-1;">⏳ थेट एजंट स्थिती लोड होत आहे...</div>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; margin-top:16px; border-top:1px solid #334155; padding-top:10px;">
+                <button type="button" class="btn btn-outline" onclick="closeModal('openclawDetailModal')">बंद करा (Close)</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal: Add New Product -->
     <div class="modal-overlay" id="addModal">
         <div class="modal">
@@ -1392,9 +1477,17 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 headers['X-Admin-Key'] = adminKey;
             }}
             options.headers = headers;
+
+            // Also attach key as query parameter for bulletproof compatibility across proxies
+            let targetUrl = url;
+            if (adminKey && !targetUrl.includes('key=')) {{
+                const sep = targetUrl.includes('?') ? '&' : '?';
+                targetUrl = targetUrl + sep + 'key=' + encodeURIComponent(adminKey);
+            }}
+
             let res;
             try {{
-                res = await fetch(url, options);
+                res = await fetch(targetUrl, options);
             }} catch (netErr) {{
                 showToast('❌ सर्व्हरशी संपर्क होऊ शकला नाही. इंटरनेट किंवा सर्व्हर चालू आहे का ते तपासा.', 'error');
                 throw netErr;
@@ -1406,8 +1499,10 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                     document.cookie = "admin_key=" + encodeURIComponent(promptKey.trim()) + "; path=/; max-age=86400; SameSite=Lax";
                     headers['X-Admin-Key'] = promptKey.trim();
                     options.headers = headers;
+                    const sep = url.includes('?') ? '&' : '?';
+                    const retryUrl = url + sep + 'key=' + encodeURIComponent(promptKey.trim());
                     try {{
-                        res = await fetch(url, options);
+                        res = await fetch(retryUrl, options);
                     }} catch (retryErr) {{
                         showToast('❌ सर्व्हरशी संपर्क होऊ शकला नाही: ' + retryErr.message, 'error');
                         throw retryErr;
@@ -1959,15 +2054,19 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             }}
         }}
 
-        async function runOpenClawCycle() {{
-            if (!confirm('🤖 OpenClaw स्वायत्त उत्पादन व विक्री चक्र चालवायचे का?\\n\\nयाने:\\n१. मार्केट ट्रेंड शोधून नवीन विषयाची निवड होईल.\\n२. ५० पानांचे व्यावसायिक ई-बुक (PDF) तयार होईल.\\n३. स्टोअरवर अनलॉक्ड किमतीत लिस्ट होईल.')) return;
-            showToast("⏳ OpenClaw AI टीम कार्यरत आहे... PDF निर्मिती व स्टोअर लिस्टिंग सुरू आहे...", "info");
+        async function runOpenClawCycle(requestedSubject) {{
+            const subjLabel = requestedSubject || "सर्व विषयांचा फिरता क्रम (Round Robin)";
+            if (!confirm('🤖 OpenClaw स्वायत्त उत्पादन व विक्री चक्र चालवायचे का?\\n\\nविषय: ' + subjLabel + '\\n\\nयाने:\\n१. मार्केट व फॅकल्टीकडून अभ्यासक्रम व व्हेक्टर आकृत्या निवडल्या जातील.\\n२. ५०+ पानांचे अधिकृत ई-बुक (PDF) तयार होईल.\\n३. स्टोअरवर अनलॉक्ड किमतीत थेट लिस्ट होईल.')) return;
+            showToast("⏳ OpenClaw AI फॅकल्टी व प्रॉडक्ट फॅक्टरी कार्यरत आहे... PDF निर्मिती सुरू आहे...", "info");
             try {{
-                const res = await adminFetch('/api/admin/openclaw/run_cycle', {{ method: 'POST' }});
+                const res = await adminFetch('/api/admin/openclaw/run_cycle', {{
+                    method: 'POST',
+                    body: JSON.stringify({{ subject: requestedSubject || "" }})
+                }});
                 const data = await res.json();
                 if (data.success) {{
                     showToast('🎉 ' + data.message, 'success');
-                    alert('🎉 OpenClaw AI चक्र यशस्वीरित्या पूर्ण झाले!\\n\\n' + data.message + '\\n\\nउत्पादनाचे नाव: ' + (data.product ? data.product.title : ''));
+                    alert('🎉 OpenClaw AI चक्र यशस्वीरित्या पूर्ण झाले!\\n\\n' + data.message + '\\n\\nउत्पादन: ' + (data.product ? data.product.title : '') + '\\nपाने: ' + (data.product ? data.product.pages : '') + '\\nकिंमत: ₹' + (data.product ? data.product.price_inr : ''));
                     location.reload();
                 }} else {{
                     showToast('❌ त्रुटी: ' + data.message, 'error');
@@ -1979,23 +2078,91 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             }}
         }}
 
+        async function triggerSelectedSubjectBuild() {{
+            const sel = document.getElementById('openclawSubjectSelect');
+            const subj = sel ? sel.value : '';
+            await runOpenClawCycle(subj);
+        }}
+
         async function viewOpenClawStatus() {{
+            const modal = document.getElementById('openclawDetailModal');
+            if (modal) modal.style.display = 'flex';
+            await fetchOpenClawStatus(true);
+        }}
+
+        async function fetchOpenClawStatus(isManual) {{
             try {{
                 const res = await adminFetch('/api/admin/openclaw/status');
                 const data = await res.json();
-                if (data.success && data.data) {{
-                    const d = data.data;
-                    let msg = "🤖 OPENCLAW स्वायत्त AI टीम स्थिती:\\n";
-                    msg += "━━━━━━━━━━━━━━━━━━━━━━\\n";
-                    msg += "👔 CEO: " + d.ceo.name + " (" + d.ceo.role + ")\\n";
-                    msg += "💰 प्राईसिंग: " + d.pricing_engine + "\\n\\n";
-                    msg += "कार्यरत एजंट्स:\\n";
-                    d.agents.forEach((a, i) => {{
-                        msg += (i+1) + ". " + a.agent + " (" + a.status + ")\\n   प्रमुख: " + a.lead + "\\n";
+                if (data.success && data.data && data.data.agents) {{
+                    const agents = data.data.agents;
+                    // 1. Update dashboard live grid cards
+                    agents.forEach(a => {{
+                        const statusBadge = document.getElementById('agent_status_' + a.id);
+                        if (statusBadge) {{
+                            statusBadge.innerText = a.status.split(' ')[0] + ' ' + (a.status.includes('सक्रिय') ? 'सक्रिय' : (a.status.includes('सुरक्षित') ? 'सुरक्षित' : 'कार्यरत'));
+                        }}
+                        const taskEl = document.getElementById('agent_task_' + a.id);
+                        if (taskEl) {{
+                            taskEl.innerHTML = '<b>सध्याचे कार्य:</b> ' + escapeHtml(a.current_task);
+                        }}
+                        const timeEl = document.getElementById('agent_time_' + a.id);
+                        if (timeEl && a.last_active) {{
+                            timeEl.innerText = 'अद्यतन: ' + a.last_active;
+                        }}
                     }});
-                    alert(msg);
+
+                    // 2. Update openclawDetailModal grid
+                    const modalGrid = document.getElementById('openclawModalAgentsGrid');
+                    if (modalGrid) {{
+                        let html = '';
+                        agents.forEach((a, i) => {{
+                            html += '<div style="background:#1e293b; padding:14px; border-radius:10px; border:1px solid #334155; display:flex; flex-direction:column; justify-content:space-between;">';
+                            html += '  <div>';
+                            html += '    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">';
+                            html += '      <div>';
+                            html += '        <div style="font-size:13px; font-weight:800; color:#818cf8;">' + escapeHtml(a.agent) + '</div>';
+                            html += '        <div style="font-size:11px; color:#94a3b8; font-weight:600;">' + escapeHtml(a.lead) + '</div>';
+                            html += '      </div>';
+                            html += '      <span class="badge badge-green" style="font-size:10px; white-space:nowrap;">' + escapeHtml(a.status) + '</span>';
+                            html += '    </div>';
+                            html += '    <div style="font-size:11px; color:#cbd5e1; margin-top:8px; line-height:1.4;">';
+                            html += '      <b style="color:#fcd34d;">सध्याचे कार्य:</b> ' + escapeHtml(a.current_task);
+                            html += '    </div>';
+                            html += '    <div style="font-size:10.5px; color:#94a3b8; margin-top:6px;">';
+                            html += '      <b>अनुभव / भूमिका:</b> ' + escapeHtml(a.seniority || a.role_desc);
+                            html += '    </div>';
+                            html += '  </div>';
+                            html += '  <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:8px; border-top:1px solid #334155;">';
+                            html += '    <span style="font-size:10px; color:#64748b;">' + (a.last_active ? 'अद्यतन: ' + a.last_active.split(' ')[1] : '') + '</span>';
+                            html += '    <button class="btn btn-sm btn-outline" onclick="testIndividualAgent(\'' + a.id + '\')" style="font-size:10.5px; padding:3px 8px;">⚡ थेट चाचणी</button>';
+                            html += '  </div>';
+                            html += '</div>';
+                        }});
+                        modalGrid.innerHTML = html;
+                    }}
+                    if (isManual) {{
+                        showToast("✅ OpenClaw सर्व १२ एजंट्सची स्थिती अद्ययावत केली!", "success");
+                    }}
+                }}
+            }} catch(e) {{
+                console.warn('OpenClaw status fetch error:', e);
+            }}
+        }}
+
+        async function testIndividualAgent(agentId) {{
+            try {{
+                showToast("⏳ एजंट '" + agentId + "' वर कार्य सुरू आहे...", "info");
+                const res = await adminFetch('/api/admin/openclaw/run_agent_task', {{
+                    method: 'POST',
+                    body: JSON.stringify({{ agent_id: agentId }})
+                }});
+                const data = await res.json();
+                if (data.success) {{
+                    alert('✅ ' + data.agent + ' चाचणी यशस्वी!\\n\\nकृती: ' + data.action + '\\nनिकाल: ' + data.result);
+                    await fetchOpenClawStatus(false);
                 }} else {{
-                    alert('❌ टीम स्थिती मिळवण्यात अडचण आली.');
+                    alert('❌ चाचणी अयशस्वी: ' + data.message);
                 }}
             }} catch(e) {{
                 alert('❌ सर्व्हर त्रुटी: ' + e.message);
@@ -2129,6 +2296,10 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 row.style.display = (!q || text.includes(q)) ? '' : 'none';
             }});
         }}
+
+        // Auto-refresh OpenClaw agents status every 12 seconds & on initial view
+        setInterval(fetchOpenClawStatus, 12000);
+        setTimeout(fetchOpenClawStatus, 800);
     </script>
 </body>
 </html>

@@ -52,10 +52,21 @@ class OpenClawRealAutonomousFrameworkAudit(unittest.TestCase):
         print("\n  ✅ Suite 1 Passed: 10,000 OpenClaw filesystem memory parity scenarios verified.")
 
     def test_02_autonomous_gateway_loop_10000_scenarios(self):
-        """Suite 2: Verify autonomous cycle capabilities and state transitions (10,000 iterations)."""
+        """Suite 2: Verify autonomous cycle capabilities, dynamic per-agent telemetry & state transitions (10,000 iterations)."""
         status = self.team.get_team_status()
         self.assertEqual(status["status"], "active")
-        self.assertGreaterEqual(len(status["agents"]), 11)
+        self.assertEqual(len(status["agents"]), 12, "Must have exactly 12 OpenClaw agents")
+
+        agent_ids = [a["id"] for a in status["agents"]]
+        self.assertIn("ceo", agent_ids)
+        self.assertIn("civil_faculty", agent_ids)
+        self.assertIn("mech_faculty", agent_ids)
+        self.assertIn("mpsc_dean", agent_ids)
+
+        # Test single agent task execution on demand
+        for a_id in agent_ids:
+            res = self.team.execute_single_agent_task(a_id)
+            self.assertTrue(res["success"], f"Single task failed on {a_id}")
 
         for i in range(10000):
             # Verify dynamic jitter calculation for Telegram anti-ban compliance
@@ -67,7 +78,13 @@ class OpenClawRealAutonomousFrameworkAudit(unittest.TestCase):
             backoff = self.team.policy_guardian.calculate_floodwait_backoff(15.0)
             self.assertGreaterEqual(backoff, 17.0)
 
-        print("\n  ✅ Suite 2 Passed: 10,000 autonomous gateway loop & rate limit scenarios verified.")
+        # Verify agent task state is updated and not empty
+        updated_status = self.team.get_team_status()
+        for a in updated_status["agents"]:
+            self.assertIsNotNone(a.get("current_task"), f"Agent {a['id']} has empty current_task")
+            self.assertGreater(len(a["current_task"]), 3)
+
+        print("\n  ✅ Suite 2 Passed: 10,000 autonomous gateway loop & live per-agent telemetry scenarios verified.")
 
     def test_03_community_interaction_and_brand_shield_10000_scenarios(self):
         """Suite 3: Verify 24/7 human-like interaction & competitor brand filtering (10,000 scenarios)."""

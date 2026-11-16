@@ -8275,8 +8275,9 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             try:
                 from app.agents.openclaw_orchestrator import openclaw_team
                 store_url = get_store_web_url()
+                requested_subject = data.get("subject") if isinstance(data, dict) else None
                 loop = asyncio.new_event_loop()
-                cycle_res = loop.run_until_complete(openclaw_team.execute_autonomous_product_cycle(store_url=store_url))
+                cycle_res = loop.run_until_complete(openclaw_team.execute_autonomous_product_cycle(store_url=store_url, requested_subject=requested_subject))
                 loop.close()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -8285,6 +8286,26 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 return
             except Exception as e:
                 logger.error(f"Error executing OpenClaw cycle: {e}")
+                self.send_response(500)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
+                return
+
+        # OpenClaw Execute Individual Agent Task
+        if path == "/api/admin/openclaw/run_agent_task":
+            try:
+                from app.agents.openclaw_orchestrator import openclaw_team
+                agent_id = data.get("agent_id", "") if isinstance(data, dict) else ""
+                payload = data.get("payload", {}) if isinstance(data, dict) else {}
+                task_res = openclaw_team.execute_single_agent_task(agent_id, payload)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps(task_res, ensure_ascii=False).encode("utf-8"))
+                return
+            except Exception as e:
+                logger.error(f"Error executing OpenClaw agent task: {e}")
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.end_headers()
