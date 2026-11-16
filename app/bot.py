@@ -2884,12 +2884,41 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     # -------------------------------------------------------------
-    # Case 4: Human-Like 1-on-1 Student Mentorship & Conversational Counseling (OpenClaw)
+    # Case 4: Group Engagement & Human-Like 1-on-1 Student Mentorship (OpenClaw)
     # -------------------------------------------------------------
     if raw_text and len(raw_text) > 2 and not raw_text.startswith('/'):
         try:
             from app.agents.openclaw_orchestrator import openclaw_team
             all_prods = packaging_agent.get_all_products(DB_PATH)
+            chat_type = str(getattr(update.effective_chat, "type", "private"))
+
+            # If inside a group or supergroup: Use CommunityEngagementAndNewsHarvesterAgent
+            if chat_type in ("group", "supergroup"):
+                group_res = openclaw_team.community_engager.respond_to_group_student_query(
+                    incoming_query=raw_text,
+                    student_name=user.first_name or "विद्यार्थी मित्रा",
+                    available_products=all_prods,
+                    store_url=get_store_web_url()
+                )
+                reply_text = group_res.get("reply")
+                rec_prod = group_res.get("recommended_product")
+
+                keyboard = []
+                if rec_prod:
+                    btn_t = rec_prod.get("title", "ई-बुक")
+                    btn_p = rec_prod.get("price_inr", 29)
+                    keyboard.append([InlineKeyboardButton(f"📖 {btn_t} (₹{btn_p})", url=f"{get_store_web_url()}")])
+                keyboard.append([InlineKeyboardButton("📚 डिजिटल ई-बुक्स स्टोअर", url=get_store_web_url())])
+
+                await msg.reply_text(
+                    reply_text,
+                    parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None,
+                    disable_web_page_preview=True
+                )
+                return
+
+            # If in direct private chat: Use ConversationalSalesCounselorAgent
             counselor_res = openclaw_team.sales_counselor.handle_student_inquiry(
                 incoming_text=raw_text,
                 available_products=all_prods,

@@ -920,6 +920,10 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                     <div style="font-size:12px; font-weight:700; color:#60a5fa;">⚙️ ११. Mechanical Engineering Chief Faculty</div>
                     <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">डॉ. अमित शर्मा (२१+ वर्षे अनुभव): थर्मोडायनॅमिक्स, P-V सायकल, IC इंजिन, SOM व मॅन्युफॅक्चरिंग.</div>
                 </div>
+                <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
+                    <div style="font-size:12px; font-weight:700; color:#e879f9;">🛡️ १२. Group Chatting & News Brand Shield</div>
+                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">स्वप्नील साळुंखे (२०+ वर्षे अनुभव): २४/७ ग्रुप सहभाग, इतर चॅनेलमधील बातम्यांचे पुनर्लेखन व ब्रँड/क्लास नावे फिल्टर.</div>
+                </div>
             </div>
         </div>
 

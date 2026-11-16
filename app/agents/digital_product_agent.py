@@ -1326,3 +1326,17 @@ class DigitalProductPackagingAgent(BaseSeniorAgent):
         logger.info(f"✅ Generated digital product PDF: {target_path} ({target_path.stat().st_size} bytes)")
         return target_path
 
+
+# Global singleton instance for module exports
+packaging_agent = DigitalProductPackagingAgent()
+
+__all__ = [
+    "DigitalProductPackagingAgent",
+    "packaging_agent",
+    "CANONICAL_SUBJECTS",
+    "DEFAULT_PRODUCTS",
+    "normalize_product_subject",
+    "get_subject_specific_content",
+]
+
+
