@@ -908,6 +908,18 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                     <div style="font-size:12px; font-weight:700; color:#ec4899;">💬 ८. Human-Like Student Counselor</div>
                     <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">मोठ्या भावाप्रमाणे (निलेश दादा) वैयक्तिक DM व चॅटमधून आपुलकीने शंका निरसन व विक्री.</div>
                 </div>
+                <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
+                    <div style="font-size:12px; font-weight:700; color:#fbbf24;">🏛️ ९. MPSC Academic Dean</div>
+                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">डॉ. रवींद्र देशमुख (२२+ वर्षे अनुभव): राज्यसेवा व गट-ब/क समग्र GS व ॲनालिटिकल प्रश्न.</div>
+                </div>
+                <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
+                    <div style="font-size:12px; font-weight:700; color:#34d399;">🏗️ १०. Civil Engineering Chief Faculty</div>
+                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">प्रा. राजेश जोशी (२४+ वर्षे अनुभव): SOM, RCC (IS 456), Steel, Soil व तांत्रिक आकृत्या.</div>
+                </div>
+                <div style="background:#0f172a; padding:12px 14px; border-radius:8px; border:1px solid #334155;">
+                    <div style="font-size:12px; font-weight:700; color:#60a5fa;">⚙️ ११. Mechanical Engineering Chief Faculty</div>
+                    <div style="font-size:11px; color:#cbd5e1; margin-top:4px;">डॉ. अमित शर्मा (२१+ वर्षे अनुभव): थर्मोडायनॅमिक्स, P-V सायकल, IC इंजिन, SOM व मॅन्युफॅक्चरिंग.</div>
+                </div>
             </div>
         </div>
 
@@ -1167,6 +1179,9 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                         <label class="form-label">विषय / कॅटेगरी (Subject / Category) *</label>
                         <input type="text" id="add_subject" list="subject_list" class="form-input" placeholder="निवडा किंवा नवा विषय टाईप करा..." value="General Knowledge" required>
                         <datalist id="subject_list">
+                            <option value="MPSC">
+                            <option value="Civil Engineering">
+                            <option value="Mechanical Engineering">
                             <option value="Current Affairs">
                             <option value="Marathi">
                             <option value="English">

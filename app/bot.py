@@ -2886,7 +2886,7 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
     # -------------------------------------------------------------
     # Case 4: Human-Like 1-on-1 Student Mentorship & Conversational Counseling (OpenClaw)
     # -------------------------------------------------------------
-    if raw_text and len(raw_text) > 2 and not raw_text.startswith("/"):
+    if raw_text and len(raw_text) > 2 and not raw_text.startswith('/'):
         try:
             from app.agents.openclaw_orchestrator import openclaw_team
             all_prods = packaging_agent.get_all_products(DB_PATH)
@@ -2900,7 +2900,9 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
 
             keyboard = []
             if rec_prod:
-                keyboard.append([InlineKeyboardButton(f"🛒 {rec_prod.get('title', 'ई-बुक')} खरेदी करा (₹{rec_prod.get('price_inr', 29)})", callback_data=f"buy_prod:{rec_prod.get('id')}")])
+                btn_t = rec_prod.get("title", "ई-बुक")
+                btn_p = rec_prod.get("price_inr", 29)
+                keyboard.append([InlineKeyboardButton(f"🛒 {btn_t} खरेदी करा (₹{btn_p})", callback_data=f"buy_prod:{rec_prod.get('id')}")])
             keyboard.append([InlineKeyboardButton("📚 सर्व डिजिटल पुस्तके पहा", callback_data="store")])
             keyboard.append([InlineKeyboardButton("🔙 मुख्य मेनू", callback_data="main_menu")])
 

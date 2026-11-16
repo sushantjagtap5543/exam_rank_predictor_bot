@@ -944,6 +944,9 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None, db_path: Op
 
         <div class="filter-nav">
             <button class="filter-btn active" onclick="filterCategory('All')">सर्व ई-बुक्स (All)</button>
+            <button class="filter-btn" onclick="filterCategory('MPSC')">🏛️ MPSC Special</button>
+            <button class="filter-btn" onclick="filterCategory('Civil Engineering')">🏗️ Civil Engineering</button>
+            <button class="filter-btn" onclick="filterCategory('Mechanical Engineering')">⚙️ Mechanical Engineering</button>
             <button class="filter-btn" onclick="filterCategory('Current Affairs')">📰 चालू घडामोडी</button>
             <button class="filter-btn" onclick="filterCategory('PYQ & Response Sheets')">📑 रिस्पॉन्स शीट Q-Bank</button>
             <button class="filter-btn" onclick="filterCategory('Marathi')">✍️ मराठी व्याकरण</button>

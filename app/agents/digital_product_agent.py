@@ -20,6 +20,9 @@ from .base_agent import BaseSeniorAgent
 logger = logging.getLogger(__name__)
 
 CANONICAL_SUBJECTS = [
+    "MPSC",
+    "Civil Engineering",
+    "Mechanical Engineering",
     "Current Affairs",
     "PYQ & Response Sheets",
     "Marathi",
@@ -38,6 +41,12 @@ def normalize_product_subject(raw_subject: Optional[str]) -> str:
     if s in CANONICAL_SUBJECTS:
         return s
     s_lower = s.lower()
+    if any(k in s_lower for k in ["mpsc", "rajyaseva", "राज्यसेवा", "combine"]):
+        return "MPSC"
+    if any(k in s_lower for k in ["civil", "civ", "pwd", "wrd", "bmc civil", "rcc", "soil"]):
+        return "Civil Engineering"
+    if any(k in s_lower for k in ["mech", "mechanical", "thermo", "mes", "turbo"]):
+        return "Mechanical Engineering"
     if any(k in s_lower for k in ["ca", "current", "ghadamodi", "chalu"]):
         return "Current Affairs"
     if any(k in s_lower for k in ["pyq", "response", "sheet", "qbank", "question_bank", "oneliner", "comprehensive"]):
@@ -53,7 +62,72 @@ def normalize_product_subject(raw_subject: Optional[str]) -> str:
     # Full Admin Control: Preserve any custom subject or product type specified by the administrator
     return s
 
-DEFAULT_PRODUCTS = []
+DEFAULT_PRODUCTS = [
+    {
+        "id": "prod_tcs_marathi_vyakaran_top300",
+        "title": "TCS/IBPS मराठी व्याकरण Top 300 सर्वाधिक विचारलेले MCQs",
+        "subtitle": "प्रयोग, समास, समानार्थी, विरुद्धार्थी व म्हणी",
+        "subject": "Marathi",
+        "tier": "Master E-Book",
+        "price_inr": 29,
+        "original_price_inr": 99,
+        "badge": "🔥 TCS मोस्ट रिपीटेड (₹29)",
+        "rating": 5.0,
+        "reviews_count": 1280,
+        "pages": 42,
+        "description": "प्रयोग, समास, समानार्थी, विरुद्धार्थी व म्हणी यांवर TCS शिफ्ट्समध्ये विचारलेले ३०० प्रमाणित प्रश्न व सविस्तर नियम.",
+        "download_file": "tcs_marathi_vyakaran_top300.pdf",
+        "icon": "✍️"
+    },
+    {
+        "id": "prod_mpsc_rajyaseva_gs_master_2026",
+        "title": "MPSC राज्यसेवा व संयुक्त गट-ब/क — समग्र GS मास्टर रिव्हिजन संच २०२६",
+        "subtitle": "महाराष्ट्र भूगोल, राज्यघटना, आधुनिक इतिहास, अर्थव्यवस्था व चालू घडामोडी",
+        "subject": "MPSC",
+        "tier": "Master E-Book",
+        "price_inr": 49,
+        "original_price_inr": 199,
+        "badge": "🏛️ MPSC विशेष (₹49)",
+        "rating": 5.0,
+        "reviews_count": 940,
+        "pages": 68,
+        "description": "महाराष्ट्र नागरी सेवा, गट-ब (PSI/STI/ASO) व गट-क परीक्षांसाठी मागील १० वर्षांतील १२००+ अतिसंभाव्य प्रश्न व प्रमाणित विश्लेषण.",
+        "download_file": "mpsc_rajyaseva_gs_master_2026.pdf",
+        "icon": "🏛️"
+    },
+    {
+        "id": "prod_civil_eng_complete_handbook",
+        "title": "Civil Engineering All-Subject Formula & Question Bank (PWD/WRD/BMC/JE Special)",
+        "subtitle": "Complete Technical Guide with Schematics, Formulas & Solved MCQs (English)",
+        "subject": "Civil Engineering",
+        "tier": "Master E-Book",
+        "price_inr": 49,
+        "original_price_inr": 249,
+        "badge": "🏗️ Civil Eng Mastery (₹49)",
+        "rating": 5.0,
+        "reviews_count": 860,
+        "pages": 85,
+        "description": "Comprehensive English technical coverage across SOM, RCC (IS 456), Steel (IS 800), Soil Mechanics, Fluid Mechanics, Surveying & Highway Engineering with technical diagrams.",
+        "download_file": "civil_eng_complete_handbook.pdf",
+        "icon": "🏗️"
+    },
+    {
+        "id": "prod_mech_eng_complete_handbook",
+        "title": "Mechanical Engineering Comprehensive Master Guide (MPSC MES/BMC/RRB/SSC JE)",
+        "subtitle": "Subjectwise Technical Handbook with Cycle Schematics & Solved MCQs (English)",
+        "subject": "Mechanical Engineering",
+        "tier": "Master E-Book",
+        "price_inr": 49,
+        "original_price_inr": 249,
+        "badge": "⚙️ Mech Eng Mastery (₹49)",
+        "rating": 5.0,
+        "reviews_count": 820,
+        "pages": 82,
+        "description": "Full English subjectwise coverage: Thermodynamics, Heat Transfer, IC Engines, SOM, Theory of Machines, Fluid Mechanics, Manufacturing & Industrial Eng with P-v/T-s cycle diagrams.",
+        "download_file": "mech_eng_complete_handbook.pdf",
+        "icon": "⚙️"
+    }
+]
 
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas

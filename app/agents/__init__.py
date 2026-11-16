@@ -44,9 +44,12 @@ from .marketing_sales_agent import MarketingSalesAgent
 # OpenClaw Autonomous Enterprise Suite
 from .openclaw_orchestrator import (
     AutonomousProductFactoryAgent,
+    CivilEngineeringFacultyAgent,
     CommunityIntelligenceHarvesterAgent,
     ConversationalSalesCounselorAgent,
     MarketDemandAnalyzerAgent,
+    MechanicalEngineeringFacultyAgent,
+    MPSCAcademicDeanAgent,
     OpenClawEnterpriseTeam,
     PublicationQualityDesignAgent,
     TelegramPolicyComplianceAgent,
@@ -91,6 +94,9 @@ __all__ = [
     "TelegramPolicyComplianceAgent",
     "MarketDemandAnalyzerAgent",
     "CommunityIntelligenceHarvesterAgent",
+    "MPSCAcademicDeanAgent",
+    "CivilEngineeringFacultyAgent",
+    "MechanicalEngineeringFacultyAgent",
     "PublicationQualityDesignAgent",
     "AutonomousProductFactoryAgent",
     "ViralGrowthMarketingAgent",

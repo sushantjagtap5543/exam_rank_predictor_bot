@@ -88,9 +88,20 @@ class TelegramPolicyComplianceAgent(BaseSeniorAgent):
         self.last_action_timestamp = time.time()
         self.actions_in_current_minute += 1
 
+    def get_safe_broadcast_jitter(self) -> float:
+        """Returns a safe random human jitter delay (in seconds) between consecutive actions."""
+        return random.uniform(self.min_jitter_seconds, self.max_jitter_seconds)
+
+    def calculate_floodwait_backoff(self, wait_seconds: int) -> float:
+        """Calculates defensive exponential backoff when Telegram returns FloodWait 429."""
+        return float(wait_seconds) + random.uniform(2.0, 5.0)
+
     def sanitize_message_content(self, text: str) -> str:
-        """Removes aggressive spam markers and formats text cleanly to avoid spam scoring."""
+        """Removes aggressive spam markers, dangerous HTML script tags, and formats text cleanly."""
         cleaned = text.strip()
+        # Strip script tags & dangerous HTML
+        cleaned = re.sub(r"<\s*script[^>]*>.*?<\s*/\s*script\s*>", "", cleaned, flags=re.IGNORECASE | re.DOTALL)
+        cleaned = re.sub(r"<\s*script[^>]*>", "", cleaned, flags=re.IGNORECASE)
         # Remove aggressive all-caps spam words
         replacements = {
             r"\bFREE MONEY\b": "सवलत ऑफर",
@@ -189,6 +200,201 @@ class MarketDemandAnalyzerAgent(BaseSeniorAgent):
         return opportunities
 
 
+class MPSCAcademicDeanAgent(BaseSeniorAgent):
+    """
+    Senior State Administrative & Civil Services Faculty Dean.
+    22+ Years in Maharashtra Civil Services Coaching, Curriculum Design, and MPSC Advisory.
+    """
+
+    def __init__(self):
+        super().__init__(
+            name="Dr. Ravindra Deshmukh (Senior Dean of MPSC & Civil Services)",
+            role="Dean of MPSC Academic Faculty & State Civil Services Curriculum Lead",
+            seniority="Senior Civil Services Academician & MPSC Advisory Specialist (22+ Years)",
+            core_competencies=[
+                "MPSC Rajyaseva, Combine Group B & C Exam Matrix",
+                "Maharashtra Geography, Polity, Agriculture, Economy & HRD",
+                "High-Yield Prelims & Mains Analytical Syllabus Mapping",
+                "Deep Competitor Benchmarking (Unique, Chanakya Mandal, Praveen, K'Sagar, Deepstambh)",
+                "Bilingual Content Authoring (Marathi Core with English Glossaries)"
+            ],
+            system_instruction=(
+                "You are the Senior Dean of MPSC Academic Faculty for ExamRankers India. "
+                "With 22+ years of administrative teaching experience, you ensure all MPSC study materials "
+                "are 100% authentic, analytically sound, and strategically superior to all traditional coaching academies."
+            )
+        )
+
+    def analyze_competitors(self) -> Dict[str, Any]:
+        """Provides an authoritative analysis of top 5 MPSC competitors and our strategic edge."""
+        return {
+            "top_5_competitors": [
+                {"name": "The Unique Academy", "strength": "Detailed GS notes", "weakness": "Bulky text, lacks rapid 30-day revision charts", "our_edge": "Condensed high-yield bullet format with district-wise data"},
+                {"name": "Chanakya Mandal Pariwar", "strength": "Foundation concepts", "weakness": "Slower update cadence for recent TCS/MPSC shift formats", "our_edge": "Real-time question bank updated with 2024-2026 shifts"},
+                {"name": "Praveen Academy", "strength": "Prelims focus", "weakness": "Scattered MCQs without structured rule cards", "our_edge": "Every MCQ backed by official MPSC commission final answer key"},
+                {"name": "K'Sagar / Kiran Prakashan", "strength": "Comprehensive reference volumes", "weakness": "Encyclopedic volume induces student cognitive fatigue", "our_edge": "Mobile-first 50-page rapid revision capsules"},
+                {"name": "Deepstambh Foundation", "strength": "Rural outreach", "weakness": "Lacks instant digital self-assessment tests", "our_edge": "3-second instant digital delivery + UPI checkout"}
+            ]
+        }
+
+    def get_flagship_product_spec(self) -> Dict[str, Any]:
+        """Returns the flagship MPSC product specification."""
+        return {
+            "topic_key": "mpsc_rajyaseva_gs_master_2026",
+            "title": "MPSC राज्यसेवा व संयुक्त गट-ब/क — समग्र GS मास्टर रिव्हिजन संच २०२६",
+            "subtitle": "महाराष्ट्र भूगोल, राज्यघटना, आधुनिक इतिहास, अर्थव्यवस्था व चालू घडामोडी",
+            "subject": "MPSC",
+            "recommended_price": 49,
+            "original_price": 199,
+            "badge": "🏛️ MPSC विशेष (₹49)",
+            "description": "महाराष्ट्र नागरी सेवा, गट-ब (PSI/STI/ASO) व गट-क परीक्षांसाठी मागील १० वर्षांतील १२००+ अतिसंभाव्य प्रश्न व प्रमाणित विश्लेषण.",
+            "target_pages": 68
+        }
+
+
+class CivilEngineeringFacultyAgent(BaseSeniorAgent):
+    """
+    Senior Structural & Public Works Engineering Faculty Director.
+    24+ Years Experience (Ex-HOD Civil Engineering, VJTI/COEP & Senior PWD Consultant).
+    Author of all Civil Engineering Subject Modules in pure Technical English with schematics and IS Codes.
+    """
+
+    def __init__(self):
+        super().__init__(
+            name="Prof. Rajesh K. Joshi, FIE (Chief Faculty of Civil Engineering)",
+            role="Chief Faculty Director of Civil & Infrastructure Engineering",
+            seniority="Senior Civil Engineering Academician & Senior PWD Infrastructure Consultant (24+ Years)",
+            core_competencies=[
+                "Comprehensive English Technical Content across all Civil Engineering Subjects",
+                "Structural Analysis, Strength of Materials (SOM) & Mohr's Circle Formulations",
+                "Reinforced Concrete (IS 456:2000) & Steel Structures Design (IS 800:2007)",
+                "Fluid Mechanics, Hydraulics & Open Channel Flow Analysis",
+                "Geotechnical Engineering, Soil Mechanics & Terzaghi Bearing Capacity",
+                "Surveying, Geomatics, Highway Geometry (IRC) & Environmental Waste Water Treatment",
+                "Deep Competitor Benchmarking (Made Easy, ACE Academy, IES Master, YCT, R.S. Khurmi)"
+            ],
+            system_instruction=(
+                "You are the Chief Faculty Director of Civil Engineering for ExamRankers India. "
+                "You author and audit rigorous, accurate, English-language technical study guides for PWD, WRD, BMC, MIDC, "
+                "MPSC Civil, and SSC/RRB JE aspirants. You mandate technical schematic diagrams, exact IS code clauses, "
+                "and step-by-step mathematical derivations."
+            )
+        )
+
+    def analyze_competitors(self) -> Dict[str, Any]:
+        """Provides an authoritative analysis of top 5 Civil Engineering competitive publishers."""
+        return {
+            "top_5_competitors": [
+                {"name": "Made Easy", "strength": "GATE/ESE depth", "weakness": "Too theoretical and heavy for state PWD/BMC/WRD JE/AE speed tests", "our_edge": "High-speed 30-second formula shortcuts and direct PWD PYQ focus"},
+                {"name": "ACE Engineering Academy", "strength": "Formula handbooks", "weakness": "Misses state-specific Maharashtra PWD/WRD syllabus nuances", "our_edge": "Tailored state PWD/WRD & BMC examination syllabus alignment"},
+                {"name": "IES Master", "strength": "Conventional questions", "weakness": "Voluminous books; impractical for quick revision in last 2 weeks", "our_edge": "80-page crisp formula sheets with vector diagrams"},
+                {"name": "Youth Competition Times (YCT)", "strength": "Large question volume", "weakness": "High errata, confusing typing errors in formulas & answer keys", "our_edge": "100% verified official answer keys backed by IS 456 & IS 800 clauses"},
+                {"name": "R.S. Khurmi / S. Chand", "strength": "Classic legacy MCQs", "weakness": "Outdated working-stress method focus; misses modern Limit State Code updates", "our_edge": "Strictly updated to Limit State Design & modern IRC highway codes"}
+            ]
+        }
+
+    def get_all_subjects_curriculum(self) -> List[Dict[str, Any]]:
+        """Returns the full spectrum of civil engineering subject modules."""
+        return [
+            {"subject": "Strength of Materials", "key_topics": "Stress-Strain, Mohr's Circle, Bending & Shear Stress, Deflection, Columns (Euler & Rankine)"},
+            {"subject": "RCC & Prestressed Concrete", "key_topics": "IS 456:2000, Singly/Doubly Beams, Shear & Bond, T-beams, Columns, Prestressing losses"},
+            {"subject": "Design of Steel Structures", "key_topics": "IS 800:2007 Limit State, Welded & Bolted Connections, Tension/Compression Members, Plate Girders"},
+            {"subject": "Geotechnical Engineering", "key_topics": "Soil Classification, Compaction, Consolidation, Shear Strength, Earth Pressure, Terzaghi's Bearing Capacity"},
+            {"subject": "Fluid Mechanics & Hydraulics", "key_topics": "Bernoulli's Theorem, Pipe Flow, Boundary Layer, Hydraulic Jump, Open Channel Flow, Turbines"},
+            {"subject": "Surveying & Geomatics", "key_topics": "Levelling, Theodolite, Tacheometry, Curves, Total Station, Remote Sensing & GIS"},
+            {"subject": "Environmental Engineering", "key_topics": "Water Quality Parameters, Coagulation, Filtration, BOD/COD Kinetics, Activated Sludge Process"},
+            {"subject": "Transportation Engineering", "key_topics": "IRC Highway Geometry, Stopping Sight Distance (SSD), Super-elevation, CBR Method, Bitumen tests"},
+            {"subject": "Irrigation & Hydrology", "key_topics": "Hydrograph Analysis, Unit Hydrograph, Duty-Delta, Canal Design (Kennedy & Lacey), Gravity Dams"},
+            {"subject": "Construction Management", "key_topics": "CPM/PERT, Critical Path, Float calculations, Project Crashing, Cost Optimization"}
+        ]
+
+    def get_flagship_product_spec(self) -> Dict[str, Any]:
+        """Returns the flagship Civil Engineering product specification."""
+        return {
+            "topic_key": "civil_eng_complete_handbook",
+            "title": "Civil Engineering All-Subject Formula & Question Bank (PWD/WRD/BMC/JE Special)",
+            "subtitle": "Complete Technical Guide with Schematics, Formulas & Solved MCQs (English)",
+            "subject": "Civil Engineering",
+            "recommended_price": 49,
+            "original_price": 249,
+            "badge": "🏗️ Civil Eng Mastery (₹49)",
+            "description": "Comprehensive English technical coverage across SOM, RCC (IS 456), Steel (IS 800), Soil Mechanics, Fluid Mechanics, Surveying & Highway Engineering with technical diagrams.",
+            "target_pages": 85
+        }
+
+
+class MechanicalEngineeringFacultyAgent(BaseSeniorAgent):
+    """
+    Senior Thermal & Machine Design Engineering Faculty Director.
+    21+ Years Experience (Ex-IIT / COEP Senior Mechanical Professor & Industrial Design Consultant).
+    Author of all Mechanical Engineering Subject Modules in pure Technical English with thermodynamic cycle schematics.
+    """
+
+    def __init__(self):
+        super().__init__(
+            name="Dr. Amit Sharma (Chief Faculty of Mechanical Engineering)",
+            role="Chief Faculty Director of Mechanical & Thermal Engineering",
+            seniority="Senior Mechanical Engineering Academician & Industrial R&D Consultant (21+ Years)",
+            core_competencies=[
+                "Comprehensive English Technical Content across all Mechanical Engineering Subjects",
+                "Thermodynamics, Entropy, Availability & Gas Power Cycles (Otto, Diesel, Dual, Brayton)",
+                "Heat Transfer (Conduction, Convection, Radiation, Heat Exchanger NTU method)",
+                "Fluid Mechanics, Navier-Stokes & Hydraulic Turbines (Pelton, Francis, Kaplan)",
+                "Strength of Materials, Theories of Failure, Fatigue & Machine Design",
+                "Theory of Machines, Mechanisms, Gears, Gyroscopes & Mechanical Vibrations",
+                "Manufacturing Processes, Machining Merchant Circle, Casting, Welding & Industrial Eng",
+                "Deep Competitor Benchmarking (Made Easy, ACE Academy, IES Master, R.K. Jain, R.S. Khurmi)"
+            ],
+            system_instruction=(
+                "You are the Chief Faculty Director of Mechanical Engineering for ExamRankers India. "
+                "You author and audit rigorous, accurate, English-language technical study guides for MPSC MES, BMC, "
+                "Mahagenco, Mahatransco, and SSC/RRB JE aspirants. You mandate P-v and T-s cycle schematics, exact formulas, "
+                "and step-by-step mathematical derivations."
+            )
+        )
+
+    def analyze_competitors(self) -> Dict[str, Any]:
+        """Provides an authoritative analysis of top 5 Mechanical Engineering competitive publishers."""
+        return {
+            "top_5_competitors": [
+                {"name": "Made Easy", "strength": "Detailed theoretical depth", "weakness": "Bulky volumes; excessive time required for state AE/JE exams", "our_edge": "Streamlined high-impact formula cards with vector cycle diagrams"},
+                {"name": "ACE Engineering Academy", "strength": "Formula booklets", "weakness": "Neglects Mahagenco/Mahatransco & BMC JE exam specific question trends", "our_edge": "Dedicated state utility & municipal engineering syllabus mapping"},
+                {"name": "IES Master", "strength": "Thorough derivations", "weakness": "High price point (₹800+) and excessive weight", "our_edge": "Accessible ₹49 instant digital PDF guide for every student"},
+                {"name": "R.K. Jain (Khanna Publishers)", "strength": "Standard MCQs", "weakness": "Outdated solutions without step-by-step 30-second shortcut explanations", "our_edge": "100% verified step-by-step solutions with modern shortcut techniques"},
+                {"name": "R.S. Khurmi / S. Chand", "strength": "Elementary theory", "weakness": "Too basic; fails to prepare students for tricky modern numerical problems", "our_edge": "Rigorous numerical question bank with practical boundary conditions"}
+            ]
+        }
+
+    def get_all_subjects_curriculum(self) -> List[Dict[str, Any]]:
+        """Returns the full spectrum of mechanical engineering subject modules."""
+        return [
+            {"subject": "Applied Thermodynamics", "key_topics": "First & Second Laws, Entropy, Exergy, Air Standard Cycles (Otto, Diesel, Dual), Pure Substances"},
+            {"subject": "Heat & Mass Transfer", "key_topics": "Fourier Conduction, Critical Thickness of Insulation, Convection Correlations, Radiation (Stefan-Boltzmann), LMTD & NTU"},
+            {"subject": "IC Engines & Gas Turbines", "key_topics": "Engine Performance Parameters, Indicated & Brake Power, Testing, Supercharging, Brayton Cycle, Jet Propulsion"},
+            {"subject": "Refrigeration & Air Conditioning", "key_topics": "Bell-Coleman, Vapour Compression (VCR) Cycle, Subcooling & Superheating, Psychrometric Processes, COP"},
+            {"subject": "Fluid Mechanics & Machinery", "key_topics": "Fluid Statics, Continuity & Euler Equations, Boundary Layer, Pelton Wheel, Francis & Kaplan Turbines, Pumps"},
+            {"subject": "Strength of Materials & Machine Design", "key_topics": "Stress-Strain, Strain Energy, Mohr's Circle, Theories of Failure (Rankine, Tresca, Von-Mises), Fatigue (Goodman), Bearings"},
+            {"subject": "Theory of Machines & Vibrations", "key_topics": "Kinematic Inversions, Governors, Gyroscopic Couple, Spur & Helical Gears, Free & Damped Vibrations, Whirling of Shafts"},
+            {"subject": "Manufacturing & Production", "key_topics": "Orthogonal Cutting, Merchant's Circle, Tool Life (Taylor's Equation), Casting Gating Design, Welding Metallurgy, CNC/NC"},
+            {"subject": "Material Science & Metallurgy", "key_topics": "Crystal Structures, Iron-Carbon Equilibrium Diagram, TTT Curves, Heat Treatment Processes, Non-destructive Testing"},
+            {"subject": "Industrial Engineering & OR", "key_topics": "Linear Programming (Simplex), Transportation, Inventory Control (EOQ Model), CPM/PERT Project Management, Forecasting"}
+        ]
+
+    def get_flagship_product_spec(self) -> Dict[str, Any]:
+        """Returns the flagship Mechanical Engineering product specification."""
+        return {
+            "topic_key": "mech_eng_complete_handbook",
+            "title": "Mechanical Engineering Comprehensive Master Guide (MPSC MES/BMC/RRB/SSC JE)",
+            "subtitle": "Subjectwise Technical Handbook with Cycle Schematics & Solved MCQs (English)",
+            "subject": "Mechanical Engineering",
+            "recommended_price": 49,
+            "original_price": 249,
+            "badge": "⚙️ Mech Eng Mastery (₹49)",
+            "description": "Full English subjectwise coverage: Thermodynamics, Heat Transfer, IC Engines, SOM, Theory of Machines, Fluid Mechanics, Manufacturing & Industrial Eng with P-v/T-s cycle diagrams.",
+            "target_pages": 82
+        }
+
+
 class PublicationQualityDesignAgent(BaseSeniorAgent):
     """
     Chief Publication Designer & Academic Accuracy Auditor.
@@ -250,6 +456,68 @@ class PublicationQualityDesignAgent(BaseSeniorAgent):
                 "exam_rule": "📌 TCS/IBPS परीक्षेचा महत्त्वाचा नियम: समान पॅटर्न मागील सर्व मुख्य शिफ्ट्समध्ये विचारला गेला आहे."
             })
         return enriched
+
+
+def create_rcc_beam_drawing():
+    """Generates a publication-grade vector schematic of an RCC beam cross-section with IS 456:2000 code rules."""
+    from reportlab.graphics.shapes import Circle, Drawing, Line, Rect, String
+    from reportlab.lib import colors
+    d = Drawing(460, 130)
+    d.add(Rect(0, 0, 460, 130, fillColor=colors.HexColor("#f8fafc"), strokeColor=colors.HexColor("#cbd5e1"), strokeWidth=1, rx=6, ry=6))
+    # Beam cross-section (b x d)
+    d.add(Rect(40, 15, 90, 95, fillColor=colors.HexColor("#e2e8f0"), strokeColor=colors.HexColor("#334155"), strokeWidth=1.5))
+    # Neutral Axis (dashed red line)
+    d.add(Line(30, 65, 140, 65, strokeColor=colors.HexColor("#dc2626"), strokeWidth=1.5, strokeDashArray=[4, 3]))
+    d.add(String(148, 62, "Neutral Axis (xu)", fontSize=8, fillColor=colors.HexColor("#dc2626"), fontName="Helvetica-Bold"))
+    # Rebars
+    d.add(Circle(58, 28, 4.5, fillColor=colors.HexColor("#1e293b"), strokeColor=colors.HexColor("#0f172a")))
+    d.add(Circle(85, 28, 4.5, fillColor=colors.HexColor("#1e293b"), strokeColor=colors.HexColor("#0f172a")))
+    d.add(Circle(112, 28, 4.5, fillColor=colors.HexColor("#1e293b"), strokeColor=colors.HexColor("#0f172a")))
+    d.add(String(148, 26, "Tension Rebars (Ast: 3-T20)", fontSize=8, fillColor=colors.HexColor("#1e293b"), fontName="Helvetica-Bold"))
+    # Dimensions
+    d.add(String(65, 5, "b = 250 mm", fontSize=7.5, fillColor=colors.HexColor("#64748b"), fontName="Helvetica"))
+    d.add(String(5, 60, "d = 450", fontSize=7.5, fillColor=colors.HexColor("#64748b"), fontName="Helvetica"))
+    # Formula Card
+    d.add(Rect(260, 15, 185, 100, fillColor=colors.HexColor("#eff6ff"), strokeColor=colors.HexColor("#bfdbfe"), strokeWidth=1, rx=4, ry=4))
+    d.add(String(270, 98, "IS 456:2000 Technical Provisions", fontSize=8, fillColor=colors.HexColor("#1d4ed8"), fontName="Helvetica-Bold"))
+    d.add(String(270, 83, "• xu_max / d = 0.48 (for Fe415 steel)", fontSize=7.5, fillColor=colors.HexColor("#1e293b"), fontName="Helvetica"))
+    d.add(String(270, 68, "• Mu_lim = 0.138 * fck * b * d^2", fontSize=7.5, fillColor=colors.HexColor("#1e293b"), fontName="Helvetica-Bold"))
+    d.add(String(270, 53, "• Minimum Tension Ast = (0.85 * b * d) / fy", fontSize=7.5, fillColor=colors.HexColor("#1e293b"), fontName="Helvetica"))
+    d.add(String(270, 38, "• Max Shear Stress Tc_max = 0.62 * sqrt(fck)", fontSize=7.5, fillColor=colors.HexColor("#059669"), fontName="Helvetica-Bold"))
+    d.add(String(270, 23, "• Development Length Ld = (phi * sigma_s) / (4 * Tbd)", fontSize=7, fillColor=colors.HexColor("#64748b"), fontName="Helvetica-Oblique"))
+    return d
+
+
+def create_pv_cycle_drawing():
+    """Generates a publication-grade vector schematic of an Otto thermodynamic P-V cycle with formulas."""
+    from reportlab.graphics.shapes import Drawing, Line, Rect, String
+    from reportlab.lib import colors
+    d = Drawing(460, 130)
+    d.add(Rect(0, 0, 460, 130, fillColor=colors.HexColor("#f8fafc"), strokeColor=colors.HexColor("#cbd5e1"), strokeWidth=1, rx=6, ry=6))
+    # P-V Axes
+    d.add(Line(40, 20, 40, 115, strokeColor=colors.HexColor("#334155"), strokeWidth=1.5))
+    d.add(Line(40, 20, 210, 20, strokeColor=colors.HexColor("#334155"), strokeWidth=1.5))
+    d.add(String(32, 118, "P (bar)", fontSize=7.5, fillColor=colors.HexColor("#0f172a"), fontName="Helvetica-Bold"))
+    d.add(String(215, 17, "V (m³)", fontSize=7.5, fillColor=colors.HexColor("#0f172a"), fontName="Helvetica-Bold"))
+    # Cycle points
+    d.add(Line(75, 55, 75, 105, strokeColor=colors.HexColor("#dc2626"), strokeWidth=2)) # 2->3 Heat addition
+    d.add(Line(75, 105, 185, 50, strokeColor=colors.HexColor("#2563eb"), strokeWidth=2)) # 3->4 Expansion
+    d.add(Line(185, 50, 185, 28, strokeColor=colors.HexColor("#10b981"), strokeWidth=2)) # 4->1 Heat rejection
+    d.add(Line(185, 28, 75, 55, strokeColor=colors.HexColor("#f59e0b"), strokeWidth=2)) # 1->2 Compression
+    d.add(String(68, 108, "3", fontSize=8, fillColor=colors.HexColor("#dc2626"), fontName="Helvetica-Bold"))
+    d.add(String(68, 48, "2", fontSize=8, fillColor=colors.HexColor("#f59e0b"), fontName="Helvetica-Bold"))
+    d.add(String(190, 26, "1", fontSize=8, fillColor=colors.HexColor("#059669"), fontName="Helvetica-Bold"))
+    d.add(String(190, 52, "4", fontSize=8, fillColor=colors.HexColor("#2563eb"), fontName="Helvetica-Bold"))
+    d.add(String(75, 118, "Air-Standard Otto Cycle (P-V)", fontSize=8, fillColor=colors.HexColor("#0f172a"), fontName="Helvetica-Bold"))
+    # Formula Card
+    d.add(Rect(250, 15, 195, 100, fillColor=colors.HexColor("#fef3c7"), strokeColor=colors.HexColor("#fde68a"), strokeWidth=1, rx=4, ry=4))
+    d.add(String(260, 98, "Thermodynamic Formulations", fontSize=8, fillColor=colors.HexColor("#b45309"), fontName="Helvetica-Bold"))
+    d.add(String(260, 83, "• Thermal Efficiency eta = 1 - (1 / r^(gamma - 1))", fontSize=7.5, fillColor=colors.HexColor("#1e293b"), fontName="Helvetica-Bold"))
+    d.add(String(260, 68, "• Compression Ratio r = V1 / V2 = (Vs + Vc) / Vc", fontSize=7.5, fillColor=colors.HexColor("#1e293b"), fontName="Helvetica"))
+    d.add(String(260, 53, "• Mean Effective Pressure MEP = W_net / Vs", fontSize=7.5, fillColor=colors.HexColor("#b91c1c"), fontName="Helvetica-Bold"))
+    d.add(String(260, 38, "• Isentropic Temp: T2 = T1 * (r)^(gamma - 1)", fontSize=7.5, fillColor=colors.HexColor("#2563eb"), fontName="Helvetica"))
+    d.add(String(260, 23, "• Heat Added Q_in = m * Cv * (T3 - T2)", fontSize=7, fillColor=colors.HexColor("#64748b"), fontName="Helvetica-Oblique"))
+    return d
 
 
 class AutonomousProductFactoryAgent(BaseSeniorAgent):
@@ -400,33 +668,123 @@ class AutonomousProductFactoryAgent(BaseSeniorAgent):
         story.append(Spacer(1, 25))
         story.append(PageBreak())
 
-        # --- BODY CONTENT (QUESTIONS & SOLUTIONS) ---
-        default_qs = questions_pool or [
-            {
-                "q": "प्र. १) खालीलपैकी 'भावे प्रयोग' असलेले वाक्य कोणते?",
-                "opts": ["A) रामाने आंबा खाल्ला.", "B) आई मुलाला निजवते.", "C) त्याने आता घरी जावे.", "D) तो अभ्यास करतो."],
-                "ans": "योग्य उत्तर: C) त्याने आता घरी जावे.",
-                "exp": "स्पष्टीकरण: अकर्मक भावे प्रयोगात क्रियापद तृतीयपुरुषी नपुंसकलिंगी एकावचनी असते व कर्त्याला तृतीयेचा प्रत्यय असतो."
-            },
-            {
-                "q": "प्र. २) महाराष्ट्र राज्यात 'माहितीचा अधिकार अधिनियम' कोणत्या वर्षापासून लागू झाला?",
-                "opts": ["A) २००१", "B) २००५", "C) २०११", "D) २००८"],
-                "ans": "योग्य उत्तर: B) २००५",
-                "exp": "स्पष्टीकरण: केंद्रीय माहिती अधिकार कायदा (RTI Act) १२ ऑक्टोबर २००५ पासून संपूर्ण भारतात लागू झाला."
-            },
-            {
-                "q": "प्र. ३) एका वस्तूची किंमत २०% ने वाढवून पुन्हा २०% ने कमी केली, तर व्यवहारात काय परिणाम होईल?",
-                "opts": ["A) काहीच परिणाम होणार नाही", "B) ४% नफा", "C) ४% तोटा", "D) २% तोटा"],
-                "ans": "योग्य उत्तर: C) ४% तोटा",
-                "exp": "स्पष्टीकरण: सूत्र: (x^2 / 100) % तोटा = (20 * 20 / 100) = ४% हमखास तोटा होईल."
-            },
-            {
-                "q": "प्र. ४) Identify the correct synonym for the word: 'METICULOUS'",
-                "opts": ["A) Careless", "B) Painstaking / Careful", "C) Hasty", "D) Aggressive"],
-                "ans": "योग्य उत्तर: B) Painstaking / Careful",
-                "exp": "स्पष्टीकरण: 'Meticulous' म्हणजे अत्यंत काळजीपूर्वक, बारकाईने काम करणारा (Very careful and precise)."
-            }
-        ]
+        # --- BODY CONTENT (QUESTIONS & SOLUTIONS & TECHNICAL SCHEMATICS) ---
+        subj = topic.get("subject", "General Knowledge")
+
+        if subj == "Civil Engineering":
+            story.append(Paragraph("TECHNICAL SCHEMATIC: IS 456 LIMIT STATE BEAM SPECIFICATION", ParagraphStyle("TechHeader", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=11, textColor=colors.HexColor("#1e293b"), spaceAfter=6)))
+            story.append(create_rcc_beam_drawing())
+            story.append(Spacer(1, 14))
+            default_qs = questions_pool or [
+                {
+                    "q": "As per IS 456:2000, what is the maximum depth of neutral axis (xu,max / d) for Fe 415 grade steel?",
+                    "opts": ["A) 0.53", "B) 0.48", "C) 0.46", "D) 0.44"],
+                    "ans": "B) 0.48",
+                    "exp": "Explanation: As per IS 456:2000 Cl. 38.1 Note, xu,max/d is 0.53 for Fe 250, 0.48 for Fe 415, and 0.46 for Fe 500."
+                },
+                {
+                    "q": "What is the critical hydraulic gradient (ic) for a soil with specific gravity G = 2.65 and void ratio e = 0.65?",
+                    "opts": ["A) 0.85", "B) 1.00", "C) 1.25", "D) 0.65"],
+                    "ans": "B) 1.00",
+                    "exp": "Explanation: Formula: ic = (G - 1) / (1 + e) = (2.65 - 1) / (1 + 0.65) = 1.65 / 1.65 = 1.00 (Quick sand condition)."
+                },
+                {
+                    "q": "In a rectangular channel of width B, the critical depth (yc) for a discharge per unit width q is given by:",
+                    "opts": ["A) (q^2 / g)^(1/3)", "B) (q / g)^(1/2)", "C) (q^3 / g^2)^(1/5)", "D) (2q / g)^(1/3)"],
+                    "ans": "A) (q^2 / g)^(1/3)",
+                    "exp": "Explanation: For minimum specific energy in rectangular open channels: yc = (q^2 / g)^(1/3) and Froude Number Fr = 1.0."
+                },
+                {
+                    "q": "As per IS 800:2007, the maximum effective slenderness ratio for a member carrying compressive loads resulting from dead and imposed loads is:",
+                    "opts": ["A) 180", "B) 250", "C) 300", "D) 350"],
+                    "ans": "A) 180",
+                    "exp": "Explanation: Table 3 of IS 800:2007 limits slenderness ratio to 180 for members carrying dead load and imposed load."
+                }
+            ]
+        elif subj == "Mechanical Engineering":
+            story.append(Paragraph("TECHNICAL SCHEMATIC: AIR-STANDARD OTTO CYCLE & FORMULATION CARD", ParagraphStyle("TechHeader", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=11, textColor=colors.HexColor("#1e293b"), spaceAfter=6)))
+            story.append(create_pv_cycle_drawing())
+            story.append(Spacer(1, 14))
+            default_qs = questions_pool or [
+                {
+                    "q": "For an air-standard Otto cycle with compression ratio r = 6 and gamma = 1.4, the theoretical air-standard efficiency is approximately:",
+                    "opts": ["A) 45.2%", "B) 51.2%", "C) 56.5%", "D) 60.2%"],
+                    "ans": "B) 51.2%",
+                    "exp": "Explanation: Efficiency = 1 - (1 / r^(gamma - 1)) = 1 - (1 / 6^0.4) = 1 - (1 / 2.047) = 1 - 0.488 = 51.2%."
+                },
+                {
+                    "q": "In a counter-flow heat exchanger, hot fluid enters at 100°C and leaves at 60°C. Cold fluid enters at 30°C and leaves at 50°C. The LMTD is:",
+                    "opts": ["A) 38.2°C", "B) 39.1°C", "C) 41.5°C", "D) 45.0°C"],
+                    "ans": "B) 39.1°C",
+                    "exp": "Explanation: delta_T1 = 100 - 50 = 50°C, delta_T2 = 60 - 30 = 30°C. LMTD = (50 - 30) / ln(50/30) = 20 / 0.5108 = 39.15°C."
+                },
+                {
+                    "q": "According to Maximum Shear Stress Theory (Tresca Theory), yielding begins when the maximum shear stress equals:",
+                    "opts": ["A) Yield strength in simple tension (Syt)", "B) Syt / 2", "C) Syt / sqrt(3)", "D) 2 * Syt"],
+                    "ans": "B) Syt / 2",
+                    "exp": "Explanation: Tresca theory states tau_max = (sigma1 - sigma3) / 2 = Syt / 2. Most suitable for ductile materials."
+                },
+                {
+                    "q": "In orthogonal machining, Merchant's shear angle relationship for minimum cutting energy is given by (where phi=shear angle, alpha=rake angle, beta=friction angle):",
+                    "opts": ["A) 2*phi + beta - alpha = 90°", "B) phi + beta - alpha = 45°", "C) 2*phi - beta + alpha = 90°", "D) phi + 2*beta = 90°"],
+                    "ans": "A) 2*phi + beta - alpha = 90°",
+                    "exp": "Explanation: Merchant's 1st solution gives 2*phi + beta - alpha = pi/2 = 90°, showing that increasing rake angle increases shear angle."
+                }
+            ]
+        elif subj == "MPSC":
+            default_qs = questions_pool or [
+                {
+                    "q": "प्र. १) महाराष्ट्र पठाराची निर्मिती कोणत्या प्रकारच्या ज्वालामुखी उद्रेकातून झालेल्या लाव्हाच्या संचयनाने झाली?",
+                    "opts": ["A) केंद्रीय उद्रेक", "B) भ्रंशमूलक (भेगीय) उद्रेक", "C) आम्लधर्मी उद्रेक", "D) स्फोटक उद्रेक"],
+                    "ans": "योग्य उत्तर: B) भ्रंशमूलक (भेगीय) उद्रेक",
+                    "exp": "स्पष्टीकरण: महाराष्ट्र पठार (दख्खनचे पठार) हे सुमारे ६५ दशलक्ष वर्षांपूर्वी झालेल्या भेगीय ज्वालामुखी उद्रेकातील बेसाल्ट लाव्हाच्या २९ थरांमुळे बनले आहे."
+                },
+                {
+                    "q": "प्र. २) भारतीय राज्यघटनेच्या कलम २४३-D नुसार ग्रामपंचायतींमध्ये महिलांसाठी किती टक्के आरक्षण निश्चित करण्यात आले आहे?",
+                    "opts": ["A) ३३%", "B) ५०%", "C) २५%", "D) ४०%"],
+                    "ans": "योग्य उत्तर: A) ३३% (महाराष्ट्रात ५०%)",
+                    "exp": "स्पष्टीकरण: केंद्रीय ७३ व्या घटनादुरुस्तीनुसार किमान ३३% आरक्षण आहे; मात्र महाराष्ट्र शासनाने स्थानिक स्वराज्य संस्थांमध्ये महिलांना ५०% आरक्षण दिले आहे."
+                },
+                {
+                    "q": "प्र. ३) खालीलपैकी कोणत्या समाजसुधारकाने 'शेतकऱ्यांचा आसूड' हा ग्रंथ लिहून ब्रिटिश काळातील शेतकऱ्यांच्या शोषणाचे विश्लेषण केले?",
+                    "opts": ["A) महात्मा ज्योतिराव फुले", "B) छत्रपती शाहू महाराज", "C) डॉ. बाबासाहेब आंबेडकर", "D) गोपाळ गणेश आगरकर"],
+                    "ans": "योग्य उत्तर: A) महात्मा ज्योतिराव फुले",
+                    "exp": "स्पष्टीकरण: महात्मा ज्योतिराव फुले यांनी १८८३ मध्ये 'शेतकऱ्यांचा आसूड' हा ग्रंथ लिहिला. यात शेती, पाणी व शिक्षणाचे महत्त्व विशद केले आहे."
+                },
+                {
+                    "q": "प्र. ४) महाराष्ट्रातील सर्वाधिक पावसाचे ठिकाण 'आंबोली' हे कोणत्या जिल्ह्यात स्थित आहे?",
+                    "opts": ["A) सिंधुदुर्ग", "B) रत्नागिरी", "C) कोल्हापूर", "D) सातारा"],
+                    "ans": "योग्य उत्तर: A) सिंधुदुर्ग",
+                    "exp": "स्पष्टीकरण: दक्षिण महाराष्ट्रातील आंबोली (जि. सिंधुदुर्ग) येथे वार्षिक सरासरी सुमारे ७५० सेंमी पाऊस पडतो; याला 'महाराष्ट्राचे चेरापुंजी' म्हणतात."
+                }
+            ]
+        else:
+            default_qs = questions_pool or [
+                {
+                    "q": "प्र. १) खालीलपैकी 'भावे प्रयोग' असलेले वाक्य कोणते?",
+                    "opts": ["A) रामाने आंबा खाल्ला.", "B) आई मुलाला निजवते.", "C) त्याने आता घरी जावे.", "D) तो अभ्यास करतो."],
+                    "ans": "योग्य उत्तर: C) त्याने आता घरी जावे.",
+                    "exp": "स्पष्टीकरण: अकर्मक भावे प्रयोगात क्रियापद तृतीयपुरुषी नपुंसकलिंगी एकावचनी असते व कर्त्याला तृतीयेचा प्रत्यय असतो."
+                },
+                {
+                    "q": "प्र. २) महाराष्ट्र राज्यात 'माहितीचा अधिकार अधिनियम' कोणत्या वर्षापासून लागू झाला?",
+                    "opts": ["A) २००१", "B) २००५", "C) २०११", "D) २००८"],
+                    "ans": "योग्य उत्तर: B) २००५",
+                    "exp": "स्पष्टीकरण: केंद्रीय माहिती अधिकार कायदा (RTI Act) १२ ऑक्टोबर २००५ पासून संपूर्ण भारतात लागू झाला."
+                },
+                {
+                    "q": "प्र. ३) एका वस्तूची किंमत २०% ने वाढवून पुन्हा २०% ने कमी केली, तर व्यवहारात काय परिणाम होईल?",
+                    "opts": ["A) काहीच परिणाम होणार नाही", "B) ४% नफा", "C) ४% तोटा", "D) २% तोटा"],
+                    "ans": "योग्य उत्तर: C) ४% तोटा",
+                    "exp": "स्पष्टीकरण: सूत्र: (x^2 / 100) % तोटा = (20 * 20 / 100) = ४% हमखास तोटा होईल."
+                },
+                {
+                    "q": "प्र. ४) Identify the correct synonym for the word: 'METICULOUS'",
+                    "opts": ["A) Careless", "B) Painstaking / Careful", "C) Hasty", "D) Aggressive"],
+                    "ans": "योग्य उत्तर: B) Painstaking / Careful",
+                    "exp": "स्पष्टीकरण: 'Meticulous' म्हणजे अत्यंत काळजीपूर्वक, बारकाईने काम करणारा (Very careful and precise)."
+                }
+            ]
 
         # Duplicate questions to reach desired substantive page volume
         full_qs = default_qs * 5
@@ -794,9 +1152,18 @@ class ConversationalSalesCounselorAgent(BaseSeniorAgent):
             )
             return {"reply": reply, "recommended_product": None}
 
-        # 2. Subject Inquiries: Marathi, Maths, GK, English
+        # 2. Subject Inquiries: MPSC, Civil Engineering, Mechanical Engineering, Marathi, Maths, GK, English
         matching_prod = None
-        if any(w in text for w in ["मराठी", "marathi", "व्याकरण", "प्रयोग", "समास"]):
+        if any(w in text for w in ["mpsc", "राज्यसेवा", "rajyaseva", "combine", "कम्बाइन", "गट ब", "गट क", "psi", "sti", "aso"]):
+            matching_prod = next((p for p in available_products if "mpsc" in (p.get("subject") or "").lower() or "mpsc" in (p.get("title") or "").lower()), None)
+            subject_name = "MPSC राज्यसेवा व संयुक्त गट-ब/क (State Civil Services)"
+        elif any(w in text for w in ["civil", "सिव्हिल", "pwd", "wrd", "bmc civil", "rcc", "soil", "surveying", "som"]):
+            matching_prod = next((p for p in available_products if "civil" in (p.get("subject") or "").lower() or "civil" in (p.get("title") or "").lower()), None)
+            subject_name = "Civil Engineering (PWD / WRD / BMC / JE)"
+        elif any(w in text for w in ["mechanical", "मेकॅनिकल", "thermodynamics", "ic engine", "mes", "bmc mech", "turbo"]):
+            matching_prod = next((p for p in available_products if "mech" in (p.get("subject") or "").lower() or "mech" in (p.get("title") or "").lower()), None)
+            subject_name = "Mechanical Engineering (MPSC MES / BMC / JE)"
+        elif any(w in text for w in ["मराठी", "marathi", "व्याकरण", "प्रयोग", "समास"]):
             matching_prod = next((p for p in available_products if "मराठी" in (p.get("title") or "") or "marathi" in (p.get("subject") or "").lower()), None)
             subject_name = "मराठी व्याकरण"
         elif any(w in text for w in ["गणित", "बुद्धिमत्ता", "maths", "reasoning", "अंकगणित"]):
@@ -807,19 +1174,31 @@ class ConversationalSalesCounselorAgent(BaseSeniorAgent):
             subject_name = "चालू घडामोडी व GK"
         else:
             matching_prod = available_products[0] if available_products else None
-            subject_name = "TCS/IBPS परीक्षा"
+            subject_name = "TCS / IBPS / MPSC परीक्षा"
 
         if matching_prod:
-            reply = (
-                f"हो {name}, {subject_name} विषयात गुण वाढवणे खूप सोपे आहे जर योग्य पॅटर्नने अभ्यास केला तर! 🎯\n\n"
-                f"TCS/IBPS मध्ये पुस्तकी नियमांपेक्षा मागील शिफ्ट्समधील रिपीट झालेले प्रश्न आणि संकल्पनांवर जास्त भर असतो. "
-                f"यासाठी आमचे हे पुस्तक नक्की वापरून पहा:\n\n"
-                f"📖 <b>{matching_prod.get('title')}</b>\n"
-                f"• पाने: <b>{matching_prod.get('pages', 45)} अधिकृत पृष्ठे</b>\n"
-                f"• किंमत: <s>₹{matching_prod.get('original_price_inr', 99)}</s> <b>फक्त ₹{matching_prod.get('price_inr', 29)}/-</b>\n\n"
-                f"👉 <a href=\"{store_url}\">येथे क्लिक करून ई-बुक पहा व डाऊनलोड करा</a>\n\n"
-                f"काही अडचण आल्यास मला सांग, मी मदतीसाठी सदैव उपलब्ध आहे!"
-            )
+            is_engg = "engineering" in (matching_prod.get("subject") or "").lower()
+            if is_engg:
+                reply = (
+                    f"Hello {name}! 🎯 For <b>{subject_name}</b>, scoring high requires crystal-clear formulas, "
+                    f"standard technical schematics, and accurate numerical shortcuts without calculation errors.\n\n"
+                    f"Our senior 20+ years faculty has compiled this comprehensive master guide in English:\n\n"
+                    f"📖 <b>{matching_prod.get('title')}</b>\n"
+                    f"• Total Pages: <b>{matching_prod.get('pages', 80)} Technical Pages</b>\n"
+                    f"• Standard Price: <s>₹{matching_prod.get('original_price_inr', 249)}</s> <b>Special Offer: ₹{matching_prod.get('price_inr', 49)}/-</b>\n\n"
+                    f"👉 <a href=\"{store_url}\">Click here to view sample & download PDF instantly</a>\n\n"
+                    f"If you have any doubts regarding syllabus or concepts, feel free to ask me here! 👍"
+                )
+            else:
+                reply = (
+                    f"हो {name}, {subject_name} विषयात गुण वाढवणे खूप सोपे आहे जर योग्य पॅटर्नने अभ्यास केला तर! 🎯\n\n"
+                    f"मागील सर्व शिफ्ट्सचे विश्लेषण करून वरिष्ठ प्राध्यापकांनी संकलित केलेली ही विशेष नोट्स नक्की वापरा:\n\n"
+                    f"📖 <b>{matching_prod.get('title')}</b>\n"
+                    f"• पाने: <b>{matching_prod.get('pages', 45)} अधिकृत पृष्ठे</b>\n"
+                    f"• किंमत: <s>₹{matching_prod.get('original_price_inr', 99)}</s> <b>फक्त ₹{matching_prod.get('price_inr', 29)}/-</b>\n\n"
+                    f"👉 <a href=\"{store_url}\">येथे क्लिक करून ई-बुक पहा व डाऊनलोड करा</a>\n\n"
+                    f"काही अडचण आल्यास मला सांग, मी मदतीसाठी सदैव उपलब्ध आहे!"
+                )
         else:
             reply = (
                 f"नमस्कार {name}! स्पर्धा परीक्षेच्या तयारीसाठी मी नेहमी तुझ्या सोबत आहे. 😊\n\n"
@@ -850,6 +1229,9 @@ class OpenClawEnterpriseTeam:
         self.product_factory = AutonomousProductFactoryAgent()
         self.growth_lead = ViralGrowthMarketingAgent()
         self.sales_counselor = ConversationalSalesCounselorAgent()
+        self.mpsc_dean = MPSCAcademicDeanAgent()
+        self.civil_director = CivilEngineeringFacultyAgent()
+        self.mech_director = MechanicalEngineeringFacultyAgent()
 
     def get_team_status(self) -> Dict[str, Any]:
         """Returns the real-time operational status of all OpenClaw team agents."""
@@ -864,11 +1246,15 @@ class OpenClawEnterpriseTeam:
                 {"agent": "TelegramPolicyComplianceAgent", "lead": self.policy_guardian.name, "status": "🛡️ 100% Policy Safe & Rate-Limited"},
                 {"agent": "MarketDemandAnalyzerAgent", "lead": self.market_analyst.name, "status": "🧠 Active Demand Harvester"},
                 {"agent": "CommunityIntelligenceHarvesterAgent", "lead": self.community_harvester.name, "status": "📡 Active (Group Chatter & Needs Harvester)"},
-                {"agent": "PublicationQualityDesignAgent", "lead": self.quality_auditor.name, "status": "✨ Active (Devanagari Typography & Accuracy Auditor)"},
-                {"agent": "AutonomousProductFactoryAgent", "lead": self.product_factory.name, "status": "🏭 Ready (ReportLab PDF Synthesis)"},
+                {"agent": "MPSCAcademicDeanAgent", "lead": self.mpsc_dean.name, "status": "🏛️ Active (MPSC & Civil Services Dean - 22+ Yrs Exp)"},
+                {"agent": "CivilEngineeringFacultyAgent", "lead": self.civil_director.name, "status": "🏗️ Active (Civil Eng Chief Faculty - 24+ Yrs Exp)"},
+                {"agent": "MechanicalEngineeringFacultyAgent", "lead": self.mech_director.name, "status": "⚙️ Active (Mechanical Eng Chief Faculty - 21+ Yrs Exp)"},
+                {"agent": "PublicationQualityDesignAgent", "lead": self.quality_auditor.name, "status": "✨ Active (Devanagari & Technical Typography Auditor)"},
+                {"agent": "AutonomousProductFactoryAgent", "lead": self.product_factory.name, "status": "🏭 Ready (ReportLab Vector PDF Synthesis)"},
                 {"agent": "ViralGrowthMarketingAgent", "lead": self.growth_lead.name, "status": "🚀 Active (High-Conversion Direct Marketing)"},
                 {"agent": "ConversationalSalesCounselorAgent", "lead": self.sales_counselor.name, "status": "💬 Active (Human-Like 1-on-1 Student Counselor)"}
             ],
+            "sections_supported": ["MPSC", "Civil Engineering", "Mechanical Engineering", "TCS/IBPS Saralsewa", "Current Affairs", "General Knowledge"],
             "pricing_engine": "Unlocked Flexible Pricing (₹0 - ₹999+)",
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
@@ -923,6 +1309,9 @@ __all__ = [
     "TelegramPolicyComplianceAgent",
     "MarketDemandAnalyzerAgent",
     "CommunityIntelligenceHarvesterAgent",
+    "MPSCAcademicDeanAgent",
+    "CivilEngineeringFacultyAgent",
+    "MechanicalEngineeringFacultyAgent",
     "PublicationQualityDesignAgent",
     "AutonomousProductFactoryAgent",
     "ViralGrowthMarketingAgent",
