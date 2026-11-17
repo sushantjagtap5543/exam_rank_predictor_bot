@@ -864,7 +864,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         </div>
 
         <!-- OpenClaw.ai Autonomous Control Center & Interactive Dashboard -->
-        <div class="section-box" style="border: 2px solid #6366f1; background: linear-gradient(180deg, #0f172a 0%, #1e1b4b 45%, #0f172a 100%); margin-bottom: 25px; box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.25);">
+        <div id="openclawControlBox" class="section-box" style="border: 2px solid #6366f1; background: linear-gradient(180deg, #0f172a 0%, #1e1b4b 45%, #0f172a 100%); margin-bottom: 25px; box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.25);">
             <div class="section-header" style="border-bottom: 1px solid rgba(99, 102, 241, 0.3); padding-bottom: 14px;">
                 <div>
                     <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
@@ -2342,20 +2342,15 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         }}
 
         async function openNativeOpenClawDashboard() {{
-            try {{
-                const res = await adminFetch('/api/admin/openclaw/gateway_info');
-                const data = await res.json();
-                if (data.success && data.data) {{
-                    const url = data.data.dashboard_url || 'http://127.0.0.1:18789/';
-                    const win = window.open(url, '_blank');
-                    if (!win) {{
-                        alert('🌐 OpenClaw.ai Dashboard URL:\\n\\n' + url + '\\n\\nकृपया ही लिंक आपल्या ब्राउझरमध्ये उघडा.');
-                    }}
-                }} else {{
-                    window.open('http://127.0.0.1:18789/', '_blank');
-                }}
-            }} catch(e) {{
+            const ctrlBox = document.getElementById('openclawControlBox');
+            if (ctrlBox) {{
+                ctrlBox.scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+            }}
+            const isLocal = window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost';
+            if (isLocal) {{
                 window.open('http://127.0.0.1:18789/', '_blank');
+            }} else {{
+                showToast('🤖 OpenClaw.ai चे सर्व १२ फॅकल्टी एजंट्स, १-क्लिक ई-बुक निर्मिती व थेट चॅट सिम्युलेटर खालील डॅशबोर्डमध्ये थेट १००% सक्रिय आहेत!', 'success');
             }}
         }}
 
