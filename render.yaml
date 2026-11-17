@@ -59,3 +59,22 @@ services:
         value: "https://exam-rank-predictor-bot.onrender.com"
       - key: OPENROUTER_MODEL
         value: "nvidia/nemotron-3.5-lightning:free"
+
+  # ----------------------------------------------------------------------------
+  # Service 2: Official OpenClaw Gateway (Dedicated Separate Link & Web Service)
+  # Official Source: https://github.com/openclaw/openclaw.git
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: openclaw-gateway
+    env: image
+    image:
+      url: ghcr.io/openclaw/openclaw:latest
+    plan: free
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: OPENCLAW_GATEWAY_PORT
+        value: "8080"
+      - key: OPENCLAW_GATEWAY_BIND
+        value: "0.0.0.0"

@@ -6908,6 +6908,12 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        # Dedicated Isolated Link for OpenClaw Gateway (Official source: https://github.com/openclaw/openclaw.git)
+        if path == "/openclaw" or path.startswith("/openclaw/"):
+            from .openclaw_proxy import handle_openclaw_route
+            handle_openclaw_route(self, path, urllib.parse.parse_qs(parsed.query))
+            return
+
         # 4. Admin Store Visitors API Endpoint: /api/admin/visitors
         if path == "/api/admin/visitors":
             query_params = urllib.parse.parse_qs(parsed.query)
@@ -7213,6 +7219,13 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             err_limit_mb = max_allowed_len // (1024 * 1024)
             self.wfile.write(json.dumps({"error": f"Payload Too Large: Maximum allowed size is {err_limit_mb} MB"}).encode())
+            return
+
+        # Dedicated Isolated Link for OpenClaw Gateway (Official source: https://github.com/openclaw/openclaw.git)
+        if path == "/openclaw" or path.startswith("/openclaw/"):
+            raw_body_bytes = self.rfile.read(content_len) if content_len > 0 else b""
+            from .openclaw_proxy import handle_openclaw_route
+            handle_openclaw_route(self, path, urllib.parse.parse_qs(parsed.query), body=raw_body_bytes)
             return
 
         raw_body_bytes = b""
