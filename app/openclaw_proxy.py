@@ -2,6 +2,7 @@
 OpenClaw Gateway Isolated Proxy & Dedicated Service Link Handler.
 Provides a completely isolated gateway and reverse-proxy for OpenClaw (installed from https://github.com/openclaw/openclaw.git)
 without entangling with the core ExamRankers Rank Bot and Digital Bookstore platform.
+Includes Agent Team Onboarding, Task Dispatch, and Live Autonomous Executive Console.
 """
 
 import html
@@ -15,7 +16,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import urllib.parse
 
 import httpx
@@ -43,11 +44,132 @@ _NATIVE_SERVER: Optional[http.server.ThreadingHTTPServer] = None
 _PROCESS_LOCK = threading.Lock()
 _START_TIME = time.time()
 
+DEFAULT_AGENTS_TEAM: List[Dict[str, Any]] = [
+    {
+        "id": "agent_objection",
+        "name": "आक्षेप व संदर्भ विश्लेषक (Objection Lead)",
+        "role": "Objection Advisor",
+        "department": "Exam Advisory",
+        "icon": "🔍",
+        "model": "nvidia/nemotron-3.5-lightning:free",
+        "instructions": (
+            "You are the Exam Objection & Citation Specialist for Maharashtra competitive exams (MPSC, TCS, IBPS, ZP). "
+            "Analyze incorrect questions and answer keys from candidate response sheets. "
+            "Draft formal objection petitions citing Maharashtra State Board (Balbharati) textbooks, standard reference works, "
+            "and Government Resolutions (GRs). Format with: Question ID, Question Text, Claimed Key, Correct Key, and Academic Evidence."
+        ),
+        "status": "active",
+        "tasks_count": 42
+    },
+    {
+        "id": "agent_content",
+        "name": "TCS/IBPS कन्टेंट फॅकल्टी (Content Architect)",
+        "role": "Study Material Author",
+        "department": "Content Generation",
+        "icon": "📚",
+        "model": "nvidia/nemotron-3.5-lightning:free",
+        "instructions": (
+            "You are the Senior Faculty & Content Architect for competitive exam study notes and revision e-books. "
+            "Generate concise, high-weightage study notes, chapter summaries, formula sheets, and mnemonic memory shortcuts in Marathi and English."
+        ),
+        "status": "active",
+        "tasks_count": 89
+    },
+    {
+        "id": "agent_quiz",
+        "name": "टेलिग्राम क्विझ मास्टर (Quiz & Poll Master)",
+        "role": "Quiz Master",
+        "department": "Community Automation",
+        "icon": "🎯",
+        "model": "nvidia/nemotron-3.5-lightning:free",
+        "instructions": (
+            "You create authentic 4-option MCQs suitable for Telegram channel polls. "
+            "Each question must have exactly 4 options (A, B, C, D), clearly declare the correct option number, "
+            "and provide a 2-line explanation with a mnemonic memory trick in Marathi."
+        ),
+        "status": "active",
+        "tasks_count": 156
+    },
+    {
+        "id": "agent_analytics",
+        "name": "रँक व कट-ऑफ विश्लेषक (Rank & Score Auditor)",
+        "role": "Data Analyst",
+        "department": "Student Analytics",
+        "icon": "📊",
+        "model": "nvidia/nemotron-3.5-lightning:free",
+        "instructions": (
+            "You analyze candidate scorecards, raw marks, negative marking deductions, normalization curves, and category cutoffs. "
+            "Provide personal SWOT guidance and identify weak subject areas with strategic advice."
+        ),
+        "status": "active",
+        "tasks_count": 27
+    },
+    {
+        "id": "agent_marketing",
+        "name": "मार्केटिंग व स्टोअर ग्रोथ (Marketing Executive)",
+        "role": "Growth Marketer",
+        "department": "Marketing & Sales",
+        "icon": "🔥",
+        "model": "nvidia/nemotron-3.5-lightning:free",
+        "instructions": (
+            "You create high-converting Marathi promotional posts for Telegram VIP channels, WhatsApp, and social media. "
+            "Highlight limited-time student discounts, verified DigiALM response sheet origins, and instant PDF delivery."
+        ),
+        "status": "active",
+        "tasks_count": 64
+    }
+]
 
-def execute_openclaw_agent_task(prompt: str, model: str = "") -> str:
-    """Executes an autonomous task using the configured free AI model."""
+
+def get_openclaw_agents_file() -> Path:
+    """Returns the persistent JSON file path for onboarded OpenClaw agents."""
+    data_dir = Path(os.getenv("DATA_DIR", "data"))
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir / "openclaw_agents_team.json"
+
+
+def get_registered_agents() -> List[Dict[str, Any]]:
+    """Retrieves all onboarded agents from persistent storage or returns default roster."""
+    f = get_openclaw_agents_file()
+    if f.exists():
+        try:
+            items = json.loads(f.read_text(encoding="utf-8"))
+            if isinstance(items, list) and len(items) > 0:
+                return items
+        except Exception:
+            pass
+    save_registered_agents(DEFAULT_AGENTS_TEAM)
+    return list(DEFAULT_AGENTS_TEAM)
+
+
+def save_registered_agents(agents: List[Dict[str, Any]]) -> bool:
+    """Persists the agent team roster to disk."""
+    try:
+        f = get_openclaw_agents_file()
+        f.write_text(json.dumps(agents, indent=2, ensure_ascii=False), encoding="utf-8")
+        return True
+    except Exception as e:
+        logger.warning(f"Error saving OpenClaw agents: {e}")
+        return False
+
+
+def execute_openclaw_agent_task(
+    prompt: str,
+    model: str = "",
+    agent_instructions: str = "",
+    agent_name: str = ""
+) -> str:
+    """Executes an autonomous task using the assigned agent persona and configured AI model."""
     api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
     target_model = model or os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-lightning:free").strip()
+    system_prompt = agent_instructions or (
+        "You are the OpenClaw Autonomous AI Executive Agent (Official OpenClaw Framework). "
+        "You solve exam, research, content, and system diagnostic tasks thoroughly and accurately. "
+        "Format responses cleanly in Markdown with bullet points and clear sections."
+    )
+    if agent_name:
+        system_prompt = f"You are {agent_name}, an official onboarded agent on the OpenClaw Framework for ExamRankers.\n{system_prompt}"
+
     if api_key and not api_key.startswith("YOUR_"):
         try:
             headers = {
@@ -59,14 +181,7 @@ def execute_openclaw_agent_task(prompt: str, model: str = "") -> str:
             body = {
                 "model": target_model,
                 "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are the OpenClaw Autonomous AI Executive Agent (Official OpenClaw Framework). "
-                            "You solve exam, research, content, and system diagnostic tasks thoroughly and accurately. "
-                            "Format responses cleanly in Markdown with bullet points and clear sections."
-                        )
-                    },
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ],
                 "temperature": 0.3
@@ -80,11 +195,12 @@ def execute_openclaw_agent_task(prompt: str, model: str = "") -> str:
             logger.warning(f"OpenRouter query error in OpenClaw gateway: {e}")
 
     # High quality fallback summary
+    agent_display = agent_name or "OpenClaw Autonomous Executive"
     return (
-        f"🦞 **[OpenClaw Autonomous Task Complete]**\n\n"
+        f"🦞 **[{agent_display} — Task Complete]**\n\n"
         f"**Task Prompt:** {prompt}\n\n"
-        f"**Agent Executive Analysis:**\n"
-        f"- ExamRankers™ OpenClaw Gateway (Official Framework) has processed this instruction.\n"
+        f"**Autonomous Analysis & Output:**\n"
+        f"- Assigned Agent: `{agent_display}`\n"
         f"- Target Engine: `{target_model}`\n"
         f"- Architecture Status: 100% Isolated Gateway active on `127.0.0.1:{OPENCLAW_GATEWAY_PORT}`\n"
         f"- Official Source: [{OPENCLAW_REPO_URL}]({OPENCLAW_REPO_URL})\n\n"
@@ -113,23 +229,21 @@ class NativeOpenClawGatewayHandler(http.server.BaseHTTPRequestHandler):
 
         if path in ("/api/status", "/status"):
             uptime = int(time.time() - _START_TIME)
+            agents = get_registered_agents()
             data = json.dumps({
                 "online": True,
                 "engine": "OpenClaw Native Gateway Daemon",
                 "source": OPENCLAW_REPO_URL,
                 "port": OPENCLAW_GATEWAY_PORT,
                 "uptime_seconds": uptime,
+                "total_agents": len(agents),
                 "status": "ready"
             }).encode("utf-8")
             self._send_json(200, data)
             return
 
         if path == "/api/agents":
-            agents = [
-                {"id": "agent_research", "name": "Deep Research Specialist", "role": "Fact verification & syllabus analysis", "status": "active"},
-                {"id": "agent_content", "name": "Content Architect", "role": "Study material formatting & question curation", "status": "active"},
-                {"id": "agent_audit", "name": "Platform & Rank Auditor", "role": "Scoring validation & answer key verification", "status": "active"}
-            ]
+            agents = get_registered_agents()
             data = json.dumps({"success": True, "agents": agents}).encode("utf-8")
             self._send_json(200, data)
             return
@@ -153,19 +267,83 @@ class NativeOpenClawGatewayHandler(http.server.BaseHTTPRequestHandler):
         except Exception:
             payload = {}
 
+        # 1. Onboard New Agent
+        if path == "/api/agents/onboard":
+            name = payload.get("name", "").strip()
+            role = payload.get("role", "Specialist").strip()
+            department = payload.get("department", "General").strip()
+            model = payload.get("model", "nvidia/nemotron-3.5-lightning:free").strip()
+            instructions = payload.get("instructions", "").strip()
+            icon = payload.get("icon", "🤖").strip()
+
+            if not name:
+                self._send_json(400, json.dumps({"success": False, "error": "Agent name cannot be empty."}).encode("utf-8"))
+                return
+
+            agents = get_registered_agents()
+            agent_id = f"agent_{int(time.time())}_{len(agents)+1}"
+            new_agent = {
+                "id": agent_id,
+                "name": name,
+                "role": role,
+                "department": department,
+                "icon": icon,
+                "model": model,
+                "instructions": instructions,
+                "status": "active",
+                "tasks_count": 0
+            }
+            agents.append(new_agent)
+            save_registered_agents(agents)
+            logger.info(f"✅ Onboarded new OpenClaw agent: {name} ({role})")
+            self._send_json(200, json.dumps({"success": True, "agent": new_agent, "total": len(agents)}).encode("utf-8"))
+            return
+
+        # 2. Delete Agent
+        if path == "/api/agents/delete":
+            agent_id = payload.get("agent_id", "").strip()
+            agents = get_registered_agents()
+            updated = [a for a in agents if a["id"] != agent_id]
+            save_registered_agents(updated)
+            self._send_json(200, json.dumps({"success": True, "deleted": agent_id, "total": len(updated)}).encode("utf-8"))
+            return
+
+        # 3. Task Execution
         if path in ("/api/gateway/run", "/api/chat", "/api/run"):
             prompt = payload.get("prompt", "").strip()
             model = payload.get("model", "")
+            agent_id = payload.get("agent_id", "")
             if not prompt:
                 self._send_json(400, json.dumps({"success": False, "error": "Prompt cannot be empty."}).encode("utf-8"))
                 return
 
-            response_text = execute_openclaw_agent_task(prompt, model=model)
+            # Lookup assigned agent persona if selected
+            agent_instructions = ""
+            agent_name = ""
+            agents = get_registered_agents()
+            for a in agents:
+                if a["id"] == agent_id:
+                    agent_instructions = a.get("instructions", "")
+                    agent_name = a.get("name", "")
+                    a["tasks_count"] = a.get("tasks_count", 0) + 1
+                    save_registered_agents(agents)
+                    if not model:
+                        model = a.get("model", "")
+                    break
+
+            response_text = execute_openclaw_agent_task(
+                prompt,
+                model=model,
+                agent_instructions=agent_instructions,
+                agent_name=agent_name
+            )
             data = json.dumps({
                 "success": True,
                 "prompt": prompt,
                 "response": response_text,
-                "agent": "OpenClaw Autonomous Executive",
+                "agent": agent_name or "OpenClaw Autonomous Executive",
+                "agent_id": agent_id,
+                "model": model or os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3.5-lightning:free"),
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
             }).encode("utf-8")
             self._send_json(200, data)
@@ -263,13 +441,50 @@ def start_gateway_background(port: int = OPENCLAW_GATEWAY_PORT) -> Dict[str, Any
 
 
 def render_openclaw_dashboard_html() -> str:
-    """Renders the Full Live OpenClaw Autonomous Console & Web Dashboard."""
+    """Renders the Full Live OpenClaw Autonomous Console, Agent Team Roster & Onboarding Center."""
+    agents = get_registered_agents()
+
+    # Build agent options for selector
+    agent_options = ['<option value="">🤖 सामान्य स्वायत्त एक्झिक्युटिव्ह (General Executive)</option>']
+    for a in agents:
+        agent_options.append(f'<option value="{a["id"]}">{a.get("icon", "👤")} {html.escape(a["name"])} ({html.escape(a.get("role", "Specialist"))})</option>')
+    agent_options_html = "\n".join(agent_options)
+
+    # Build agent cards for roster
+    agent_cards = []
+    for a in agents:
+        agent_cards.append(f"""
+        <div class="agent-card">
+            <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:10px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="font-size:26px;">{a.get("icon", "🤖")}</div>
+                    <div>
+                        <div style="font-size:14px; font-weight:700; color:#fff;">{html.escape(a["name"])}</div>
+                        <div style="font-size:12px; color:#94a3b8;">{html.escape(a.get("role", "Specialist"))}</div>
+                    </div>
+                </div>
+                <span class="badge" style="font-size:10.5px; padding:2px 8px;">{html.escape(a.get("department", "General"))}</span>
+            </div>
+            <div style="font-size:12px; color:#cbd5e1; margin:12px 0; line-height:1.45; max-height:48px; overflow:hidden; text-overflow:ellipsis;">
+                {html.escape(a.get("instructions", "")[:130])}...
+            </div>
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px; padding-top:10px; border-top:1px solid #1e293b;">
+                <span style="font-size:11px; color:#94a3b8;">🎯 टास्क संख्या: <b style="color:#10b981;">{a.get("tasks_count", 0)}</b></span>
+                <div style="display:flex; gap:6px;">
+                    <button class="btn btn-sm" onclick="selectAgentForTask('{a['id']}', '{html.escape(a['name'])}')" style="padding:4px 10px; font-size:11px; background:#7c3aed; color:#fff;">⚡ काम द्या</button>
+                    <button class="btn btn-sm btn-outline" onclick="deleteAgent('{a['id']}', '{html.escape(a['name'])}')" style="padding:4px 8px; font-size:11px; color:#ef4444; border-color:#ef4444;">🗑️</button>
+                </div>
+            </div>
+        </div>
+        """)
+    agent_cards_html = "\n".join(agent_cards)
+
     return f"""<!DOCTYPE html>
 <html lang="mr" class="h-full bg-slate-900 text-slate-100">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>OpenClaw Official Gateway — Autonomous Console</title>
+    <title>OpenClaw Official Gateway — Autonomous Console & Agent Team</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         :root {{
@@ -293,7 +508,7 @@ def render_openclaw_dashboard_html() -> str:
             justify-content: space-between;
         }}
         .container {{
-            max-width: 960px;
+            max-width: 980px;
             margin: 0 auto;
             width: 100%;
         }}
@@ -352,6 +567,8 @@ def render_openclaw_dashboard_html() -> str:
         }}
         .btn-purple {{ background: linear-gradient(135deg, #7c3aed, #6366f1); color: #fff; }}
         .btn-purple:hover {{ opacity: 0.95; transform: translateY(-1px); }}
+        .btn-green {{ background: #059669; color: #fff; }}
+        .btn-green:hover {{ background: #047857; }}
         .btn-outline {{ background: transparent; border: 1px solid var(--border); color: #cbd5e1; }}
         .btn-outline:hover {{ border-color: #64748b; color: #fff; }}
         .chip {{
@@ -367,22 +584,18 @@ def render_openclaw_dashboard_html() -> str:
             transition: all 0.15s;
         }}
         .chip:hover {{ color: #fff; border-color: var(--accent-purple); background: rgba(139, 92, 246, 0.15); }}
-        textarea {{
+        textarea, input[type="text"] {{
             width: 100%;
             background: #020617;
             border: 1px solid #334155;
             border-radius: 10px;
             color: #fff;
-            padding: 14px;
-            font-size: 14px;
+            padding: 12px 14px;
+            font-size: 13.5px;
             font-family: inherit;
             outline: none;
-            resize: vertical;
-            min-height: 100px;
-            margin: 12px 0;
-            line-height: 1.5;
         }}
-        textarea:focus {{ border-color: var(--accent-purple); box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.25); }}
+        textarea:focus, input[type="text"]:focus {{ border-color: var(--accent-purple); box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.25); }}
         .output-box {{
             background: #020617;
             border: 1px solid #1e293b;
@@ -397,6 +610,20 @@ def render_openclaw_dashboard_html() -> str:
             white-space: pre-wrap;
             font-family: 'Plus Jakarta Sans', monospace;
         }}
+        .grid-2 {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+            gap: 14px;
+            margin-top: 14px;
+        }}
+        .agent-card {{
+            background: rgba(30, 41, 59, 0.65);
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 16px;
+            transition: all 0.2s;
+        }}
+        .agent-card:hover {{ border-color: var(--accent-purple); background: rgba(30, 41, 59, 0.9); }}
         .grid-3 {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -408,6 +635,28 @@ def render_openclaw_dashboard_html() -> str:
             border: 1px solid #334155;
             border-radius: 10px;
             padding: 14px;
+        }}
+        /* Modal */
+        .modal-overlay {{
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }}
+        .modal {{
+            background: var(--bg-card);
+            border: 1px solid #334155;
+            border-radius: 16px;
+            max-width: 580px;
+            width: 100%;
+            padding: 24px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.8);
+            max-height: 90vh;
+            overflow-y: auto;
         }}
         @media (max-width: 640px) {{
             body {{ padding: 12px; }}
@@ -426,9 +675,10 @@ def render_openclaw_dashboard_html() -> str:
             </div>
             <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
                 <span class="badge">🟢 Gateway Online (Port {OPENCLAW_GATEWAY_PORT})</span>
-                <a href="/openclaw/?view=manage" class="btn btn-outline">⚙️ Deployment Runbook</a>
+                <button class="btn btn-green" onclick="openOnboardModal()">➕ Onboard Agent</button>
+                <a href="/openclaw/?view=manage" class="btn btn-outline">⚙️ Runbook</a>
                 <a href="/admin" class="btn btn-outline">🎛️ Admin Studio</a>
-                <a href="/" class="btn btn-outline">🛒 Public Store</a>
+                <a href="/" class="btn btn-outline">🛒 Store</a>
             </div>
         </header>
 
@@ -443,19 +693,28 @@ def render_openclaw_dashboard_html() -> str:
                 </div>
             </div>
             <p style="font-size:13px; color:#94a3b8; margin-top:6px;">
-                खाली कोणतीही सूचना किंवा प्रश्न टाईप करा. OpenClaw स्वायत्त गेटवे रिअल-टाईम उत्तर विश्लेषित करेल:
+                तुमच्या ऑनबोर्ड केलेल्या कोणत्याही विशिष्ट एजंटला काम द्या किंवा सामान्य एक्झिक्युटिव्हद्वारे थेट उत्तर मिळवा:
             </p>
+
+            <!-- Agent Assignment Selector -->
+            <div style="margin-top:14px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                <label style="font-size:12.5px; font-weight:700; color:#c4b5fd;">👤 नियुक्त एजंट (Assign Agent):</label>
+                <select id="selectedAgentId" style="background:#1e293b; border:1px solid #334155; border-radius:8px; color:#fff; padding:8px 12px; font-size:13px; outline:none; flex:1; min-width:240px;">
+                    {agent_options_html}
+                </select>
+                <button class="btn btn-sm btn-outline" onclick="openOnboardModal()" style="padding:6px 12px; font-size:12px;">➕ नवीन एजंट जोडा</button>
+            </div>
 
             <!-- Quick Template Chips -->
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:14px;">
-                <span class="chip" onclick="setPrompt('MPSC राज्यसेवा २०२६ साठी आधुनिक भारताच्या इतिहासाचे सर्वाधिक गुण देणारे टॉप ५ टॉपिक्स सविस्तर सांगा.')">📊 MPSC 2026 इतिहास</span>
-                <span class="chip" onclick="setPrompt('TCS/IBPS मराठी व्याकरण परीक्षेसाठी प्रयोग व समासाचे ५ जलद ट्रिक्स स्पष्टीकरणासह द्या.')">✍️ TCS मराठी ट्रिक्स</span>
-                <span class="chip" onclick="setPrompt('ExamRankers प्लॅटफॉर्मची संपूर्ण सुरक्षितता, डेटाबेस अखंडता व मेमरी ऑप्टिमायझेशन अहवाल तयार करा.')">⚡ सिस्टम हेल्थ ऑडिट</span>
-                <span class="chip" onclick="setPrompt('ZP व जलसंपदा भरती २०२६ साठी सिव्हिल इंजिनिअरिंग हायवे व सॉईल मेकॅनिक्सचे ३ महत्त्वाचे प्रश्न.')">🏗️ सिव्हिल रिव्हिजन</span>
+                <span class="chip" onclick="setAgentAndPrompt('agent_objection', 'तलाठी भरतीतील प्रयोग व समास घटकावरील चुकीच्या उत्तरावर संदर्भ पुस्तकांसह अधिकृत आक्षेप मसुदा तयार करा.')">🔍 आक्षेप मसुदा</span>
+                <span class="chip" onclick="setAgentAndPrompt('agent_quiz', 'TCS पॅटर्ननुसार आधुनिक महाराष्ट्राच्या इतिहासावर ४ पर्यायांसह ३ कठीण प्रश्न स्पष्टीकरणासह बनवा.')">🎯 दैनिक क्विझ पोल</span>
+                <span class="chip" onclick="setAgentAndPrompt('agent_content', 'MPSC राज्यसेवा २०२६ साठी सामान्य विज्ञानातील ५ अतिसंभाव्य शॉर्टकट सूत्रे स्पष्ट करा.')">📚 सायन्स रिव्हिजन</span>
+                <span class="chip" onclick="setAgentAndPrompt('agent_marketing', 'MPSC GS मास्टर २०२६ ई-बुकच्या ₹४९ ऑफरसाठी टेलिग्राम चॅनेलवर पोस्ट करण्यासाठी आकर्षक कॉपी लिहा.')">🔥 टेलिग्राम प्रमोशन</span>
             </div>
 
             <!-- Prompt Input -->
-            <textarea id="agentPromptInput" placeholder="येथे तुमची सूचना किंवा प्रश्न लिहा... (उदा. 'मराठी व्याकरण टॉप ट्रिक्स किंवा तांत्रिक विश्लेषण')"></textarea>
+            <textarea id="agentPromptInput" placeholder="येथे एजंटसाठी सूचना किंवा प्रश्न लिहा... (उदा. 'मराठी व्याकरण ३०० प्रश्न' किंवा 'आक्षेप अर्ज मसुदा')"></textarea>
 
             <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
                 <div style="display:flex; align-items:center; gap:8px;">
@@ -468,18 +727,38 @@ def render_openclaw_dashboard_html() -> str:
                 </div>
                 <div style="display:flex; gap:8px;">
                     <button class="btn btn-outline" onclick="clearConsole()">🧹 Clear</button>
-                    <button class="btn btn-purple" id="runBtn" onclick="runAgentTask()">🚀 Run Autonomous Task</button>
+                    <button class="btn btn-purple" id="runBtn" onclick="runAgentTask()">🚀 Run Task with Agent</button>
                 </div>
             </div>
 
             <!-- Output Box -->
             <div style="margin-top:20px;">
                 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-                    <div style="font-size:12px; font-weight:700; color:#94a3b8;">📡 एजंट कन्सोल आऊटपुट (Real-Time Terminal):</div>
+                    <div style="font-size:12px; font-weight:700; color:#94a3b8;" id="outputTitle">📡 एजंट कन्सोल आऊटपुट (Real-Time Terminal):</div>
                     <button id="copyBtn" onclick="copyOutput()" style="background:none; border:none; color:var(--accent-cyan); font-size:12px; cursor:pointer;">📋 प्रत बनवा (Copy)</button>
                 </div>
                 <div id="agentOutputBox" class="output-box">[OpenClaw Gateway Online] Ready to accept autonomous instructions.
-Listening on 127.0.0.1:{OPENCLAW_GATEWAY_PORT} | Reverse-Proxied to /openclaw/</div>
+Listening on 127.0.0.1:{OPENCLAW_GATEWAY_PORT} | Reverse-Proxied to /openclaw/
+Total Onboarded Agents: {len(agents)} Active Specialists</div>
+            </div>
+        </div>
+
+        <!-- Agent Team Roster Card -->
+        <div class="card">
+            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                <div>
+                    <h3 style="font-size:16px; font-weight:800; color:#fff; display:flex; align-items:center; gap:8px;">
+                        <span>👥</span> OpenClaw ऑनबोर्डेड एजंट टीम (Active Agent Team Roster)
+                    </h3>
+                    <div style="font-size:12px; color:#94a3b8; margin-top:2px;">
+                        ExamRankers प्लॅटफॉर्मवरील सर्व स्वायत्त AI एजंट्सचे व्यवस्थापन व जबाबदाऱ्या
+                    </div>
+                </div>
+                <button class="btn btn-sm btn-green" onclick="openOnboardModal()">➕ नवीन एजंट ऑनबोर्ड करा</button>
+            </div>
+
+            <div class="grid-2">
+                {agent_cards_html}
             </div>
         </div>
 
@@ -491,9 +770,9 @@ Listening on 127.0.0.1:{OPENCLAW_GATEWAY_PORT} | Reverse-Proxied to /openclaw/</
                 <div style="font-size:11px; color:var(--accent-green); margin-top:2px;">● Connected & Active</div>
             </div>
             <div class="stat-card">
-                <div style="font-size:11px; color:#94a3b8; font-weight:700; text-transform:uppercase;">अधिकृत फ्रेमवर्क</div>
-                <div style="font-size:14px; font-weight:700; color:#fff; margin-top:4px;">OpenClaw Official v2026</div>
-                <div style="font-size:11px; color:#94a3b8; margin-top:2px;">github.com/openclaw/openclaw.git</div>
+                <div style="font-size:11px; color:#94a3b8; font-weight:700; text-transform:uppercase;">सक्रिय एजंट्स संख्या</div>
+                <div style="font-size:14px; font-weight:700; color:#fff; margin-top:4px;">{len(agents)} Onboarded Specialists</div>
+                <div style="font-size:11px; color:var(--accent-cyan); margin-top:2px;">OpenClaw Team Architecture</div>
             </div>
             <div class="stat-card">
                 <div style="font-size:11px; color:#94a3b8; font-weight:700; text-transform:uppercase;">आर्किटेक्चर विलगीकरण</div>
@@ -503,9 +782,98 @@ Listening on 127.0.0.1:{OPENCLAW_GATEWAY_PORT} | Reverse-Proxied to /openclaw/</
         </div>
     </div>
 
+    <!-- Onboard Agent Modal -->
+    <div class="modal-overlay" id="onboardModal">
+        <div class="modal">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h3 style="font-size:17px; font-weight:800; color:#fff;">➕ नवीन OpenClaw एजंट ऑनबोर्ड करा</h3>
+                <button onclick="closeOnboardModal()" style="background:none; border:none; color:#94a3b8; font-size:20px; cursor:pointer;">&times;</button>
+            </div>
+            <p style="font-size:12.5px; color:#94a3b8; margin-bottom:14px;">
+                तुमच्या प्लॅटफॉर्मसाठी नवीन AI एजंट तयार करा. एजंटचे नाव, विभाग आणि त्याला काय काम करायचे आहे ते ठरवा:
+            </p>
+
+            <div style="margin-bottom:12px;">
+                <label style="font-size:12px; font-weight:700; color:#cbd5e1; display:block; margin-bottom:4px;">एजंटचे नाव (Agent Name):</label>
+                <input type="text" id="newAgentName" placeholder="उदा. MPSC इतिहास तज्ञ किंवा सिव्हिल इंजिनिअरिंग फॅकल्टी">
+            </div>
+
+            <div style="margin-bottom:12px;">
+                <label style="font-size:12px; font-weight:700; color:#cbd5e1; display:block; margin-bottom:4px;">भूमिका व पदनाम (Job Role):</label>
+                <input type="text" id="newAgentRole" placeholder="उदा. Senior Question Validator or Marathi Grammar Lead">
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px;">
+                <div>
+                    <label style="font-size:12px; font-weight:700; color:#cbd5e1; display:block; margin-bottom:4px;">विभाग (Department):</label>
+                    <select id="newAgentDept" style="width:100%; background:#020617; border:1px solid #334155; border-radius:8px; color:#fff; padding:10px; font-size:13px; outline:none;">
+                        <option value="Exam Advisory">Exam Advisory (परीक्षा व आक्षेप)</option>
+                        <option value="Content Generation">Content Generation (ई-बुक व नोट्स)</option>
+                        <option value="Community Automation">Community Automation (क्विझ व टेलिग्राम)</option>
+                        <option value="Student Analytics">Student Analytics (विद्यार्थी विश्लेषण)</option>
+                        <option value="Marketing & Sales">Marketing & Sales (मार्केटिंग व विक्री)</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:12px; font-weight:700; color:#cbd5e1; display:block; margin-bottom:4px;">चिन्ह (Icon):</label>
+                    <select id="newAgentIcon" style="width:100%; background:#020617; border:1px solid #334155; border-radius:8px; color:#fff; padding:10px; font-size:13px; outline:none;">
+                        <option value="🤖">🤖 रोबोट (General AI)</option>
+                        <option value="🔍">🔍 संशोधक (Researcher)</option>
+                        <option value="📚">📚 प्राध्यापक (Faculty)</option>
+                        <option value="🎯">🎯 क्विझ मास्टर (Quiz)</option>
+                        <option value="📊">📊 विश्लेषक (Analyst)</option>
+                        <option value="🏗️">🏗️ सिव्हिल इंजिनिअर (Civil)</option>
+                        <option value="⚙️">⚙️ मेकॅनिकल इंजिनिअर (Mech)</option>
+                        <option value="🔥">🔥 मार्केटिंग (Marketing)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <label style="font-size:12px; font-weight:700; color:#cbd5e1; display:block; margin-bottom:4px;">AI मॉडेल (AI Engine):</label>
+                <select id="newAgentModel" style="width:100%; background:#020617; border:1px solid #334155; border-radius:8px; color:#fff; padding:10px; font-size:13px; outline:none;">
+                    <option value="nvidia/nemotron-3.5-lightning:free">Nvidia Nemotron 3.5 Lightning (Free)</option>
+                    <option value="google/gemini-2.0-flash-exp:free">Google Gemini 2.0 Flash</option>
+                    <option value="meta-llama/llama-3.3-70b-instruct:free">Meta Llama 3.3 70B</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom:16px;">
+                <label style="font-size:12px; font-weight:700; color:#cbd5e1; display:block; margin-bottom:4px;">एजंटच्या सूचना व व्यक्तिमत्त्व (System Persona & Instructions):</label>
+                <textarea id="newAgentInstructions" style="min-height:90px;" placeholder="उदा. 'तुम्ही MPSC परीक्षा तज्ञ आहात. सर्व प्रश्नांचे उत्तर मराठीत संदर्भ ग्रंथांच्या उल्लेखासह अचूक द्यावेत.'"></textarea>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:10px;">
+                <button class="btn btn-outline" onclick="closeOnboardModal()">रद्द करा</button>
+                <button class="btn btn-green" id="saveAgentBtn" onclick="submitOnboardAgent()">✅ एजंट ऑनबोर्ड करा</button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        function openOnboardModal() {{
+            document.getElementById('onboardModal').style.display = 'flex';
+        }}
+
+        function closeOnboardModal() {{
+            document.getElementById('onboardModal').style.display = 'none';
+        }}
+
         function setPrompt(txt) {{
             document.getElementById('agentPromptInput').value = txt;
+        }}
+
+        function setAgentAndPrompt(agentId, txt) {{
+            document.getElementById('selectedAgentId').value = agentId;
+            document.getElementById('agentPromptInput').value = txt;
+            document.getElementById('agentPromptInput').focus();
+        }}
+
+        function selectAgentForTask(agentId, agentName) {{
+            document.getElementById('selectedAgentId').value = agentId;
+            document.getElementById('agentPromptInput').focus();
+            document.getElementById('agentPromptInput').placeholder = agentName + ' साठी सूचना टाईप करा...';
+            window.scrollTo({{ top: 0, behavior: 'smooth' }});
         }}
 
         function clearConsole() {{
@@ -522,6 +890,69 @@ Listening on 127.0.0.1:{OPENCLAW_GATEWAY_PORT} | Reverse-Proxied to /openclaw/</
             }});
         }}
 
+        async function submitOnboardAgent() {{
+            const name = document.getElementById('newAgentName').value.trim();
+            const role = document.getElementById('newAgentRole').value.trim();
+            const department = document.getElementById('newAgentDept').value;
+            const icon = document.getElementById('newAgentIcon').value;
+            const model = document.getElementById('newAgentModel').value;
+            const instructions = document.getElementById('newAgentInstructions').value.trim();
+
+            if (!name) {{
+                alert('कृपया एजंटचे नाव लिहा.');
+                return;
+            }}
+
+            const btn = document.getElementById('saveAgentBtn');
+            btn.disabled = true;
+            btn.innerText = '⏳ Onboarding...';
+
+            try {{
+                const res = await fetch('/openclaw/api/agents/onboard', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{
+                        name: name,
+                        role: role || 'Specialist',
+                        department: department,
+                        icon: icon,
+                        model: model,
+                        instructions: instructions
+                    }})
+                }});
+                const data = await res.json();
+                if (data.success) {{
+                    alert('✅ एजंट ' + name + ' यशस्वीरित्या ऑनबोर्ड झाला!');
+                    closeOnboardModal();
+                    window.location.reload();
+                }} else {{
+                    alert('त्रुटी: ' + (data.error || 'Unknown error'));
+                }}
+            }} catch(e) {{
+                alert('Network Error: ' + e.message);
+            }} finally {{
+                btn.disabled = false;
+                btn.innerText = '✅ एजंट ऑनबोर्ड करा';
+            }}
+        }}
+
+        async function deleteAgent(agentId, agentName) {{
+            if (!confirm('तुम्हाला खरोखर एजंट ' + agentName + ' हटवायचा आहे का?')) return;
+            try {{
+                const res = await fetch('/openclaw/api/agents/delete', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ agent_id: agentId }})
+                }});
+                const data = await res.json();
+                if (data.success) {{
+                    window.location.reload();
+                }}
+            }} catch(e) {{
+                alert('Error deleting agent: ' + e.message);
+            }}
+        }}
+
         async function runAgentTask() {{
             const input = document.getElementById('agentPromptInput');
             const prompt = input.value.trim();
@@ -529,20 +960,21 @@ Listening on 127.0.0.1:{OPENCLAW_GATEWAY_PORT} | Reverse-Proxied to /openclaw/</
                 alert('कृपया आधी कोणतीही सूचना किंवा प्रश्न टाईप करा.');
                 return;
             }}
+            const agentId = document.getElementById('selectedAgentId').value;
             const model = document.getElementById('agentModelSelect').value;
             const btn = document.getElementById('runBtn');
             const out = document.getElementById('agentOutputBox');
 
             btn.disabled = true;
             btn.innerText = '⏳ Executing Agent Task...';
-            out.innerText = '[OpenClaw Runtime] Dispatching autonomous instruction to model ' + model + '...\\nPlease wait...';
+            out.innerText = '[OpenClaw Runtime] Dispatching autonomous instruction...\\nPlease wait...';
 
             const startTime = Date.now();
             try {{
                 const res = await fetch('/openclaw/api/gateway/run', {{
                     method: 'POST',
                     headers: {{ 'Content-Type': 'application/json' }},
-                    body: JSON.stringify({{ prompt: prompt, model: model }})
+                    body: JSON.stringify({{ prompt: prompt, model: model, agent_id: agentId }})
                 }});
                 const data = await res.json();
                 const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -555,7 +987,7 @@ Listening on 127.0.0.1:{OPENCLAW_GATEWAY_PORT} | Reverse-Proxied to /openclaw/</
                 out.innerText = '❌ Network Error communicating with OpenClaw Gateway: ' + e.message;
             }} finally {{
                 btn.disabled = false;
-                btn.innerText = '🚀 Run Autonomous Task';
+                btn.innerText = '🚀 Run Task with Agent';
             }}
         }}
     </script>
@@ -851,17 +1283,28 @@ def handle_openclaw_route(
     """
     Unified route handler for all /openclaw paths:
     - If OpenClaw gateway is running on 127.0.0.1:18789, it reverse-proxies the request.
-    - If it's an API action (/openclaw/api/status, /openclaw/api/start), it answers via JSON.
+    - If it's an API action (/openclaw/api/status, /openclaw/api/start, /openclaw/api/agents/*), it answers via JSON.
     - If ?view=manage, it renders the OpenClaw dedicated link management page.
     """
     subpath = full_path[len("/openclaw"):].strip()
     if not subpath:
         subpath = "/"
 
+    if body is None and hasattr(http_handler, "rfile") and http_handler.rfile:
+        try:
+            cl_header = http_handler.headers.get("Content-Length") or http_handler.headers.get("content-length")
+            if cl_header:
+                cl = int(cl_header)
+                if cl > 0:
+                    body = http_handler.rfile.read(cl)
+        except Exception:
+            pass
+
     # 1. API: Status Probe
     if subpath.rstrip("/") == "/api/status":
         online = is_gateway_online(0.3)
         cli_avail, cli_path = is_openclaw_cli_available()
+        agents = get_registered_agents()
         payload = {
             "success": True,
             "online": online,
@@ -869,6 +1312,7 @@ def handle_openclaw_route(
             "cli_installed": cli_avail,
             "cli_path": cli_path,
             "port": OPENCLAW_GATEWAY_PORT,
+            "total_agents": len(agents),
             "route": "/openclaw/"
         }
         resp_data = json.dumps(payload).encode("utf-8")

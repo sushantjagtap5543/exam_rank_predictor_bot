@@ -29,10 +29,13 @@ from app.openclaw_proxy import (
 
 
 class DummyHTTPHandler:
-    def __init__(self, command="GET", path="/openclaw", headers=None):
+    def __init__(self, command="GET", path="/openclaw", headers=None, body=b""):
         self.command = command
         self.path = path
         self.headers = headers or {}
+        if body and "Content-Length" not in self.headers:
+            self.headers["Content-Length"] = str(len(body))
+        self.rfile = BytesIO(body)
         self.status_code = None
         self.response_headers = {}
         self.wfile = BytesIO()
@@ -109,6 +112,62 @@ class TestOpenClawIsolatedLink(unittest.TestCase):
             admin_code = f.read()
         self.assertNotIn("openclawControlBox", admin_code)
         self.assertNotIn("openclawDetailModal", admin_code)
+
+    def test_07_agent_team_api_list(self):
+        """Verifies /openclaw/api/agents returns default agent roster."""
+        handler = DummyHTTPHandler(command="GET", path="/openclaw/api/agents")
+        handled = handle_openclaw_route(handler, "/openclaw/api/agents")
+        self.assertTrue(handled)
+        self.assertEqual(handler.status_code, 200)
+        data = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertTrue(data.get("success"))
+        self.assertGreaterEqual(len(data.get("agents", [])), 5)
+        agent_names = [a.get("name") for a in data.get("agents", [])]
+        self.assertTrue(any("Objection Lead" in name for name in agent_names))
+
+    def test_08_onboard_and_delete_agent_flow(self):
+        """Verifies onboarding a new specialist agent and deleting it."""
+        # 1. Onboard
+        payload = {
+            "name": "Custom Syllabus Agent",
+            "role": "Curriculum Expert",
+            "department": "Academics",
+            "icon": "🎓",
+            "model": "nvidia/nemotron-3.5-lightning:free",
+            "instructions": "Verify MPSC syllabus changes."
+        }
+        handler = DummyHTTPHandler(
+            command="POST",
+            path="/openclaw/api/agents/onboard",
+            headers={"Content-Type": "application/json"},
+            body=json.dumps(payload).encode("utf-8")
+        )
+        handled = handle_openclaw_route(handler, "/openclaw/api/agents/onboard")
+        self.assertTrue(handled)
+        self.assertEqual(handler.status_code, 200)
+        res_data = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertTrue(res_data.get("success"))
+        agent_id = res_data["agent"]["id"]
+        self.assertEqual(res_data["agent"]["name"], "Custom Syllabus Agent")
+
+        # 2. Verify agent in list
+        list_handler = DummyHTTPHandler(command="GET", path="/openclaw/api/agents")
+        handle_openclaw_route(list_handler, "/openclaw/api/agents")
+        list_data = json.loads(list_handler.wfile.getvalue().decode("utf-8"))
+        found = any(a["id"] == agent_id for a in list_data.get("agents", []))
+        self.assertTrue(found)
+
+        # 3. Delete agent
+        del_handler = DummyHTTPHandler(
+            command="POST",
+            path="/openclaw/api/agents/delete",
+            headers={"Content-Type": "application/json"},
+            body=json.dumps({"agent_id": agent_id}).encode("utf-8")
+        )
+        handle_openclaw_route(del_handler, "/openclaw/api/agents/delete")
+        self.assertEqual(del_handler.status_code, 200)
+        del_res = json.loads(del_handler.wfile.getvalue().decode("utf-8"))
+        self.assertTrue(del_res.get("success"))
 
 
 if __name__ == "__main__":
