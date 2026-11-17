@@ -130,6 +130,14 @@ from .quiz_generator import (
 from .rank import estimate_cohort_rank
 
 load_dotenv()
+for env_candidate in [
+    Path(__file__).resolve().parent.parent / ".env",
+    Path("/app/data/.env"),
+    Path("/app/.env"),
+    Path(".env")
+]:
+    if env_candidate.exists():
+        load_dotenv(env_candidate, override=False)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -519,9 +527,10 @@ def get_persistent_menu_keyboard():
     )
 
 def get_connection():
-    """Returns SQLite connection with WAL journal mode and 30s timeout to prevent locking."""
-    conn = sqlite3.connect(DB_PATH, timeout=30.0)
+    """Returns SQLite connection with WAL journal mode and 60s timeout to prevent locking."""
+    conn = sqlite3.connect(DB_PATH, timeout=60.0)
     conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA busy_timeout=60000;")
     conn.execute("PRAGMA synchronous=NORMAL;")
     return conn
 

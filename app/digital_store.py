@@ -896,6 +896,152 @@ def render_digital_store_html(products: List[Dict[str, Any]] = None, db_path: Op
             color: var(--text-muted);
             line-height: 1.6;
         }}
+        /* ========================================================= */
+        /* COMPREHENSIVE MOBILE-FIRST RESPONSIVE OPTIMIZATION        */
+        /* ========================================================= */
+        @media (max-width: 900px) {{
+            .grid {{
+                grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important;
+                gap: 16px !important;
+            }}
+            .navbar {{
+                padding: 14px 16px !important;
+            }}
+            .hero {{
+                padding: 30px 16px 20px !important;
+            }}
+        }}
+
+        @media (max-width: 640px) {{
+            .navbar {{
+                flex-direction: column !important;
+                gap: 12px !important;
+                align-items: center !important;
+                padding: 12px 14px !important;
+                text-align: center !important;
+            }}
+            .brand-logo {{
+                justify-content: center !important;
+            }}
+            .nav-actions {{
+                width: 100% !important;
+                justify-content: center !important;
+                flex-wrap: wrap !important;
+                gap: 8px !important;
+            }}
+            .nav-btn-tg, .nav-btn-track {{
+                flex: 1 1 auto !important;
+                justify-content: center !important;
+                padding: 8px 14px !important;
+                font-size: 12px !important;
+                min-height: 40px !important;
+            }}
+            .hero-title {{
+                font-size: 24px !important;
+                line-height: 1.3 !important;
+            }}
+            .hero-sub {{
+                font-size: 13.5px !important;
+                padding: 0 4px !important;
+            }}
+            .grid {{
+                grid-template-columns: 1fr !important;
+                gap: 16px !important;
+                padding: 0 4px !important;
+            }}
+            .btn-group {{
+                grid-template-columns: 1fr !important;
+                gap: 8px !important;
+            }}
+            .btn-group .btn {{
+                width: 100% !important;
+                padding: 12px 10px !important;
+                font-size: 13.5px !important;
+                min-height: 44px !important;
+                justify-content: center !important;
+            }}
+            .modal {{
+                padding: 20px 14px !important;
+                max-width: 96vw !important;
+                width: 100% !important;
+                margin: auto !important;
+                max-height: 92vh !important;
+                border-radius: 14px !important;
+                -webkit-overflow-scrolling: touch !important;
+            }}
+            .modal-overlay {{
+                padding: 8px !important;
+            }}
+            .modal-close {{
+                top: 10px !important;
+                right: 10px !important;
+                width: 44px !important;
+                height: 44px !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                font-size: 24px !important;
+            }}
+            .qr-card {{
+                max-width: 220px !important;
+                padding: 12px !important;
+                margin: 10px auto !important;
+            }}
+            .qr-card img {{
+                width: 100% !important;
+                max-width: 180px !important;
+                height: auto !important;
+                aspect-ratio: 1/1 !important;
+            }}
+            .product-card {{
+                padding: 18px 14px !important;
+            }}
+            .p-badges {{
+                flex-wrap: wrap !important;
+                gap: 6px !important;
+            }}
+            .filter-container {{
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+                flex-wrap: nowrap !important;
+                padding-bottom: 6px !important;
+            }}
+            .filter-pill {{
+                white-space: nowrap !important;
+                flex-shrink: 0 !important;
+            }}
+            .faq-section {{
+                padding: 0 14px !important;
+                margin-top: 36px !important;
+            }}
+            .faq-title {{
+                font-size: 20px !important;
+            }}
+            .faq-item {{
+                padding: 14px 16px !important;
+            }}
+        }}
+
+        @media (max-width: 380px) {{
+            .hero-title {{
+                font-size: 20px !important;
+            }}
+            .brand-title {{
+                font-size: 16px !important;
+            }}
+            .brand-icon {{
+                width: 30px !important;
+                height: 30px !important;
+                font-size: 15px !important;
+            }}
+            .card-price {{
+                font-size: 22px !important;
+            }}
+            .modal {{
+                padding: 16px 10px !important;
+            }}
+        }}
+
         /* Footer */
         .footer {{
             text-align: center;

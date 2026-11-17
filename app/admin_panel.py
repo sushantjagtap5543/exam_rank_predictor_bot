@@ -799,6 +799,114 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
         .bulk-file-item:last-child {{
             border-bottom: none;
         }}
+
+        /* ========================================================= */
+        /* COMPREHENSIVE MOBILE-FIRST RESPONSIVE OPTIMIZATION        */
+        /* ========================================================= */
+        @media (max-width: 860px) {{
+            .topbar {{
+                flex-direction: column !important;
+                gap: 12px !important;
+                padding: 12px 14px !important;
+                align-items: stretch !important;
+            }}
+            .brand {{
+                justify-content: center !important;
+            }}
+            .header-actions {{
+                justify-content: center !important;
+                flex-wrap: wrap !important;
+                gap: 8px !important;
+                width: 100% !important;
+            }}
+            .header-actions .btn {{
+                flex: 1 1 auto !important;
+                justify-content: center !important;
+                padding: 8px 10px !important;
+                font-size: 11.5px !important;
+                min-height: 40px !important;
+            }}
+            .container {{
+                padding: 12px !important;
+            }}
+            .toolbar {{
+                flex-direction: column !important;
+                gap: 12px !important;
+                align-items: stretch !important;
+                padding: 14px 12px !important;
+            }}
+            .toolbar-actions {{
+                flex-wrap: wrap !important;
+                justify-content: stretch !important;
+                gap: 8px !important;
+            }}
+            .toolbar-actions .btn {{
+                flex: 1 1 auto !important;
+                justify-content: center !important;
+                min-height: 40px !important;
+            }}
+            .kpi-grid {{
+                grid-template-columns: repeat(2, 1fr) !important;
+                gap: 10px !important;
+            }}
+            .kpi-card {{
+                padding: 12px 14px !important;
+            }}
+            .kpi-val {{
+                font-size: 22px !important;
+            }}
+            .modal {{
+                padding: 18px 14px !important;
+                max-width: 96vw !important;
+                width: 100% !important;
+                margin: auto !important;
+                max-height: 92vh !important;
+                border-radius: 12px !important;
+                -webkit-overflow-scrolling: touch !important;
+            }}
+            .table-wrap {{
+                -webkit-overflow-scrolling: touch !important;
+                max-height: 480px !important;
+                width: 100% !important;
+            }}
+            table th, table td {{
+                padding: 8px 10px !important;
+                font-size: 12px !important;
+                white-space: nowrap !important;
+            }}
+            .openclaw-terminal-chat-row {{
+                flex-direction: column !important;
+            }}
+            .openclaw-terminal-chat-row .btn {{
+                width: 100% !important;
+                min-height: 44px !important;
+            }}
+        }}
+
+        @media (max-width: 480px) {{
+            .kpi-grid {{
+                grid-template-columns: 1fr !important;
+            }}
+            .section-header {{
+                flex-direction: column !important;
+                align-items: flex-start !important;
+                gap: 10px !important;
+            }}
+            .section-header > div:last-child {{
+                width: 100% !important;
+                display: flex !important;
+                flex-wrap: wrap !important;
+                gap: 6px !important;
+            }}
+            .section-header .btn {{
+                flex: 1 1 auto !important;
+                justify-content: center !important;
+                min-height: 40px !important;
+            }}
+            .modal {{
+                padding: 14px 10px !important;
+            }}
+        }}
     </style>
 </head>
 <body>
@@ -942,7 +1050,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 </div>
 
                 <!-- Input & Send Controls -->
-                <div style="display:flex; gap:8px;">
+                <div class="openclaw-terminal-chat-row" style="display:flex; gap:8px;">
                     <input type="text" id="openclawChatInput" placeholder="येथे प्रश्न किंवा संदेश टाईप करा (उदा. Civil PWD अभ्यासक्रम, MPSC कलम २४३, इत्यादी)..." style="flex:1; background:#0f172a; color:#fff; border:1px solid #334155; padding:8px 12px; border-radius:6px; font-size:12.5px;" onkeydown="if(event.key==='Enter') sendOpenClawChatTurn()">
                     <button class="btn btn-gold" id="openclawSendBtn" onclick="sendOpenClawChatTurn()" style="font-weight:700; padding:8px 16px;">⚡ Send Turn</button>
                 </div>
