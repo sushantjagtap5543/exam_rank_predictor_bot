@@ -59,6 +59,11 @@ services:
         value: "https://exam-rank-predictor-bot.onrender.com"
       - key: OPENROUTER_MODEL
         value: "nvidia/nemotron-3.5-lightning:free"
+      - key: OPENCLAW_GATEWAY_URL
+        fromService:
+          type: web
+          name: openclaw-gateway
+          property: host
 
   # ----------------------------------------------------------------------------
   # Service 2: Official OpenClaw Gateway (Dedicated Separate Link & Web Service)

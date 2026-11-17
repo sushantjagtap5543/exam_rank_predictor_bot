@@ -22,9 +22,20 @@ import httpx
 logger = logging.getLogger(__name__)
 
 OPENCLAW_REPO_URL = "https://github.com/openclaw/openclaw.git"
-OPENCLAW_GATEWAY_PORT = int(os.getenv("OPENCLAW_GATEWAY_PORT", "18789"))
-OPENCLAW_GATEWAY_HOST = os.getenv("OPENCLAW_GATEWAY_HOST", "127.0.0.1")
-OPENCLAW_GATEWAY_BASE_URL = f"http://{OPENCLAW_GATEWAY_HOST}:{OPENCLAW_GATEWAY_PORT}"
+OPENCLAW_GATEWAY_URL_ENV = os.getenv("OPENCLAW_GATEWAY_URL", "").strip()
+if OPENCLAW_GATEWAY_URL_ENV:
+    if not OPENCLAW_GATEWAY_URL_ENV.startswith(("http://", "https://")):
+        OPENCLAW_GATEWAY_BASE_URL = f"https://{OPENCLAW_GATEWAY_URL_ENV.rstrip('/')}"
+    else:
+        OPENCLAW_GATEWAY_BASE_URL = OPENCLAW_GATEWAY_URL_ENV.rstrip("/")
+    OPENCLAW_IS_REMOTE = True
+    OPENCLAW_GATEWAY_PORT = 8080
+    OPENCLAW_GATEWAY_HOST = urllib.parse.urlparse(OPENCLAW_GATEWAY_BASE_URL).hostname or "openclaw"
+else:
+    OPENCLAW_GATEWAY_PORT = int(os.getenv("OPENCLAW_GATEWAY_PORT", "18789"))
+    OPENCLAW_GATEWAY_HOST = os.getenv("OPENCLAW_GATEWAY_HOST", "127.0.0.1")
+    OPENCLAW_GATEWAY_BASE_URL = f"http://{OPENCLAW_GATEWAY_HOST}:{OPENCLAW_GATEWAY_PORT}"
+    OPENCLAW_IS_REMOTE = False
 
 _GATEWAY_PROCESS: Optional[subprocess.Popen] = None
 _PROCESS_LOCK = threading.Lock()
@@ -43,7 +54,14 @@ def is_openclaw_cli_available() -> Tuple[bool, str]:
 
 
 def is_gateway_online(timeout_sec: float = 0.5) -> bool:
-    """Probes the OpenClaw Gateway port on loopback."""
+    """Probes the OpenClaw Gateway port on loopback or remote Render URL."""
+    if OPENCLAW_IS_REMOTE:
+        try:
+            with httpx.Client(timeout=timeout_sec, follow_redirects=True) as client:
+                r = client.get(OPENCLAW_GATEWAY_BASE_URL)
+                return r.status_code < 500
+        except Exception:
+            return False
     try:
         with socket.create_connection((OPENCLAW_GATEWAY_HOST, OPENCLAW_GATEWAY_PORT), timeout=timeout_sec):
             return True
@@ -93,11 +111,18 @@ def render_openclaw_portal_html(base_url: str = "") -> str:
     online = is_gateway_online(0.3)
     cli_avail, cli_path = is_openclaw_cli_available()
 
-    status_badge = (
-        '<span style="background:#059669; color:#fff; padding:4px 12px; border-radius:20px; font-weight:700; font-size:12px;">🟢 Gateway Online (Port 18789)</span>'
-        if online else
-        '<span style="background:#dc2626; color:#fff; padding:4px 12px; border-radius:20px; font-weight:700; font-size:12px;">🔴 Gateway Offline</span>'
-    )
+    if OPENCLAW_IS_REMOTE:
+        status_badge = (
+            f'<span style="background:#059669; color:#fff; padding:4px 12px; border-radius:20px; font-weight:700; font-size:12px;">🟢 Remote Gateway Live ({html.escape(OPENCLAW_GATEWAY_BASE_URL)})</span>'
+            if online else
+            f'<span style="background:#f59e0b; color:#fff; padding:4px 12px; border-radius:20px; font-weight:700; font-size:12px;">🟡 Remote Gateway Connecting ({html.escape(OPENCLAW_GATEWAY_BASE_URL)})</span>'
+        )
+    else:
+        status_badge = (
+            f'<span style="background:#059669; color:#fff; padding:4px 12px; border-radius:20px; font-weight:700; font-size:12px;">🟢 Gateway Online (Port {OPENCLAW_GATEWAY_PORT})</span>'
+            if online else
+            '<span style="background:#dc2626; color:#fff; padding:4px 12px; border-radius:20px; font-weight:700; font-size:12px;">🔴 Gateway Offline</span>'
+        )
 
     cli_badge = (
         f'<span style="color:#10b981; font-weight:700;">✅ Installed ({html.escape(cli_path)})</span>'

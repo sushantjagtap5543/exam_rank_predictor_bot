@@ -907,6 +907,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
             <div>ExamRankers™ <span>Admin Studio</span></div>
         </div>
         <div class="header-actions">
+            <a href="/openclaw/" target="_blank" class="btn" style="background:linear-gradient(135deg, #7c3aed, #6366f1); color:#fff; border:none; text-decoration:none;">🦞 OpenClaw Gateway</a>
             <a href="/" target="_blank" class="btn btn-outline">🛒 स्टोअर उघडा (Public Store)</a>
             <a href="https://t.me/ExamRankersIndiaBot" target="_blank" class="btn btn-outline">🤖 Telegram Bot</a>
             <button class="btn btn-gold" onclick="openAddModal()">➕ नवीन ई-बुक जोडा</button>
@@ -966,6 +967,7 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 🎛️ <b>प्रकल्प कमांड सेंटर व मॅन्युअल ऑपरेशन्स (Master Controls & Bot Offloader):</b>
             </div>
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <a href="/openclaw/" target="_blank" class="btn" style="background:linear-gradient(135deg, #7c3aed, #6366f1); color:#fff; border:none; text-decoration:none;">🦞 OpenClaw कन्सोल</a>
                 <button class="btn btn-gold" onclick="openAddModal()">➕ नवीन ई-बुक जोडा</button>
                 <button class="btn btn-blue" onclick="openBulkUploadModal()" style="background:#2563eb; color:#fff;">📚 बल्क PDFs एकत्र अपलोड करा</button>
                 <button class="btn btn-gold" onclick="dispatchQuizNow()" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none;">🚀 चॅनेलवर थेट क्विझ पाठवा</button>
