@@ -384,6 +384,27 @@ class TestFullOpenClawAiEcosystem(unittest.TestCase):
         self.assertNotIn("render_openclaw_dashboard_html", admin_code)
         self.assertNotIn("execute_openclaw_agent_task", admin_code)
 
+    def test_15_artifact_download_stream_and_api(self):
+        """15. Verifies that generated artifacts can be listed via API and downloaded via HTTP."""
+        # A. Verify artifacts API
+        handler = MockHTTPHandler(command="GET", path="/openclaw/api/artifacts")
+        handle_openclaw_route(handler, "/openclaw/api/artifacts")
+        self.assertEqual(handler.status_code, 200)
+        data = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertTrue(data.get("success"))
+        self.assertGreater(data.get("total", 0), 0)
+
+        # B. Download first artifact
+        first_art = data["artifacts"][0]
+        dl_url = first_art["url"]
+        dl_handler = MockHTTPHandler(command="GET", path=dl_url)
+        handle_openclaw_route(dl_handler, dl_url)
+        self.assertEqual(dl_handler.status_code, 200)
+        content_bytes = dl_handler.wfile.getvalue()
+        self.assertGreater(len(content_bytes), 20)
+        self.assertIn("attachment", dl_handler.response_headers.get("Content-Disposition", ""))
+
 
 if __name__ == "__main__":
     unittest.main()
+
