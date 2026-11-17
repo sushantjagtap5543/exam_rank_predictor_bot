@@ -169,6 +169,83 @@ class TestOpenClawIsolatedLink(unittest.TestCase):
         del_res = json.loads(del_handler.wfile.getvalue().decode("utf-8"))
         self.assertTrue(del_res.get("success"))
 
+    def test_09_skills_listing_and_run(self):
+        """Verifies OpenClaw skills registry and skill execution."""
+        # 1. List skills
+        handler = DummyHTTPHandler(command="GET", path="/openclaw/api/skills")
+        handled = handle_openclaw_route(handler, "/openclaw/api/skills")
+        self.assertTrue(handled)
+        self.assertEqual(handler.status_code, 200)
+        data = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertTrue(data.get("success"))
+        self.assertGreaterEqual(len(data.get("skills", [])), 5)
+
+        # 2. Run skill test
+        run_handler = DummyHTTPHandler(
+            command="POST",
+            path="/openclaw/api/skills/run",
+            headers={"Content-Type": "application/json"},
+            body=json.dumps({"skill_id": "skill_response_sheet_scorer"}).encode("utf-8")
+        )
+        handled = handle_openclaw_route(run_handler, "/openclaw/api/skills/run")
+        self.assertTrue(handled)
+        self.assertEqual(run_handler.status_code, 200)
+        run_data = json.loads(run_handler.wfile.getvalue().decode("utf-8"))
+        self.assertTrue(run_data.get("success"))
+        self.assertIn("DigiALM Scorer", run_data.get("output", ""))
+
+    def test_10_cron_listing_and_trigger(self):
+        """Verifies OpenClaw scheduled autonomous automations."""
+        # 1. List crons
+        handler = DummyHTTPHandler(command="GET", path="/openclaw/api/cron")
+        handled = handle_openclaw_route(handler, "/openclaw/api/cron")
+        self.assertTrue(handled)
+        self.assertEqual(handler.status_code, 200)
+        data = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertTrue(data.get("success"))
+        self.assertGreaterEqual(len(data.get("crons", [])), 4)
+
+        # 2. Trigger cron
+        run_handler = DummyHTTPHandler(
+            command="POST",
+            path="/openclaw/api/cron/run",
+            headers={"Content-Type": "application/json"},
+            body=json.dumps({"cron_id": "cron_daily_quiz_9am"}).encode("utf-8")
+        )
+        handled = handle_openclaw_route(run_handler, "/openclaw/api/cron/run")
+        self.assertTrue(handled)
+        self.assertEqual(run_handler.status_code, 200)
+        run_data = json.loads(run_handler.wfile.getvalue().decode("utf-8"))
+        self.assertTrue(run_data.get("success"))
+        self.assertIn("यशस्वीरित्या", run_data.get("message", ""))
+
+    def test_11_task_execution_console(self):
+        """Verifies autonomous task execution with an assigned specialist agent."""
+        handler = DummyHTTPHandler(
+            command="POST",
+            path="/openclaw/api/gateway/run",
+            headers={"Content-Type": "application/json"},
+            body=json.dumps({
+                "prompt": "मराठी व्याकरण आक्षेप संदर्भ सांगा",
+                "agent_id": "agent_objection",
+                "model": "nvidia/nemotron-3.5-lightning:free"
+            }).encode("utf-8")
+        )
+        handled = handle_openclaw_route(handler, "/openclaw/api/gateway/run")
+        self.assertTrue(handled)
+        self.assertEqual(handler.status_code, 200)
+        data = json.loads(handler.wfile.getvalue().decode("utf-8"))
+        self.assertTrue(data.get("success"))
+        self.assertIn("आक्षेप", data.get("response", ""))
+
+    def test_12_health_probes(self):
+        """Verifies /openclaw/startupz and /openclaw/healthz endpoints."""
+        for endpoint in ("/openclaw/startupz", "/openclaw/healthz"):
+            handler = DummyHTTPHandler(command="GET", path=endpoint)
+            handled = handle_openclaw_route(handler, endpoint)
+            self.assertTrue(handled)
+            self.assertEqual(handler.status_code, 200)
+
 
 if __name__ == "__main__":
     unittest.main()
