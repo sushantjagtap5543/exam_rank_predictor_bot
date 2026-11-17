@@ -52,6 +52,7 @@ class TestBuyerAndOwner1000Scenarios(unittest.TestCase):
                 pass
         init_monetization_db(str(DB_PATH))
         cls.agent = DigitalProductPackagingAgent()
+        cls.agent.init_products_db(str(DB_PATH))
         cls.products = cls.agent.get_all_products(str(DB_PATH), include_inactive=True)
         if len(cls.products) < 19:
             from app.agents.digital_product_agent import DEFAULT_PRODUCTS

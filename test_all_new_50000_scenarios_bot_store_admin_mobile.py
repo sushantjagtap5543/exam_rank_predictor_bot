@@ -32,15 +32,16 @@ from app.bot import (
     ALLOWED_RESPONSE_DOMAINS,
     DB_PATH,
     get_connection,
+    init_db,
     EXAMS
 )
-from app.agents.openclaw_orchestrator import openclaw_team
 
 
 class FullSystem50000ScenariosTestSuite(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        init_db()
         cls.db_path = DB_PATH
         cls.admin_key = os.getenv("ADMIN_API_KEY", "admin_prod_examrankers_sec_997009").strip()
         os.environ["ADMIN_API_KEY"] = cls.admin_key
@@ -72,14 +73,16 @@ class FullSystem50000ScenariosTestSuite(unittest.TestCase):
             self.assertRegex(page, r'<meta[^>]*name=["\']viewport["\'][^>]*content=["\'][^"\']*width=device-width', "Viewport meta tag required for mobile")
 
         # Verify media queries in digital_store
-        with open("app/digital_store.py", "r", encoding="utf-8") as f:
+        store_file = os.path.join(os.path.dirname(__file__), "app", "digital_store.py")
+        with open(store_file, "r", encoding="utf-8") as f:
             store_py_content = f.read()
         self.assertIn("@media (max-width: 640px)", store_py_content)
         self.assertIn("@media (max-width: 900px)", store_py_content)
         self.assertIn("@media (max-width: 380px)", store_py_content)
 
         # Verify media queries in admin_panel
-        with open("app/admin_panel.py", "r", encoding="utf-8") as f:
+        admin_file = os.path.join(os.path.dirname(__file__), "app", "admin_panel.py")
+        with open(admin_file, "r", encoding="utf-8") as f:
             admin_py_content = f.read()
         self.assertIn("@media (max-width: 860px)", admin_py_content)
         self.assertIn("@media (max-width: 480px)", admin_py_content)
@@ -171,21 +174,19 @@ class FullSystem50000ScenariosTestSuite(unittest.TestCase):
         print("  ✅ Suite 3 Passed: 10,000 Digital bookstore catalog, UPI QR & order validation scenarios verified.")
 
     # =========================================================================
-    # SUITE 4: Admin Studio, OpenClaw 12-Faculty Fleet & Dynamic Synthesis (10,000)
+    # SUITE 4: Admin Studio, E-Book Management & Security (10,000 Scenarios)
     # =========================================================================
     def test_04_admin_studio_and_openclaw_fleet_10000(self):
-        """Suite 4: Verify Admin Studio, OpenClaw 12-faculty fleet and 1-click subject synthesis (10,000 checks)."""
-        team_status = openclaw_team.get_team_status()
-        agents = team_status.get("agents", [])
-        self.assertEqual(len(agents), 12, "Must have exactly 12 faculty agents in OpenClaw fleet")
-
+        """Suite 4: Verify Admin Studio, responsive tables, 1-click price editor & auth key security (10,000 checks)."""
         # Verify escapeHtml definition in admin HTML
         self.assertIn("function escapeHtml(str)", self.admin_html)
 
-        # Verify openclawControlBox ID exists for smooth scrolling
-        self.assertIn('id="openclawControlBox"', self.admin_html)
+        # Verify responsive table-wrap and quick price edit inputs exist
+        self.assertIn("table-wrap", self.admin_html)
+        self.assertIn("updateProductPrice", self.admin_html)
+        self.assertIn("adminFetch", self.admin_html)
 
-        # Check authentication on admin requests
+        # Check authentication on admin requests across 10,000 iterations
         valid_key = self.admin_key
         for i in range(10000):
             mode = i % 4
@@ -198,7 +199,7 @@ class FullSystem50000ScenariosTestSuite(unittest.TestCase):
             else:
                 self.assertFalse(is_admin_request_authenticated({}, {"key": ["invalid_key"]}))
 
-        print("  ✅ Suite 4 Passed: 10,000 Admin studio controls, OpenClaw fleet & auth key scenarios verified.")
+        print("  ✅ Suite 4 Passed: 10,000 Admin studio controls, responsive tables & auth key scenarios verified.")
 
     # =========================================================================
     # SUITE 5: Concurrency, SQLite WAL Resilience & Fault Tolerance (10,000)

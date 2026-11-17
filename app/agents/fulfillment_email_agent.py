@@ -15,29 +15,17 @@ from email.mime.text import MIMEText
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from .base_agent import BaseSeniorAgent
-
 logger = logging.getLogger(__name__)
 
-class FulfillmentEmailAgent(BaseSeniorAgent):
+class FulfillmentEmailAgent:
     """
-    Senior Executive in Customer Operations & Automated Fulfillment:
+    Order Fulfillment & Email Dispatcher:
     Ensures zero delivery friction, automated receipts, and instant email delivery of digital goods.
     """
 
     def __init__(self):
-        super().__init__(
-            name="Rohit Kulkarni (Head of Fulfillment & Customer Delivery)",
-            role="Chief Fulfillment Officer & Automated Dispatch Lead",
-            seniority="Principal Operations Director (12+ Years in Automated Digital Product Fulfillment)",
-            core_competencies=[
-                "Automated SMTP email dispatch with high inbox delivery rates",
-                "Secure single-use token generation for file downloads",
-                "Anti-fraud transaction reference verification",
-                "Delightful HTML transaction receipts with candidate study guidance"
-            ],
-            system_instruction="Ensure every paying aspirant receives their purchased digital product instantly with zero delay."
-        )
+        self.name = "Rohit Kulkarni (Head of Fulfillment & Customer Delivery)"
+        self.role = "Chief Fulfillment Officer & Automated Dispatch Lead"
 
     def create_order(
         self,

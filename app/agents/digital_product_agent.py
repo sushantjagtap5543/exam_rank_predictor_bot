@@ -15,8 +15,6 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from .base_agent import BaseSeniorAgent
-
 logger = logging.getLogger(__name__)
 
 CANONICAL_SUBJECTS = [
@@ -173,26 +171,16 @@ class NumberedCanvas(canvas.Canvas):
         self.drawRightString(559, 32, f"Page {self._pageNumber} of {total_pages}")
         self.restoreState()
 
-class DigitalProductPackagingAgent(BaseSeniorAgent):
+class DigitalProductPackagingAgent:
     """
-    Senior Digital Product Architect:
+    Digital Product Packaging & Store Catalog Manager.
     Manages catalog, ensures high perceived value, structures samples,
     and builds ReportLab PDF assets for digital downloads.
     """
 
     def __init__(self):
-        super().__init__(
-            name="Vikramaditya Sengupta (Head of Digital Products)",
-            role="Chief Product Architect & Digital Commerce Strategist",
-            seniority="Principal Product Director (16+ Years in EdTech Digital Publishing & Micro-Transactions)",
-            core_competencies=[
-                "Pricing strategy optimization for micro-transactions (₹10 - ₹100 impulse buys)",
-                "Digital product packaging & high-conversion thumbnail design",
-                "Automated PDF document synthesis with Devanagari typography and anti-piracy stamps",
-                "Sample teaser curation that maximizes checkout conversion"
-            ],
-            system_instruction="Design digital educational products that look prestigious, authoritative, and irresistible to government exam aspirants."
-        )
+        self.name = "Vikramaditya Sengupta (Head of Digital Products)"
+        self.role = "Chief Product Architect & Digital Commerce Strategist"
 
     @staticmethod
     def resolve_db_path(db_path: Optional[str] = None) -> str:

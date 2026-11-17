@@ -228,6 +228,6 @@ if __name__ == "__main__":
     test_monetization()
     test_swot_and_qbank()
     test_quiz_dedup_and_passage()
-    asyncio.run(test_objection_analysis())
-    asyncio.run(test_daily_topic_and_questions())
+    test_objection_analysis()
+    test_daily_topic_and_questions()
     print("🎉 ALL TESTS PASSED SUCCESSFULLY!")

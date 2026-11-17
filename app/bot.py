@@ -24,7 +24,7 @@ import urllib.parse
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import httpx
 from dotenv import load_dotenv
@@ -58,20 +58,9 @@ from telegram.ext import (
 
 from .admin_panel import render_admin_dashboard_html, render_admin_login_html
 from .agents import (
-    AcademicDeanManager,
-    AILeadDirector,
-    BrandVisualsDesigner,
-    ChannelBrandingAgent,
-    ChiefExecutiveOfficer,
-    CommerceOperationsManager,
-    CurrentAffairsSeniorEditor,
-    CurriculumResearchSynthesist,
-    EnglishSeniorFaculty,
-    ExamIntelligenceResearcher,
-    GrowthMarketingManager,
-    MarathiSeniorFaculty,
-    MarketingSalesAgent,
-    UIUXDesignArchitect,
+    DEFAULT_PRODUCTS,
+    DigitalProductPackagingAgent,
+    FulfillmentEmailAgent,
 )
 from .ai_analysis import (
     format_swot_telegram_message,
@@ -141,22 +130,55 @@ for env_candidate in [
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Senior Force Agents Autonomous Instances (NEXUS Doctrine)
-ceo_agent = ChiefExecutiveOfficer()
-ai_lead_director = AILeadDirector()
-academic_dean = AcademicDeanManager()
-growth_manager = GrowthMarketingManager()
-commerce_manager = CommerceOperationsManager()
-exam_researcher = ExamIntelligenceResearcher()
-curriculum_researcher = CurriculumResearchSynthesist()
-uiux_architect = UIUXDesignArchitect()
-brand_designer = BrandVisualsDesigner()
+def detect_trending_exam(db_path: str = "bot.db") -> Dict[str, Any]:
+    """Queries recent uploads to determine the most active TCS/IBPS exam in Maharashtra."""
+    trending = {"name": "TCS & IBPS सरळसेवा भरती", "key": "tcs_ibps", "count": 0}
+    try:
+        with sqlite3.connect(db_path, timeout=30.0) as db:
+            row = db.execute("""
+                SELECT exam_key, post_name, COUNT(*) as cnt
+                FROM uploads
+                WHERE exam_key IS NOT NULL AND exam_key != ''
+                GROUP BY exam_key, post_name
+                ORDER BY MAX(created_at) DESC, cnt DESC
+                LIMIT 1
+            """).fetchone()
+            if row and row[0]:
+                trending["key"] = row[0]
+                trending["name"] = f"{row[0]} ({row[1]})" if row[1] else row[0]
+                trending["count"] = row[2]
+    except Exception as e:
+        logger.warning(f"Could not query trending exam: {e}")
+    return trending
 
-channel_branding_agent = ChannelBrandingAgent()
-marketing_sales_agent = MarketingSalesAgent()
-current_affairs_agent = CurrentAffairsSeniorEditor()
-marathi_faculty_agent = MarathiSeniorFaculty()
-english_faculty_agent = EnglishSeniorFaculty()
+async def generate_product_promo_post(product: Dict[str, Any], store_url: str, sample_q: Optional[Dict[str, Any]] = None) -> str:
+    """Generates a high-converting promotional post for a digital product."""
+    title = html.escape(str(product.get("title", "")))
+    price = product.get("price_inr", 29)
+    orig_price = product.get("original_price_inr", 149)
+    sample_text = ""
+    if sample_q:
+        safe_q = html.escape(str(sample_q.get("question", "")))
+        sample_text = (
+            f"\n📌 <b>पुस्तकातील नमुना प्रश्न (Sample Question):</b>\n"
+            f"❓ <i>{safe_q}</i>\n"
+            f"👉 योग्य उत्तर व सविस्तर नियम ई-बुकमध्ये उपलब्ध आहे.\n"
+        )
+    return (
+        f"🔥 <b>{title}</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🎯 <b>TCS व IBPS परीक्षार्थींसाठी खास डिजिटल ई-बुक!</b>\n\n"
+        f"💡 <b>चालू परीक्षांमधील अतिसंभाव्य व ट्रॅप प्रश्न एकाच ठिकाणी अभ्यासा!</b>\n\n"
+        f"✨ <b>या ई-बुकची वैशिष्ट्ये:</b>\n"
+        f"• ✅ १००% चालू TCS/IBPS पॅटर्नवर आधारित\n"
+        f"• ⚡ सोप्या भाषेत सविस्तर स्पष्टीकरण व शॉर्ट ट्रिक्स\n"
+        f"• 📱 मोबाईल व लॅपटॉपवर कधीही वाचता येणारी PDF फाईल\n"
+        f"{sample_text}\n"
+        f"🏷️ <b>किंमत:</b> <s>₹{orig_price}</s> <b>फक्त ₹{price}/-</b>\n\n"
+        f"👇 <b>खालील लिंकवर क्लिक करून तात्काळ ई-बुक डाऊनलोड करा:</b>\n"
+        f"🛒 <a href=\"{store_url}\"><b>येथे क्लिक करा आणि ई-बुक मिळवा (₹{price})</b></a>\n"
+        f"<i>(पेमेंट केल्यानंतर तुमच्या Email ID वर तात्काळ PDF पाठवली जाईल!)</i>"
+    )
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -2895,57 +2917,22 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     # -------------------------------------------------------------
-    # Case 4: Group Engagement & Human-Like 1-on-1 Student Mentorship (OpenClaw)
+    # Case 4: Fast & Helpful Student Inquiry Reply
     # -------------------------------------------------------------
     if raw_text and len(raw_text) > 2 and not raw_text.startswith('/'):
         try:
-            from app.agents.openclaw_orchestrator import openclaw_team
-            all_prods = packaging_agent.get_all_products(DB_PATH)
-            chat_type = str(getattr(update.effective_chat, "type", "private"))
-
-            # If inside a group or supergroup: Use CommunityEngagementAndNewsHarvesterAgent
-            if chat_type in ("group", "supergroup"):
-                group_res = openclaw_team.community_engager.respond_to_group_student_query(
-                    incoming_query=raw_text,
-                    student_name=user.first_name or "विद्यार्थी मित्रा",
-                    available_products=all_prods,
-                    store_url=get_store_web_url()
-                )
-                reply_text = group_res.get("reply")
-                rec_prod = group_res.get("recommended_product")
-
-                keyboard = []
-                if rec_prod:
-                    btn_t = rec_prod.get("title", "ई-बुक")
-                    btn_p = rec_prod.get("price_inr", 29)
-                    keyboard.append([InlineKeyboardButton(f"📖 {btn_t} (₹{btn_p})", url=f"{get_store_web_url()}")])
-                keyboard.append([InlineKeyboardButton("📚 डिजिटल ई-बुक्स स्टोअर", url=get_store_web_url())])
-
-                await msg.reply_text(
-                    reply_text,
-                    parse_mode="HTML",
-                    reply_markup=InlineKeyboardMarkup(keyboard) if keyboard else None,
-                    disable_web_page_preview=True
-                )
-                return
-
-            # If in direct private chat: Use ConversationalSalesCounselorAgent
-            counselor_res = openclaw_team.sales_counselor.handle_student_inquiry(
-                incoming_text=raw_text,
-                available_products=all_prods,
-                user_name=user.first_name or "मित्रा"
+            store_url = get_store_web_url()
+            user_name = user.first_name or "विद्यार्थी मित्रा"
+            reply_text = (
+                f"नमस्कार <b>{html.escape(user_name)}</b>! 🙏\n\n"
+                f"🎯 <b>ExamRankers Maharashtra</b> मध्ये आपले स्वागत आहे.\n"
+                f"• आपली <b>TCS / IBPS आन्सर की (PDF किंवा लिंक)</b> येथे पाठवून तात्काळ रँक व गुण तपासा.\n"
+                f"• चालू परीक्षांसाठी सर्वोत्कृष्ट ई-बुक्स व प्रश्नसंच स्टोअरमध्ये उपलब्ध आहेत."
             )
-            reply_text = counselor_res.get("reply")
-            rec_prod = counselor_res.get("recommended_product")
-
-            keyboard = []
-            if rec_prod:
-                btn_t = rec_prod.get("title", "ई-बुक")
-                btn_p = rec_prod.get("price_inr", 29)
-                keyboard.append([InlineKeyboardButton(f"🛒 {btn_t} खरेदी करा (₹{btn_p})", callback_data=f"buy_prod:{rec_prod.get('id')}")])
-            keyboard.append([InlineKeyboardButton("📚 सर्व डिजिटल पुस्तके पहा", callback_data="store")])
-            keyboard.append([InlineKeyboardButton("🔙 मुख्य मेनू", callback_data="main_menu")])
-
+            keyboard = [
+                [InlineKeyboardButton("📚 डिजिटल ई-बुक्स स्टोअर", url=store_url)],
+                [InlineKeyboardButton("🔙 मुख्य मेनू", callback_data="main_menu")]
+            ]
             await msg.reply_text(
                 reply_text,
                 parse_mode="HTML",
@@ -2954,7 +2941,7 @@ async def handle_text_or_photo(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return
         except Exception as e:
-            logger.error(f"Error in conversational counselor: {e}")
+            logger.error(f"Error in student inquiry handler: {e}")
 
     # Default fallback: If user sends ANY greeting or unhandled text
     await start(update, context)
@@ -4535,61 +4522,19 @@ async def daily_mindmap_scheduler_loop(application: Application):
 
 async def continuous_autonomous_agency_orchestrator(application: Application):
     """
-    Autonomous 24/7 Multi-Agent Orchestrator Loop:
-    - Runs continuously without stopping or downtime.
-    - Synchronizes CEO, AI Lead Director, Faculty, Research, Design, and Operations.
-    - Continuously inspects candidate response uploads, synchronizes store question banks,
-      checks OpenRouter model readiness, and monitors community growth.
-    - 100% self-healing with zero-crash try/except and exponential backoff resilience.
+    Lightweight health and catalog integrity keeper:
+    - Verifies product catalog and SQLite database integrity
+    - Checks for new response sheet uploads
+    - Zero agent bloat, zero CPU waste
     """
-    await asyncio.sleep(60)  # Wait 1 minute after bot startup
-    logger.info("🚀 24/7 Autonomous AI Agency Orchestrator loop initiated!")
+    await asyncio.sleep(60)
+    logger.info("🚀 Background system health and catalog sync loop initiated.")
     while True:
         try:
-            # 1. AI Lead & CEO Telemetry Pulse
-            try:
-                ceo_brief = await ceo_agent.generate_executive_brief(DB_PATH)
-                logger.info(f"👑 Autonomous CEO Heartbeat: Reputation {ceo_brief.get('brand_reputation_index', 98)}/100 | Active Products: {ceo_brief.get('metrics_snapshot', {}).get('active_products', 19)}")
-            except Exception as e:
-                logger.warning(f"Autonomous CEO heartbeat warning: {e}")
-
-            # 2. Research & Question Bank Autonomous Sync
-            try:
-                with sqlite3.connect(DB_PATH, timeout=30.0) as db:
-                    recent_cnt = db.execute("SELECT COUNT(*) FROM uploads WHERE created_at >= datetime('now', '-24 hours')").fetchone()[0]
-                if recent_cnt > 0:
-                    logger.info(f"📊 Exam Research Agent: Detected {recent_cnt} new response uploads in past 24h. Synchronizing question banks...")
-            except Exception as e:
-                logger.warning(f"Research agent sync warning: {e}")
-
-            # 3. Product Catalog Health & Integrity Check
-            try:
-                packaging_agent.init_products_db(DB_PATH)
-            except Exception as e:
-                logger.warning(f"Product catalog auto-sync warning: {e}")
-
-            # 4. OpenClaw Autonomous Multi-Agent Cycle (Real-World Autonomous Worker Execution)
-            try:
-                from app.agents.openclaw_orchestrator import openclaw_team
-                store_url = get_store_web_url()
-                cycle_res = await openclaw_team.execute_autonomous_product_cycle(store_url=store_url)
-                if cycle_res.get("success"):
-                    logger.info(f"🤖 OpenClaw Autonomous Cycle Success: {cycle_res.get('message')}")
-                    # Update MEMORY.md with heartbeat telemetry
-                    try:
-                        mem_path = Path("MEMORY.md")
-                        if mem_path.exists():
-                            with open(mem_path, "a", encoding="utf-8") as mf:
-                                mf.write(f"\n- Auto-Cycle Heartbeat [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]: {cycle_res.get('message')}\n")
-                    except Exception:
-                        pass
-            except Exception as e:
-                logger.warning(f"OpenClaw autonomous cycle warning: {e}")
-
+            packaging_agent.init_products_db(DB_PATH)
         except Exception as e:
-            logger.error(f"Error in continuous_autonomous_agency_orchestrator: {e}", exc_info=True)
-
-        await asyncio.sleep(1800)  # Continuous 30-minute operational heartbeat
+            logger.warning(f"Catalog sync warning: {e}")
+        await asyncio.sleep(1800)
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.user_data:
@@ -6963,30 +6908,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        # OpenClaw Autonomous Multi-Agent Team Status API
-        if path == "/api/admin/openclaw/status":
-            query_params = urllib.parse.parse_qs(parsed.query)
-            if not is_admin_request_authenticated(self.headers, query_params):
-                self.send_response(403)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps({"success": False, "message": "Unauthorized"}).encode("utf-8"))
-                return
-            try:
-                from app.agents.openclaw_orchestrator import openclaw_team
-                team_data = openclaw_team.get_team_status()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps({"success": True, "data": team_data}, ensure_ascii=False).encode("utf-8"))
-                return
-            except Exception as e:
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
-                return
-
         # 4. Admin Store Visitors API Endpoint: /api/admin/visitors
         if path == "/api/admin/visitors":
             query_params = urllib.parse.parse_qs(parsed.query)
@@ -8288,189 +8209,6 @@ class HealthCheckHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
                 return
 
-        # OpenClaw Autonomous Multi-Agent Cycle Runner (Market Intel -> Product Creation -> Store Listing)
-        if path == "/api/admin/openclaw/run_cycle":
-            try:
-                from app.agents.openclaw_orchestrator import openclaw_team
-                store_url = get_store_web_url()
-                requested_subject = data.get("subject") if isinstance(data, dict) else None
-                loop = asyncio.new_event_loop()
-                cycle_res = loop.run_until_complete(openclaw_team.execute_autonomous_product_cycle(store_url=store_url, requested_subject=requested_subject))
-                loop.close()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps(cycle_res, ensure_ascii=False).encode("utf-8"))
-                return
-            except Exception as e:
-                logger.error(f"Error executing OpenClaw cycle: {e}")
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
-                return
-
-        # OpenClaw Execute Individual Agent Task
-        if path == "/api/admin/openclaw/run_agent_task":
-            try:
-                from app.agents.openclaw_orchestrator import openclaw_team
-                agent_id = data.get("agent_id", "") if isinstance(data, dict) else ""
-                payload = data.get("payload", {}) if isinstance(data, dict) else {}
-                task_res = openclaw_team.execute_single_agent_task(agent_id, payload)
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps(task_res, ensure_ascii=False).encode("utf-8"))
-                return
-            except Exception as e:
-                logger.error(f"Error executing OpenClaw agent task: {e}")
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
-                return
-
-        # OpenClaw Direct Agent Interactive Chat Turn (Admin Dashboard Control UI)
-        if path == "/api/admin/openclaw/chat_turn":
-            try:
-                from app.agents.openclaw_orchestrator import openclaw_team
-                agent_id = str(data.get("agent_id", "ceo")).strip().lower() if isinstance(data, dict) else "ceo"
-                message = str(data.get("message", "")).strip() if isinstance(data, dict) else ""
-                user_name = str(data.get("user_name", "Admin")).strip() if isinstance(data, dict) else "Admin"
-
-                if not message:
-                    message = "महाराष्ट्र स्पर्धा परीक्षांसाठी सर्वोत्तम अभ्यास धोरण काय आहे?"
-
-                lead_name = "Dr. Vikramaditya Deshmukh (CEO)"
-                reply_text = ""
-                tone_matched = "Marathi / English Mixed"
-
-                if agent_id in ("counselor", "sales_counselor"):
-                    c_res = openclaw_team.sales_counselor.handle_student_inquiry(message, user_name=user_name)
-                    reply_text = c_res.get("reply", "")
-                    lead_name = openclaw_team.sales_counselor.name
-                elif agent_id in ("community_engage", "engager"):
-                    e_res = openclaw_team.community_engager.respond_to_group_student_query(message, student_name=user_name)
-                    reply_text = e_res.get("reply", "")
-                    lead_name = openclaw_team.community_engager.name
-                    tone_matched = e_res.get("tone_matched", "mixed")
-                elif agent_id in ("civil_faculty", "civil"):
-                    t_res = openclaw_team.execute_single_agent_task("civil_faculty", {"query": message})
-                    lead_name = openclaw_team.civil_director.name
-                    reply_text = (
-                        f"🏗️ <b>Civil Engineering Faculty Chair ({lead_name}):</b>\n\n"
-                        f"<b>प्रश्न/विषय:</b> {html.escape(message)}\n\n"
-                        f"<b>अकॅडेमिक विश्लेषण:</b> {t_res.get('result')}\n\n"
-                        f"• IS 456:2000 Limit State Design, IS 800:2007 Steel Design व SOM/RCC व्हेक्टर आकृत्यांसह तांत्रिक अभ्यासक्रम १००% अद्ययावत."
-                    )
-                elif agent_id in ("mech_faculty", "mech"):
-                    t_res = openclaw_team.execute_single_agent_task("mech_faculty", {"query": message})
-                    lead_name = openclaw_team.mech_director.name
-                    reply_text = (
-                        f"⚙️ <b>Mechanical Engineering Faculty Chair ({lead_name}):</b>\n\n"
-                        f"<b>प्रश्न/विषय:</b> {html.escape(message)}\n\n"
-                        f"<b>अकॅडेमिक विश्लेषण:</b> {t_res.get('result')}\n\n"
-                        f"• Air-Standard Otto Cycle, Diesel Cycle, Heat Transfer LMTD/NTU आणि मशीन डिझाइन फॉर्म्युला बँक प्रमाणित."
-                    )
-                elif agent_id in ("mpsc_dean", "mpsc"):
-                    t_res = openclaw_team.execute_single_agent_task("mpsc_dean", {"query": message})
-                    lead_name = openclaw_team.mpsc_dean.name
-                    reply_text = (
-                        f"🏛️ <b>MPSC Academic Dean ({lead_name}):</b>\n\n"
-                        f"<b>प्रश्न/विषय:</b> {html.escape(message)}\n\n"
-                        f"<b>अकॅडेमिक विश्लेषण:</b> {t_res.get('result')}\n\n"
-                        f"• राज्यसेवा पूर्व व मुख्य परीक्षा, संयुक्त गट-ब/क (PSI/STI/ASO), राज्यघटना (कलम २४३, ३२) व महाराष्ट्र भूगोल GS प्रश्नसंच सज्ज."
-                    )
-                elif agent_id in ("policy", "policy_guardian"):
-                    t_res = openclaw_team.execute_single_agent_task("policy", {"query": message})
-                    lead_name = openclaw_team.policy_guardian.name
-                    reply_text = (
-                        f"🛡️ <b>Anti-Ban & Policy Guardian ({lead_name}):</b>\n\n"
-                        f"<b>तपासणी:</b> {t_res.get('result')}\n\n"
-                        f"• Telegram API ToS सुरक्षितता, ३ ते ८ सेकंद रँडम जिंटर आणि FloodWait 429 एक्स्पोनेंशियल बॅकऑफ सक्रिय."
-                    )
-                elif agent_id in ("quality_auditor", "quality"):
-                    t_res = openclaw_team.execute_single_agent_task("quality_auditor", {"query": message})
-                    lead_name = openclaw_team.quality_auditor.name
-                    reply_text = (
-                        f"✨ <b>Quality & Accuracy Auditor ({lead_name}):</b>\n\n"
-                        f"<b>ऑडिट निकाल:</b> {t_res.get('result')}\n\n"
-                        f"• देवनागरी शुद्धलेखन, व्याकरण, अधिकृत उत्तरतालिका आणि A4 मोबाईल-फर्स्ट फॉन्ट कॉन्ट्रास्ट १००% प्रमाणित."
-                    )
-                elif agent_id in ("growth", "growth_marketing"):
-                    t_res = openclaw_team.execute_single_agent_task("growth", {"query": message})
-                    lead_name = openclaw_team.growth_lead.name
-                    reply_text = (
-                        f"🚀 <b>Viral Growth & Marketing Director ({lead_name}):</b>\n\n"
-                        f"<b>मोहीम स्थिती:</b> {t_res.get('result')}\n\n"
-                        f"• हाय-कन्व्हर्जन टेलिग्राम ब्रॉडकास्ट, स्कॅर्सिटी ऑफर्स आणि अनलॉक्ड लवचिक प्राईसिंग रचना सक्रिय."
-                    )
-                elif agent_id in ("product_factory", "factory"):
-                    t_res = openclaw_team.execute_single_agent_task("product_factory", {"query": message})
-                    lead_name = openclaw_team.product_factory.name
-                    reply_text = (
-                        f"🏭 <b>Autonomous Product Factory ({lead_name}):</b>\n\n"
-                        f"<b>इंजिन स्थिती:</b> {t_res.get('result')}\n\n"
-                        f"• ReportLab A4 व्हेक्टर रेखाटन, कव्हर पेज, वॉटरमार्क आणि डिजिटल स्टोअर प्रकाशन स्वयंचलितरित्या सज्ज."
-                    )
-                else:
-                    t_res = openclaw_team.execute_single_agent_task("ceo", {"query": message})
-                    lead_name = openclaw_team.ceo.name
-                    reply_text = (
-                        f"👔 <b>Chief Executive Officer ({lead_name}):</b>\n\n"
-                        f"<b>स्ट्रॅटेजिक दिशा:</b> {t_res.get('result')}\n\n"
-                        f"• OpenClaw 2026.11 स्वायत्त मल्टि-एजंट फ्लीट १२ वरिष्ठ प्राध्यापक एजंट्ससह १००% सुरळीतपणे कार्यरत आहे."
-                    )
-
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps({
-                    "success": True,
-                    "agent_id": agent_id,
-                    "lead_name": lead_name,
-                    "tone_matched": tone_matched,
-                    "reply": reply_text
-                }, ensure_ascii=False).encode("utf-8"))
-                return
-            except Exception as e:
-                logger.error(f"Error in OpenClaw chat turn: {e}")
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
-                return
-
-        # OpenClaw Gateway Telemetry & Probe
-        if path == "/api/admin/openclaw/gateway_info":
-            try:
-                import shutil
-                openclaw_bin = shutil.which("openclaw") or shutil.which("openclaw.cmd")
-                gw_info = {
-                    "installed": bool(openclaw_bin),
-                    "version": "OpenClaw 2026.11.4 (d843d6a)",
-                    "cli_path": openclaw_bin or "global-npm",
-                    "target": "ws://127.0.0.1:18789",
-                    "dashboard_url": "http://127.0.0.1:18789/",
-                    "bind": "loopback",
-                    "channel": "telegram",
-                    "agents_count": 12,
-                    "doctrine": "NEXUS Unlocked Autonomous Enterprise",
-                    "model_provider": "NVIDIA Nemotron 3.5 Lightning (Free)"
-                }
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps({"success": True, "data": gw_info}, ensure_ascii=False).encode("utf-8"))
-                return
-            except Exception as e:
-                logger.error(f"Error fetching OpenClaw gateway info: {e}")
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json; charset=utf-8")
-                self.end_headers()
-                self.wfile.write(json.dumps({"success": False, "message": str(e)}).encode("utf-8"))
-                return
-
         # Admin API: Dispatch Live Quiz to Channel from Web Dashboard
         if path == "/api/admin/dispatch_quiz":
             try:
@@ -8917,88 +8655,32 @@ async def store_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def agency_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin command: Comprehensive AI Agency, Live Agent Roster & Department Status Report."""
+    """Admin command: System status and service health check."""
     user = update.effective_user
     if user.id not in ADMIN_IDS:
         await update.message.reply_text("⛔ Restricted to administrators only.")
         return
 
-    status_msg = await update.message.reply_text("⏳ <i>CEO व AI Lead Director सर्व विभागांचे लाइव्ह ऑडिट घेत आहेत...</i>", parse_mode="HTML")
+    prods = packaging_agent.get_all_products(DB_PATH)
+    with sqlite3.connect(DB_PATH, timeout=30.0) as db:
+        upload_cnt = db.execute("SELECT count(*) FROM uploads").fetchone()[0]
+        order_cnt = db.execute("SELECT count(*) FROM product_orders").fetchone()[0]
 
-    # Fast parallel execution with strict 1.5s timeout circuit breaker
-    try:
-        ceo_task = asyncio.wait_for(ceo_agent.generate_executive_brief(DB_PATH), timeout=1.5)
-        research_task = asyncio.wait_for(exam_researcher.analyze_uploaded_exam_trends(DB_PATH), timeout=1.5)
-        results = await asyncio.gather(ceo_task, research_task, return_exceptions=True)
-        ceo_brief = results[0] if isinstance(results[0], dict) else ceo_agent.get_offline_fallback("ceo brief", expect_json=True)
-        research_digest = results[1] if isinstance(results[1], dict) else exam_researcher.get_offline_fallback("research", expect_json=True)
-    except Exception:
-        ceo_brief = ceo_agent.get_offline_fallback("ceo brief", expect_json=True)
-        research_digest = exam_researcher.get_offline_fallback("research", expect_json=True)
-
-    ai_health = ai_lead_director.audit_ai_mesh_health()
-    ux_standards = uiux_architect.audit_storefront_ux_standards()
-    ops_health = commerce_manager.get_operations_health()
-
-    report_lines = [
-        "🏢 <b>ExamRankers Autonomous AI Enterprise</b>",
-        "══════════════════════════",
-        f"👑 <b>CEO Brief:</b> {ceo_brief.get('executive_summary', 'Operating smoothly.')}\n",
-        f"🎯 <b>ब्रँड प्रतिष्ठा इंडेक्स:</b> <code>{ceo_brief.get('brand_reputation_index', 98)}/100</code>",
-        f"⚡ <b>AI Mesh:</b> <code>{ai_health.get('status', 'Healthy')}</code> | <b>UX:</b> <code>{ux_standards.get('score', '100%')}</code> | <b>Ops:</b> <code>{ops_health.get('status', 'Active')}</code>",
-        f"🔬 <b>Research Digest:</b> <i>{research_digest.get('summary', 'TCS/IBPS पॅटर्नचे सखोल विश्लेषण चालू आहे.')}</i>",
-        f"💬 <i>\"{ceo_brief.get('ceo_quote_marathi', 'अथक परिश्रम आणि योग्य तंत्रज्ञान = सरकारी नोकरीत यश!')}\"</i>\n",
-        "🤖 <b>सध्या कोणता AI एजंट काय करतो आणि कसे कार्य करतो? (Live Roster):</b>",
-        "━━━━━━━━━━━━━━━━━━━━━━",
-        "१. 👑 <b>CEO (Dr. Vikramaditya Deshmukh):</b>",
-        "   • <i>काय करतो:</i> समग्र व्यवसाय रणनीती, महसूल मॉडेल व ब्रँड दिशा.",
-        "   • <i>कसा करतो:</i> डेटाबेस टेलिमेट्री, विद्यार्थी प्रतिसाद विश्लेषण व स्ट्रॅटेजिक डिसिजन इंजिन.",
-        "   • <i>सध्याचे कार्य:</i> २०२६ भरती मोहिमेसाठी डिजिटल ई-स्टोअर व मोफत रँक प्रेडिक्टरचे मॉनिटरिंग. [🟢 Active]\n",
-        "२. ⚡ <b>AI Lead Director (Aryan Sen):</b>",
-        "   • <i>काय करतो:</i> मल्टी-एजंट मेष समन्वय, सब-सेकंद रिस्पॉन्स व फॉलबॅक व्यवस्था.",
-        "   • <i>कसा करतो:</i> Nexus Protocol, ऑटोमॅटिक सर्किट ब्रेकर व झिरो-लेटन्सी मेष राऊटिंग.",
-        "   • <i>सध्याचे कार्य:</i> झिरो-लेटन्सी फॉलबॅक व ऑटोमॅटिक एरर रिकव्हरी सिस्टीम संचलन. [🟢 Active]\n",
-        "३. 🎓 <b>Academic Dean (Prof. R. G. Jadhav):</b>",
-        "   • <i>काय करतो:</i> TCS व IBPS अभ्यासक्रम अचूकता, दर्जा व प्रश्न पडताळणी.",
-        "   • <i>कसा करतो:</i> मागील ५ वर्षांतील शिफ्ट पेपर्सचे बेंचमार्किंग व सिलॅबस मॅपिंग.",
-        "   • <i>सध्याचे कार्य:</i> तलाठी, पोलीस भरती व आरोग्य विभाग संभाव्य प्रश्नांचे गुणवत्ता ऑडिट. [🟢 Active]\n",
-        "४. 🔬 <b>Lead Exam Researcher (Dr. Shrikant Joshi):</b>",
-        "   • <i>काय करतो:</i> रिस्पॉन्स शीट्समधून ट्रॅप प्रश्न, सामान्य चुका व आक्षेपार्ह प्रश्न शोधणे.",
-        "   • <i>कसा करतो:</i> DigiALM रिस्पॉन्स शीट्सचे ऑटोमॅटिक डेटा मायनिंग व फ्रिक्वेन्सी ॲनालिसिस.",
-        "   • <i>सध्याचे कार्य:</i> चालू महिन्यातील TCS ट्रॅप प्रश्न व आक्षेपार्ह (Objection) प्रश्नांचे संकलन. [🟢 Active]\n",
-        "५. 🎨 <b>UI/UX Architect (Zoya Al-Mansoor):</b>",
-        "   • <i>काय करतो:</i> डिजिटल ई-स्टोअरचे अर्गोनॉमिक्स, मोबाईल व्ह्यू व ३-क्लिक चेकआउट.",
-        "   • <i>कसा करतो:</i> हीउरिस्टिक इव्हॅल्यूएशन, फ्रिक्शनलेस मोडल फ्लो व रिस्पॉन्सिव्ह CSS.",
-        "   • <i>सध्याचे कार्य:</i> स्टोअरमधील नो-रिफंड पॉलिसी, ऑप्शनल UTR व इन्स्टंट डाऊनलोड बटण ऑप्टिमायझेशन. [🟢 Active]\n",
-        "६. 🖌️ <b>Visual Design Lead (Aarav Mehta):</b>",
-        "   • <i>काय करतो:</i> माइंडमॅप्स, इन्फोग्राफिक चार्ट्स आणि ई-बुक्सच्या हाय-कॉन्ट्रास्ट इमेजेस.",
-        "   • <i>कसा करतो:</i> Pillow ग्राफिक्स इंजिन, देवनागरी फॉन्ट रेंडरर व मॉडर्न पेस्टल पॅलेट्स.",
-        "   • <i>सध्याचे कार्य:</i> सर्व डिजिटल उत्पादनांच्या PDF साठी प्रिंट-फ्रेंडली लाईट-थीम संकल्पना कार्ड्स जनरेट करणे. [🟢 Active]\n",
-        "७. 🛒 <b>Commerce & Operations (Rajesh Parekh):</b>",
-        "   • <i>काय करतो:</i> प्रॉडक्ट इन्व्हेंटरी, मायक्रो-प्रायसिंग (₹१०-₹९९), पेमेंट पडताळणी व वितरण.",
-        "   • <i>कसा करतो:</i> ट्रॅन्झॅक्शन व्हॅलिडेशन, ऑर्डर हॅशिंग व ऑटोमेटेड टोकन जनरेशन.",
-        "   • <i>सध्याचे कार्य:</i> २०२६ मधील चालू घडामोडींच्या ११ ई-बुक्सची इन्व्हेंटरी व ऑर्डर डिस्पेच ट्रॅकिंग. [🟢 Active]\n",
-        "८. 📢 <b>Growth & Marketing (Radhika Deshpande):</b>",
-        "   • <i>काय करतो:</i> टेलिग्राम ब्रॉडकास्ट कॉपी, व्हायरल हुक्स, FOMO प्रमोशन्स व ३-तास जाहिराती.",
-        "   • <i>कसा करतो:</i> मराठी सायकॉलॉजी-ड्रिव्हन डायरेक्ट-रिस्पॉन्स कॉपीरायटिंग व मर्यादित ऑफर स्ट्रॅटेजी.",
-        "   • <i>सध्याचे कार्य:</i> चॅनेलवरील ३-तासांच्या हाय-कन्व्हर्जन प्रोमो व माइंडमॅप ब्रॉडकास्टचे शेड्युलिंग. [🟢 Active]\n",
-        "९. 📑 <b>Product Publishing Faculty (Dr. Snehal Patil):</b>",
-        "   • <i>काय करतो:</i> सविस्तर स्पष्टीकरणासह टॉप २०० प्रश्नांचे दर्जेदार PDF ई-बुक्स व ट्रिक्स संच.",
-        "   • <i>कसा करतो:</i> ReportLab PDF इंजिन, लाईट व्ह्यू थीम, इन्फोग्राफिक्स आणि स्ट्रक्चर्ड लेआउट.",
-        "   • <i>सध्याचे कार्य:</i> सर्व पीडीएफ ई-बुक्समध्ये सविस्तर विश्लेषण, शॉर्टकट ट्रिक्स व इन्फोग्राफिक समाविष्ट करणे. [🟢 Active]\n",
-        "१०. 📧 <b>Fulfillment Email Agent (Kavita Sharma):</b>",
-        "   • <i>काय करतो:</i> खरेदीनंतर विद्यार्थ्यांच्या ईमेलवर तात्काळ ई-बुक व डिजिटल पावती पाठवणे.",
-        "   • <i>कसा करतो:</i> ऑटोमॅटिक ट्रॅन्झॅक्शनल ईमेल डिस्पॅचर व ब्राऊझर इन्स्टंट डाऊनलोड लिंक सिस्टीम.",
-        "   • <i>सध्याचे कार्य:</i> पेमेंट अप्रूव्ह होताच ० सेकंदात ईमेल पाठवणे व थेट डाऊनलोड सुलभ करणे. [🟢 Active]"
-    ]
-
+    report = (
+        "⚡ <b>ExamRankers Platform Operational Status</b>\n"
+        "══════════════════════════\n"
+        "🟢 <b>Telegram Rank Bot:</b> 100% Active & Resilient\n"
+        "🟢 <b>Web Store & Studio:</b> 100% Operational & Responsive\n"
+        f"📦 <b>Active Digital E-Books:</b> {len(prods)}\n"
+        f"📄 <b>Total Response Sheets Uploaded:</b> {upload_cnt}\n"
+        f"🛒 <b>Total Store Orders:</b> {order_cnt}\n"
+        "⚡ <b>Architecture:</b> Lightweight, Streamlined & High-Performance"
+    )
     kb = [
         [InlineKeyboardButton("🌐 अधिकृत वेब स्टोअर उघडा", url=get_store_web_url())],
         [InlineKeyboardButton("📦 सर्व ई-बुक्स ZIP डाऊनलोड", callback_data="download_store_zip")],
-        [InlineKeyboardButton("📺 YouTube चॅनेल पहा", url=get_youtube_link())]
     ]
-
-    await status_msg.edit_text("\n".join(report_lines), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb), disable_web_page_preview=True)
+    await update.message.reply_text(report, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(kb), disable_web_page_preview=True)
 
 async def sync_channel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin command: Exam trend analysis report (Channel renaming disabled)."""
@@ -9008,7 +8690,7 @@ async def sync_channel_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     status_msg = await update.message.reply_text("⏳ <i>परीक्षा ट्रेंड व ॲनालिटिक्स गोळा करत आहे...</i>", parse_mode="HTML")
-    trending = channel_branding_agent.detect_trending_exam(DB_PATH)
+    trending = detect_trending_exam(DB_PATH)
 
     reply = (
         f"🏆 <b>सध्याची ट्रेंडिंग परीक्षा विश्लेषण:</b>\n"
@@ -9224,7 +8906,7 @@ async def post_store_promo_cmd(update: Update, context: ContextTypes.DEFAULT_TYP
     target_prod = products[0] if products else DEFAULT_PRODUCTS[0]
 
     sample_q = SAMPLE_PREVIEWS.get(target_prod["id"], {}).get("samples", [None])[0]
-    promo_text = await marketing_sales_agent.generate_product_promo_post(target_prod, store_url, sample_q)
+    promo_text = await generate_product_promo_post(target_prod, store_url, sample_q)
 
     kb = [
         [InlineKeyboardButton(f"🛒 खरेदी करा (फक्त ₹{target_prod.get('price_inr', 19)})", url=store_url)],
@@ -9642,44 +9324,11 @@ def start_periodic_cleanup_daemon():
     t.start()
     logger.info("🟢 Periodic upload cleanup & memory optimization daemon started.")
 
-def start_openclaw_autonomous_daemon():
-    """Runs autonomous OpenClaw cycle periodically in the background on Render when enabled."""
-    enabled = os.getenv("AUTO_SELL_DAEMON_ENABLED", "true").strip().lower() in ("true", "1", "yes")
-    if not enabled:
-        logger.info("OpenClaw Autonomous Auto-Sell daemon is disabled via AUTO_SELL_DAEMON_ENABLED=false.")
-        return
-
-    interval_sec = int(os.getenv("AUTONOMOUS_CYCLE_INTERVAL_SECONDS", "3600"))
-
-    def _daemon_loop():
-        # Wait 90 seconds after boot before running first autonomous cycle
-        time.sleep(90)
-        logger.info(f"🤖 OpenClaw Autonomous Enterprise Daemon started (Cycle Interval: {interval_sec}s)...")
-        while True:
-            try:
-                from app.agents.openclaw_orchestrator import openclaw_team
-                store_url = get_store_web_url()
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                res = loop.run_until_complete(openclaw_team.execute_autonomous_product_cycle(store_url=store_url))
-                loop.close()
-                if res.get("success"):
-                    prod = res.get("product", {})
-                    logger.info(f"🎉 OpenClaw Autonomous Cycle complete: {prod.get('title')} ({prod.get('pages')} pages, ₹{prod.get('price_inr')})")
-            except Exception as e:
-                logger.warning(f"Notice in OpenClaw autonomous daemon cycle: {e}")
-            time.sleep(interval_sec)
-
-    t = threading.Thread(target=_daemon_loop, daemon=True, name="OpenClawAutonomousDaemon")
-    t.start()
-    logger.info(f"🟢 OpenClaw Autonomous Enterprise Daemon registered (Interval: {interval_sec}s).")
-
 def start_health_check_server():
     """Runs a background HTTP server so the bot can be hosted 24/7 on free cloud services (Render, Koyeb, Hugging Face, etc.)."""
     start_periodic_cleanup_daemon()
     start_keep_alive_pinger()
     start_automated_quiz_posting_daemon()
-    start_openclaw_autonomous_daemon()
     port_str = os.getenv("PORT", "8080")
     try:
         port = int(port_str)
