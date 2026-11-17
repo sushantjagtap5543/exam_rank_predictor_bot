@@ -64,10 +64,6 @@ def render_admin_dashboard_html(db_path: str = "bot.db") -> str:
                 packaging_agent.init_products_db(db_path)
                 prods_rows = db.execute("SELECT * FROM digital_products ORDER BY rowid DESC").fetchall()
                 products = [dict(r) for r in prods_rows]
-                if not products:
-                    packaging_agent.sync_folder_pdfs_to_products(db_path)
-                    prods_rows = db.execute("SELECT * FROM digital_products ORDER BY rowid DESC").fetchall()
-                    products = [dict(r) for r in prods_rows]
             except Exception:
                 pass
 

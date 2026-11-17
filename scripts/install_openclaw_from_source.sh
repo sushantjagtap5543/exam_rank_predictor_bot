@@ -45,3 +45,4 @@ else
     # Fallback to local package execution
     exec node bin/openclaw.js gateway run --port "$PORT" || npx openclaw gateway run --port "$PORT"
 fi
+

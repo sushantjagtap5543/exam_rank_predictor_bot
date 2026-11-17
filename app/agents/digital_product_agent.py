@@ -60,72 +60,7 @@ def normalize_product_subject(raw_subject: Optional[str]) -> str:
     # Full Admin Control: Preserve any custom subject or product type specified by the administrator
     return s
 
-DEFAULT_PRODUCTS = [
-    {
-        "id": "prod_tcs_marathi_vyakaran_top300",
-        "title": "TCS/IBPS मराठी व्याकरण Top 300 सर्वाधिक विचारलेले MCQs",
-        "subtitle": "प्रयोग, समास, समानार्थी, विरुद्धार्थी व म्हणी",
-        "subject": "Marathi",
-        "tier": "Master E-Book",
-        "price_inr": 29,
-        "original_price_inr": 99,
-        "badge": "🔥 TCS मोस्ट रिपीटेड (₹29)",
-        "rating": 5.0,
-        "reviews_count": 1280,
-        "pages": 42,
-        "description": "प्रयोग, समास, समानार्थी, विरुद्धार्थी व म्हणी यांवर TCS शिफ्ट्समध्ये विचारलेले ३०० प्रमाणित प्रश्न व सविस्तर नियम.",
-        "download_file": "tcs_marathi_vyakaran_top300.pdf",
-        "icon": "✍️"
-    },
-    {
-        "id": "prod_mpsc_rajyaseva_gs_master_2026",
-        "title": "MPSC राज्यसेवा व संयुक्त गट-ब/क — समग्र GS मास्टर रिव्हिजन संच २०२६",
-        "subtitle": "महाराष्ट्र भूगोल, राज्यघटना, आधुनिक इतिहास, अर्थव्यवस्था व चालू घडामोडी",
-        "subject": "MPSC",
-        "tier": "Master E-Book",
-        "price_inr": 49,
-        "original_price_inr": 199,
-        "badge": "🏛️ MPSC विशेष (₹49)",
-        "rating": 5.0,
-        "reviews_count": 940,
-        "pages": 68,
-        "description": "महाराष्ट्र नागरी सेवा, गट-ब (PSI/STI/ASO) व गट-क परीक्षांसाठी मागील १० वर्षांतील १२००+ अतिसंभाव्य प्रश्न व प्रमाणित विश्लेषण.",
-        "download_file": "mpsc_rajyaseva_gs_master_2026.pdf",
-        "icon": "🏛️"
-    },
-    {
-        "id": "prod_civil_eng_complete_handbook",
-        "title": "Civil Engineering All-Subject Formula & Question Bank (PWD/WRD/BMC/JE Special)",
-        "subtitle": "Complete Technical Guide with Schematics, Formulas & Solved MCQs (English)",
-        "subject": "Civil Engineering",
-        "tier": "Master E-Book",
-        "price_inr": 49,
-        "original_price_inr": 249,
-        "badge": "🏗️ Civil Eng Mastery (₹49)",
-        "rating": 5.0,
-        "reviews_count": 860,
-        "pages": 85,
-        "description": "Comprehensive English technical coverage across SOM, RCC (IS 456), Steel (IS 800), Soil Mechanics, Fluid Mechanics, Surveying & Highway Engineering with technical diagrams.",
-        "download_file": "civil_eng_complete_handbook.pdf",
-        "icon": "🏗️"
-    },
-    {
-        "id": "prod_mech_eng_complete_handbook",
-        "title": "Mechanical Engineering Comprehensive Master Guide (MPSC MES/BMC/RRB/SSC JE)",
-        "subtitle": "Subjectwise Technical Handbook with Cycle Schematics & Solved MCQs (English)",
-        "subject": "Mechanical Engineering",
-        "tier": "Master E-Book",
-        "price_inr": 49,
-        "original_price_inr": 249,
-        "badge": "⚙️ Mech Eng Mastery (₹49)",
-        "rating": 5.0,
-        "reviews_count": 820,
-        "pages": 82,
-        "description": "Full English subjectwise coverage: Thermodynamics, Heat Transfer, IC Engines, SOM, Theory of Machines, Fluid Mechanics, Manufacturing & Industrial Eng with P-v/T-s cycle diagrams.",
-        "download_file": "mech_eng_complete_handbook.pdf",
-        "icon": "⚙️"
-    }
-]
+DEFAULT_PRODUCTS = []
 
 from reportlab.lib import colors
 from reportlab.pdfgen import canvas
@@ -264,11 +199,34 @@ class DigitalProductPackagingAgent:
                     except Exception as e:
                         logger.debug(f"Column {col} already exists or error: {e}")
 
+            # Ensure all columns in digital_products table exist
+            existing_prod_cols = [c[1] for c in db.execute("PRAGMA table_info(digital_products)").fetchall()]
+            new_prod_cols = {
+                "subtitle": "TEXT",
+                "tier": "TEXT",
+                "badge": "TEXT",
+                "rating": "REAL DEFAULT 4.9",
+                "reviews_count": "INTEGER DEFAULT 100",
+                "pages": "INTEGER DEFAULT 50",
+                "description": "TEXT",
+                "download_file": "TEXT",
+                "icon": "TEXT",
+                "is_active": "INTEGER DEFAULT 1",
+                "sales_count": "INTEGER DEFAULT 0",
+                "created_at": "DATETIME DEFAULT CURRENT_TIMESTAMP"
+            }
+            for col, ctype in new_prod_cols.items():
+                if col not in existing_prod_cols:
+                    try:
+                        db.execute(f"ALTER TABLE digital_products ADD COLUMN {col} {ctype}")
+                    except Exception as e:
+                        logger.debug(f"Column {col} already exists or error: {e}")
+
             # Clean/normalize any historical non-canonical subjects in digital_products table
             db.execute("UPDATE digital_products SET subject = 'PYQ & Response Sheets' WHERE subject IN ('Comprehensive', 'Response Sheets', 'PYQ')")
             db.execute("UPDATE digital_products SET subject = 'General Knowledge' WHERE subject IN ('General Studies', 'General', 'GS', 'GK')")
 
-            # Purge all legacy / autogenerated / old catalog products from store
+            # Purge all legacy / autogenerated / old catalog products from store (including 4 default titles)
             legacy_ids = [
                 'prod_gmc_master_2024', 'prod_peon_full_2024', 'prod_file_0169460b0a',
                 'prod_ca_2026_11', 'prod_ca_2026_10', 'prod_ca_2026_09', 'prod_ca_2026_08',
@@ -276,17 +234,32 @@ class DigitalProductPackagingAgent:
                 'prod_ca_2026_03', 'prod_ca_2026_02', 'prod_ca_2026_01', 'prod_ca_monthly_top200',
                 'prod_ca_half_yearly', 'prod_ca_yearly_master', 'prod_tcs_response_sheet_qbank',
                 'prod_marathi_vyakaran_rules', 'prod_english_vocab_error_spotting',
-                'prod_maharashtra_gk_gs_1000', 'prod_maths_reasoning_shortcuts'
+                'prod_maharashtra_gk_gs_1000', 'prod_maths_reasoning_shortcuts',
+                'prod_tcs_marathi_vyakaran_top300', 'prod_mpsc_rajyaseva_gs_master_2026',
+                'prod_civil_eng_complete_handbook', 'prod_mech_eng_complete_handbook'
             ]
             placeholders = ",".join(["?"] * len(legacy_ids))
             db.execute(f"DELETE FROM digital_products WHERE id IN ({placeholders}) OR download_file LIKE 'current_affairs_%'", legacy_ids)
-            db.execute("DELETE FROM digital_products WHERE download_file IN ('gmc.pdf', 'peon.pdf', 'talathi_special_revision_notes.pdf', 'marathi_vyakaran_master_guide.pdf', 'english_error_spotting_mastery.pdf', 'maharashtra_gk_1000_oneliner.pdf', 'maths_reasoning_shortcuts_handbook.pdf', 'tcs_ibps_real_response_qbank.pdf', 'test_admin_upload.pdf')")
+            db.execute("""
+                DELETE FROM digital_products WHERE download_file IN (
+                    'gmc.pdf', 'peon.pdf', 'talathi_special_revision_notes.pdf',
+                    'marathi_vyakaran_master_guide.pdf', 'english_error_spotting_mastery.pdf',
+                    'maharashtra_gk_1000_oneliner.pdf', 'maths_reasoning_shortcuts_handbook.pdf',
+                    'tcs_ibps_real_response_qbank.pdf', 'test_admin_upload.pdf',
+                    'tcs_marathi_vyakaran_top300.pdf', 'mpsc_rajyaseva_gs_master_2026.pdf',
+                    'civil_eng_complete_handbook.pdf', 'mech_eng_complete_handbook.pdf'
+                )
+            """)
 
             # Remove physical obsolete/legacy PDFs from disk
             root_dir = Path(__file__).resolve().parent.parent.parent
             for d in [root_dir / "admin_storage" / "products", root_dir / "products"]:
                 if d.exists():
-                    for obsolete_name in ("gmc.pdf", "peon.pdf", "talathi_special_revision_notes.pdf"):
+                    for obsolete_name in (
+                        "gmc.pdf", "peon.pdf", "talathi_special_revision_notes.pdf",
+                        "tcs_marathi_vyakaran_top300.pdf", "mpsc_rajyaseva_gs_master_2026.pdf",
+                        "civil_eng_complete_handbook.pdf", "mech_eng_complete_handbook.pdf"
+                    ):
                         try:
                             f = d / obsolete_name
                             if f.exists():
@@ -905,6 +878,7 @@ class DigitalProductPackagingAgent:
                         or fn_lower.startswith("test_")
                         or fn_lower.startswith("temp_")
                         or fn_lower.startswith("tmp")
+                        or fn_lower.startswith("prod_test_")
                         or "sample" in fn_lower
                         or fn_lower in (
                             "gmc.pdf",
@@ -914,7 +888,11 @@ class DigitalProductPackagingAgent:
                             "english_error_spotting_mastery.pdf",
                             "maharashtra_gk_1000_oneliner.pdf",
                             "maths_reasoning_shortcuts_handbook.pdf",
-                            "tcs_ibps_real_response_qbank.pdf"
+                            "tcs_ibps_real_response_qbank.pdf",
+                            "tcs_marathi_vyakaran_top300.pdf",
+                            "mpsc_rajyaseva_gs_master_2026.pdf",
+                            "civil_eng_complete_handbook.pdf",
+                            "mech_eng_complete_handbook.pdf"
                         )
                     ):
                         continue
@@ -933,6 +911,7 @@ class DigitalProductPackagingAgent:
     def get_all_products(self, db_path: str = "bot.db", include_inactive: bool = False) -> List[Dict[str, Any]]:
         """Returns digital products from SQLite database under 100% manual admin control."""
         db_path = self.resolve_db_path(db_path)
+        self.init_products_db(db_path)
         with sqlite3.connect(db_path, timeout=30.0) as db:
             db.row_factory = sqlite3.Row
             where_clauses = ["id NOT IN ('prod_gmc_master_2024', 'prod_peon_full_2024', 'prod_file_0169460b0a')"]

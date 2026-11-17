@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # ExamRankers — Isolated OpenClaw Gateway Installer & Service Daemon (Windows)
 # Official Source: https://github.com/openclaw/openclaw.git
 # ==============================================================================
@@ -45,3 +45,4 @@ if (Get-Command openclaw -ErrorAction SilentlyContinue) {
 } else {
     & npx openclaw gateway run --port $Port
 }
+

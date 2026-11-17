@@ -55,9 +55,27 @@ class TestBuyerAndOwner1000Scenarios(unittest.TestCase):
         cls.agent.init_products_db(str(DB_PATH))
         cls.products = cls.agent.get_all_products(str(DB_PATH), include_inactive=True)
         if len(cls.products) < 19:
-            from app.agents.digital_product_agent import DEFAULT_PRODUCTS
+            mock_test_products = [
+                {
+                    "id": f"prod_test_{i:02d}",
+                    "title": f"Test Digital E-Book Guide {i:02d}",
+                    "subtitle": "Test Study Notes",
+                    "subject": ["Current Affairs", "PYQ & Response Sheets", "Marathi", "English", "General Knowledge", "Maths & Reasoning"][i % 6],
+                    "tier": "Monthly",
+                    "price_inr": 29 + (i * 5),
+                    "original_price_inr": 99 + (i * 10),
+                    "badge": "⭐ Popular",
+                    "rating": 4.9,
+                    "reviews_count": 100 + i,
+                    "pages": 48 + i,
+                    "description": f"Test Description for product {i}",
+                    "download_file": f"prod_test_{i:02d}.pdf",
+                    "icon": "📚"
+                }
+                for i in range(20)
+            ]
             with sqlite3.connect(str(DB_PATH)) as db:
-                for p in DEFAULT_PRODUCTS:
+                for p in mock_test_products:
                     db.execute("""
                         INSERT OR REPLACE INTO digital_products
                         (id, title, subtitle, subject, tier, price_inr, original_price_inr, badge, rating, reviews_count, pages, description, download_file, icon, is_active)
@@ -84,6 +102,17 @@ class TestBuyerAndOwner1000Scenarios(unittest.TestCase):
         if DB_PATH.exists():
             try:
                 DB_PATH.unlink()
+            except Exception:
+                pass
+        import glob
+        for f in glob.glob(str(PROJECT_ROOT / "admin_storage" / "products" / "prod_test_*.*")):
+            try:
+                os.remove(f)
+            except Exception:
+                pass
+        for f in glob.glob(str(PROJECT_ROOT / "admin_storage" / "products" / "assets" / "diagram_prod_test_*.*")):
+            try:
+                os.remove(f)
             except Exception:
                 pass
         os.environ.pop("ENABLE_AUTO_EBOOK_GENERATION", None)

@@ -25,10 +25,11 @@ class TestPaymentGatewaySecurity(unittest.TestCase):
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.db_path = str(Path(self.tmp_dir.name) / "test_bot.db")
         
-        # Initialize test tables
+        # Initialize test tables using official agent method
+        DigitalProductPackagingAgent().init_products_db(self.db_path)
         with sqlite3.connect(self.db_path) as db:
             db.execute("""
-                CREATE TABLE payments (
+                CREATE TABLE IF NOT EXISTS payments (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     telegram_user_id INTEGER,
                     username TEXT,
@@ -42,51 +43,25 @@ class TestPaymentGatewaySecurity(unittest.TestCase):
                 )
             """)
             db.execute("""
-                CREATE TABLE digital_products (
-                    id TEXT PRIMARY KEY,
-                    title TEXT,
-                    subject TEXT,
-                    price_inr REAL,
-                    original_price_inr REAL,
-                    pages INTEGER,
-                    rating REAL,
-                    reviews_count INTEGER,
-                    badge TEXT,
-                    description TEXT,
-                    download_file TEXT,
-                    tier TEXT,
-                    icon TEXT,
-                    is_active INTEGER DEFAULT 1,
-                    sales_count INTEGER DEFAULT 0,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                INSERT OR REPLACE INTO digital_products (
+                    id, title, subtitle, subject, price_inr, original_price_inr, pages,
+                    rating, reviews_count, badge, description, download_file, tier, icon, is_active
+                ) VALUES (
+                    'prod_ca_monthly_top200', 'Current Affairs Monthly Top 200', 'Test Subtitle',
+                    'Current Affairs', 19.0, 99.0, 40, 5.0, 100, 'Test Badge', 'Test Description',
+                    'test_ca.pdf', 'Monthly', '📚', 1
                 )
             """)
-            db.execute("""
-                CREATE TABLE product_orders (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    order_token TEXT UNIQUE,
-                    product_id TEXT,
-                    customer_email TEXT,
-                    customer_telegram_id INTEGER,
-                    customer_mobile TEXT,
-                    amount_paid REAL,
-                    utr TEXT,
-                    status TEXT DEFAULT 'pending',
-                    delivery_status TEXT DEFAULT 'pending',
-                    delivered_at DATETIME,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            for p in DEFAULT_PRODUCTS[:3]:
-                db.execute("""
-                    INSERT INTO digital_products (id, title, subject, price_inr, original_price_inr, pages, rating, reviews_count, badge, description, download_file, tier, icon)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (p["id"], p["title"], p["subject"], p["price_inr"], p["original_price_inr"], p["pages"], p["rating"], p["reviews_count"], p["badge"], p["description"], p["download_file"], p["tier"], p["icon"]))
 
         self.fulfillment = FulfillmentEmailAgent()
 
     def tearDown(self):
-        self.tmp_dir.cleanup()
+        import gc
+        gc.collect()
+        try:
+            self.tmp_dir.cleanup()
+        except Exception:
+            pass
 
     def test_01_utr_format_validation(self):
         """Validates that valid and invalid UTR patterns are properly recognized."""
