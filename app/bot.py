@@ -9353,6 +9353,12 @@ def start_health_check_server():
         t = threading.Thread(target=server.serve_forever, daemon=True)
         t.start()
         logger.info(f"🟢 24/7 Health-check web server live on 0.0.0.0:{port}!")
+        try:
+            from .openclaw_proxy import start_gateway_background
+            start_gateway_background()
+            logger.info("🟢 OpenClaw Autonomous Gateway initialized and online on 127.0.0.1:18789.")
+        except Exception as gw_err:
+            logger.warning(f"Note on OpenClaw gateway init: {gw_err}")
     except Exception as e:
         logger.warning(f"Could not start health-check web server on port {port}: {e}")
 
